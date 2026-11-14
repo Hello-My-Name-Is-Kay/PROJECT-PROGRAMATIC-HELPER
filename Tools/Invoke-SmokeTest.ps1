@@ -33,7 +33,9 @@ function Test-Step {
         Write-Host ('  [ OK ] ' + $Name) -ForegroundColor Green
     } catch {
         $script:fail++
-        Write-Host ('  [FAIL] ' + $Name + ' - ' + $_.Exception.Message.Split([Environment]::NewLine)[0]) -ForegroundColor Red
+        $lines = @($_.Exception.Message -split '\r?\n' | Where-Object { $_ })
+        Write-Host ('  [FAIL] ' + $Name + ' - ' + $lines[0]) -ForegroundColor Red
+        foreach ($l in ($lines | Select-Object -Skip 1)) { Write-Host ('         ' + $l.Trim()) -ForegroundColor DarkRed }
     }
 }
 
@@ -46,8 +48,9 @@ Write-Host ("VmMaintenance smoke test - PowerShell {0} ({1})" -f $PSVersionTable
 
 # ---------------------------------------------------------------- 1. Syntax
 Write-Host '1. Syntax' -ForegroundColor Cyan
-$sources = Get-ChildItem -LiteralPath $repo -Recurse -File -Include '*.ps1', '*.psm1', '*.psd1' |
-    Where-Object { $_.FullName -notmatch '\\\.git\\|\.local\.' }
+# -Include is ignored together with -LiteralPath, so filter on Extension
+$sources = Get-ChildItem -LiteralPath $repo -Recurse -File |
+    Where-Object { $_.Extension -in '.ps1', '.psm1', '.psd1' -and $_.FullName -notmatch '\\\.git\\|\.local\.' }
 foreach ($f in $sources) {
     $tokens = $null; $errs = $null
     [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errs)
@@ -62,8 +65,8 @@ Write-Host ("  parsed {0} files" -f $sources.Count) -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------- 2. ASCII
 Write-Host '2. ASCII-only sources' -ForegroundColor Cyan
-$text = Get-ChildItem -LiteralPath $repo -Recurse -File -Include '*.ps1', '*.psm1', '*.psd1', '*.cs', '*.sql' |
-    Where-Object { $_.FullName -notmatch '\\\.git\\|\.local\.' }
+$text = Get-ChildItem -LiteralPath $repo -Recurse -File |
+    Where-Object { $_.Extension -in '.ps1', '.psm1', '.psd1', '.cs', '.sql' -and $_.FullName -notmatch '\\\.git\\|\.local\.' }
 $nonAscii = @()
 foreach ($f in $text) {
     $bytes = [System.IO.File]::ReadAllBytes($f.FullName)

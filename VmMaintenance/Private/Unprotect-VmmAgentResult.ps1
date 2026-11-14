@@ -8,7 +8,7 @@ function Unprotect-VmmAgentResult {
         -Category SecurityError -ErrorId 'VmmAgentResult' }
     try { $all = [Convert]::FromBase64String($Base64) } catch { throw (& $bad 'Not valid base64 (line cut while copying?).') }
     if ($all.Length -lt 4 + 2 + 16 + 16 + 32 -or $all.Length -gt 4MB -or [Text.Encoding]::ASCII.GetString($all, 0, 4) -ne 'VMM2') { throw (& $bad 'Unknown format or wrong size.') }
-    $wl = ($all[4] -shl 8) + $all[5]
+    $wl = ([int]$all[4] * 256) + [int]$all[5]   # int math: -shl on a [byte] can overflow
     $bodyLen = $all.Length - 32
     $ctLen = $bodyLen - 6 - $wl - 16
     if ($wl -lt 64 -or $ctLen -lt 16 -or ($ctLen % 16) -ne 0) { throw (& $bad 'Corrupt header.') }

@@ -17,7 +17,7 @@ Describe 'Module surface' {
         ($mod.ExportedFunctions.Keys | Sort-Object) | Should -Be $files
     }
     It 'every source file parses without errors' {
-        $bad = foreach ($f in Get-ChildItem $repo -Recurse -File -Include *.ps1, *.psm1, *.psd1) {
+        $bad = foreach ($f in (Get-ChildItem -LiteralPath $repo -Recurse -File | Where-Object { $_.Extension -in '.ps1', '.psm1', '.psd1' -and $_.FullName -notmatch '\\\.git\\' })) {
             $t = $null; $e = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$t, [ref]$e)
             if ($e.Count) { $f.Name }
@@ -25,7 +25,7 @@ Describe 'Module surface' {
         $bad | Should -BeNullOrEmpty
     }
     It 'every source file is ASCII-only' {
-        $bad = foreach ($f in Get-ChildItem $repo -Recurse -File -Include *.ps1, *.psm1, *.psd1, *.cs, *.sql) {
+        $bad = foreach ($f in (Get-ChildItem -LiteralPath $repo -Recurse -File | Where-Object { $_.Extension -in '.ps1', '.psm1', '.psd1', '.cs', '.sql' -and $_.FullName -notmatch '\\\.git\\' })) {
             if ([System.IO.File]::ReadAllBytes($f.FullName) | Where-Object { $_ -gt 127 } | Select-Object -First 1) { $f.Name }
         }
         $bad | Should -BeNullOrEmpty
