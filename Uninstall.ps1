@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Removes the VmMaintenance module, the vmm command, PATH entry and the daily task.
+    Removes the VmMaintenance module, the vmm command, shortcuts, PATH entry and the daily task.
     Your config, encrypted data and reports are kept unless you choose to delete them.
 .EXAMPLE
     .\Uninstall.ps1
@@ -20,6 +20,10 @@ $bin = Join-Path $app 'bin'
 if (Test-Path $bin) { Remove-Item $bin -Recurse -Force; Say " Removed $bin" Green }
 $p = [Environment]::GetEnvironmentVariable('Path', 'User')
 if ($p) { [Environment]::SetEnvironmentVariable('Path', (($p -split ';' | Where-Object { $_ -and $_ -ne $bin }) -join ';'), 'User') }
+foreach ($d in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs')) | Where-Object { $_ }) {
+    $l = Join-Path $d 'VM Maintenance.lnk'
+    if (Test-Path -LiteralPath $l) { Remove-Item -LiteralPath $l -Force; Say " Removed $l" Green }
+}
 try { Unregister-ScheduledTask -TaskName 'VmMaintenance daily report' -Confirm:$false -ErrorAction Stop; Say ' Removed daily report task' Green } catch { }
 
 $cfg = Join-Path $env:APPDATA 'VmMaintenance'

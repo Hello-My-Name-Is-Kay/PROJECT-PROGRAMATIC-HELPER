@@ -3,7 +3,9 @@ function Show-VmmSettingsScreen {
     [CmdletBinding()]
     param()
     $keys = @(
-        @('Staging.SourceShare', 'Network share the install files are copied FROM')
+        @('Staging.SourceShare', 'Media repository: OS images at the root, one folder per host')
+        @('Staging.OsMediaVersion', 'Windows Server image version to stage (2019 = target)')
+        @('Staging.Layout', 'Repository (images + host folders) | Packages (fixed list only)')
         @('Staging.TargetFolder', 'Folder on each host files are copied TO')
         @('Target.MachinesPerDay', 'Daily target (machines)')
         @('Target.WorkdayHours', 'Workday length used for pace')

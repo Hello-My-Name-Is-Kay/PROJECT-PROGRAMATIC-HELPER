@@ -164,6 +164,73 @@ Describe 'Resolve-VmmTimeZone (setup wizard input)' {
     }
 }
 
+Describe 'Media repository (ISO root + one folder per host)' {
+    BeforeAll {
+        $script:share = Join-Path $TestDrive 'iso-repository'
+        New-Item -ItemType Directory -Path $share -Force | Out-Null
+        foreach ($n in 'Win_Server_2012R2_EN_US.iso', 'Win_Server_2016_EN_US.ISO', 'Win_Server_2019_EN_US.ISO', 'Win_Server_2019_FR_FR.ISO',
+                       'Win_Server_2022_ES-ES.ISO', 'Win_Server_2025_FR_FR.iso', 'readme.txt') { Set-Content -LiteralPath (Join-Path $share $n) -Value 'x' }
+        Set-Content -LiteralPath (Join-Path $share 'Win_Server_2019_FR_FR.ISO.sha256') -Value ('A' * 64 + '  Win_Server_2019_FR_FR.ISO')
+        $files = @{ 'SERVER_01' = @('SQLServer2014SP3-KB4022619-x64-FRA.exe', 'SQLServer2016SP3-KB5003279-x64-FRA.exe'); 'SERVER_02' = @('SQLServer2014SP3-KB4022619-x64-ENU.exe') }
+        foreach ($k in $files.Keys) { New-Item -ItemType Directory -Path (Join-Path $share $k) -Force | Out-Null; foreach ($f in $files[$k]) { Set-Content -LiteralPath (Join-Path $share "$k\$f") -Value 'x' } }
+        InModuleScope VmMaintenance -Parameters @{ Share = $share } {
+            $script:SavedCfg2 = $script:VmmConfig
+            $script:VmmConfig = @{ Staging = @{ SourceShare = $Share; TargetFolder = 'C:\Temp'; OsMediaVersion = 2019 } }
+        }
+    }
+    AfterAll { InModuleScope VmMaintenance { $script:VmmConfig = $script:SavedCfg2 } }
+
+    It 'normalizes language codes: <In> -> <Want>' -TestCases @(
+        @{ In = 'fr-FR'; Want = 'FR-FR' }, @{ In = 'FR_FR'; Want = 'FR-FR' }, @{ In = 'ES-ES'; Want = 'ES-ES' }, @{ In = 'sr-Latn-RS'; Want = 'SR-LATN-RS' }, @{ In = ''; Want = $null }, @{ In = 'french'; Want = $null }
+    ) {
+        InModuleScope VmMaintenance -Parameters @{ In = $In } { ConvertTo-VmmMediaLanguage $In } | Should -Be $Want
+    }
+    It 'reads images (any case, _ or -), host folders, sidecar hashes and unknown files' {
+        $inv = InModuleScope VmMaintenance { Get-VmmMediaInventory }
+        $inv.Isos.Count | Should -Be 6
+        @($inv.Isos | Where-Object { $_.Version -eq '2012R2' }).Count | Should -Be 1
+        ($inv.Isos | Where-Object { $_.Version -eq '2022' }).Lang | Should -Be 'ES-ES'
+        ($inv.Isos | Where-Object { $_.Name -eq 'Win_Server_2019_FR_FR.ISO' }).Sha256 | Should -Be ('A' * 64)
+        @($inv.Folders).Count | Should -Be 2
+        $inv.Other | Should -Be @('readme.txt')
+    }
+    It 'gives a French host the French 2019 image and its own folder, warns on a SQL version it does not have' {
+        $pk = InModuleScope VmMaintenance {
+            $rec = [pscustomobject]@{ Name = 'SERVER_01'; Check = [pscustomobject]@{ OS = 'Microsoft Windows Server 2016 Standard'; Lang = 'fr-FR'; Sql = 'MSSQLSERVER 12.0.6024.0 Standard Edition' }; Baseline = $null }
+            @(Get-VmmStagingPackage -Record $rec)
+        }
+        ($pk | Where-Object Kind -eq 'OsMedia').Name | Should -Be 'Win_Server_2019_FR_FR.ISO'
+        @($pk | Where-Object Kind -eq 'HostFile').Count | Should -Be 2
+        ($pk | Where-Object { $_.Name -like 'SQLServer2016*' }).Note | Should -Match '2016.*2014'
+        ($pk | Where-Object { $_.Name -like 'SQLServer2014*' }).Note | Should -BeNullOrEmpty
+        @($pk | Where-Object Gate).Count | Should -Be 0
+    }
+    It 'closes the gate with the exact file name when the language image is missing' {
+        $pk = InModuleScope VmMaintenance { @(Get-VmmStagingPackage -Record ([pscustomobject]@{ Name = 'SERVER_09'; Check = [pscustomobject]@{ OS = 'x'; Lang = 'pt-PT'; Sql = 'none' }; Baseline = $null })) }
+        $pk.Count | Should -Be 1
+        $pk[0].Gate | Should -Match 'Win_Server_2019_PT_PT\.iso'
+        $pk[0].Gate | Should -Match 'EN-US, FR-FR'
+    }
+    It 'closes the gate when the host language is unknown (no silent fallback to English)' {
+        $pk = InModuleScope VmMaintenance { @(Get-VmmStagingPackage -Record ([pscustomobject]@{ Name = 'SERVER_02'; Check = $null; Baseline = $null })) }
+        ($pk | Where-Object Kind -eq 'OsMedia').Gate | Should -Match 'LANGUAGE UNKNOWN'
+        @($pk | Where-Object Kind -eq 'HostFile').Count | Should -Be 1
+    }
+}
+
+Describe 'Host agent plan card' {
+    It 'reads every Package line from the embedded plan' {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'), [ref]$null, [ref]$null)
+        $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Read-Card' }, $true) | Select-Object -First 1
+        . ([scriptblock]::Create($fn.Extent.Text))
+        function Bad { param($t) }
+        $CardText = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("Host=H1`nPackage=Win_Server_2019_FR_FR.ISO|Win_Server_2019_FR_FR.ISO||Win_Server_2019_FR_FR.ISO`nPackage=b|b.exe||H1\b.exe"))
+        $c = Read-Card
+        $c.Packages.Count | Should -Be 2
+        $c.Host | Should -Be 'H1'
+    }
+}
+
 Describe 'Logging and errors' {
     It 'Protect-VmmLogText masks secrets' {
         $o = InModuleScope VmMaintenance { Protect-VmmLogText 'pwd=abc123 token: xyz Bearer eyJhbGci.x.y' }

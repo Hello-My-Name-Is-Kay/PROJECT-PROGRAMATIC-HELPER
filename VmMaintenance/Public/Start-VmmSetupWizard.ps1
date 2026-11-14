@@ -111,8 +111,9 @@ function Start-VmmSetupWizard {
             [void](& $ask 'Target.WorkdayHours' 'Workday length, hours' '9' 'int')
         }
         if (& $want 'Staging') {
-            & $title 'Staging' @('Where install files come FROM (network share) and go TO on each host. Packages and hashes: edit the config file (E in Settings).')
-            [void](& $ask 'Staging.SourceShare' 'Network share (\\server\share\folder, empty = later)' '' 'share')
+            & $title 'Staging' @('Media repository: Windows Server images at its root (Win_Server_2019_FR_FR.iso), one folder per host for that host''s own files (SQL Server updates).', 'Each host gets the image in its own install language plus its folder, copied to the folder on the host. Check it any time: vmm media.')
+            [void](& $ask 'Staging.SourceShare' 'Media repository (\\server\share\project\iso-folder, empty = later)' '' 'share')
+            [void](& $ask 'Staging.OsMediaVersion' 'Windows Server image version to stage' '2019' 'choice' @('2012R2', '2016', '2019', '2022', '2025'))
             [void](& $ask 'Staging.TargetFolder' 'Folder on each host' 'C:\Temp')
         }
         if (& $want 'Workflow') {

@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "license": "private",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
@@ -99,6 +99,7 @@
     "Get-VmmFleet",
     "Get-VmmGitHubStatus",
     "Get-VmmLansweeperDiskSpace",
+    "Get-VmmMediaReport",
     "Get-VmmPolicyReport",
     "Get-VmmRdpGuide",
     "Get-VmmServerPlatform",
@@ -140,6 +141,7 @@
     "Connect-VmmAzure",
     "ConvertFrom-VmmDbNull",
     "ConvertTo-VmmAiSafeText",
+    "ConvertTo-VmmMediaLanguage",
     "ConvertTo-VmmNote",
     "ConvertTo-VmmPsd1",
     "ConvertTo-VmmUtcDate",
@@ -163,6 +165,7 @@
     "Get-VmmHostPolicy",
     "Get-VmmHostRecord",
     "Get-VmmHostStage",
+    "Get-VmmMediaInventory",
     "Get-VmmNextDiskTier",
     "Get-VmmNextStep",
     "Get-VmmPath",
@@ -203,6 +206,7 @@
     "Read-VmmStore",
     "Resolve-VmmConfigPath",
     "Resolve-VmmOutputPath",
+    "Resolve-VmmTimeZone",
     "Resolve-VmmVmByIp",
     "Resolve-VmmWorkDir",
     "Restore-VmmPowerState",
@@ -260,5 +264,13 @@
       "physical machines"
     ],
     "disk_expand": "Azure, after business hours only, no override (VM deallocated)"
+  },
+  "media_repository": {
+    "setting": "Staging.SourceShare",
+    "root": "OS images named Win_Server_<version>_<LANG>.iso (e.g. Win_Server_2019_FR_FR.iso; _ or -, any case)",
+    "host_folders": "<share>\\<HOST>\\* = files only that host needs (SQL Server updates)",
+    "pick": "image for Staging.OsMediaVersion in the host's install language (Win32_OperatingSystem.OSLanguage); no fallback language",
+    "hashes": "optional <file>.sha256 sidecar",
+    "report": "vmm media"
   }
 }

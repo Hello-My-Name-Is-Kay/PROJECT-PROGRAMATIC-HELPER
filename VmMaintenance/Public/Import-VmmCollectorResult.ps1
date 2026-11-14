@@ -49,7 +49,7 @@ function Import-VmmCollectorResult {
     $rec = Get-VmmHostRecord -Store $store -Name $f['Name']   # throws when the host is not in the fleet
     $check = [pscustomobject]@{
         Name = $rec.Name; CheckedAt = (Get-Date).ToUniversalTime().ToString('o'); IPv4 = $rec.IPv4; Ping = 'n/a'; Ports = 'n/a'
-        Reachable = 'Yes'; OS = (& $clean $f['OS'] 120); Version = (& $clean $f['Version'] 30); Build = (& $clean $f['Build'] 20); SP = (& $clean $f['SP'] 5)
+        Reachable = 'Yes'; OS = (& $clean $f['OS'] 120); Lang = $(if ("$($f['Lang'])" -match '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){1,2}$') { $f['Lang'] } else { $null }); Version = (& $clean $f['Version'] 30); Build = (& $clean $f['Build'] 20); SP = (& $clean $f['SP'] 5)
         LastBoot = (& $clean $f['LastBoot'] 30); Manufacturer = (& $clean $f['Manufacturer'] 80); Model = (& $clean $f['Model'] 80)
         Platform = $(if ($f['Platform'] -in 'Azure', 'Hyper-V', 'VMware', 'Physical') { $f['Platform'] } else { 'Unknown' })
         CTotalGB = (& $num $f['CTotalGB']); CFreeGB = (& $num $f['CFreeGB'])
@@ -80,9 +80,9 @@ function Import-VmmCollectorResult {
         $added++
     }
     if (-not $events -and $Step -in 'Precheck', 'Verify') {
-        if ($Step -eq 'Precheck' -and -not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $check.OS; Build = $check.Build; Sql = $check.Sql } }
+        if ($Step -eq 'Precheck' -and -not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $check.OS; Lang = $check.Lang; Build = $check.Build; Sql = $check.Sql } }
         Set-VmmStepState -Record $rec -Step $Step -Status 'Success' -Note "via $via`: $($check.OS), C: $($check.CFreeGB) GB free, SQL: $($check.Sql)"
-    } elseif (-not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $check.OS; Build = $check.Build; Sql = $check.Sql } }
+    } elseif (-not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $check.OS; Lang = $check.Lang; Build = $check.Build; Sql = $check.Sql } }
     Save-VmmStore -Store $store
     Write-VmmLog "$($rec.Name): facts recorded via $via ($($check.OS), C: $($check.CFreeGB) GB free), $added new host event(s)." -Level Success
 }

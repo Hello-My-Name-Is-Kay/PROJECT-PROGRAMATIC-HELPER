@@ -92,10 +92,19 @@
     }
 
     Staging = @{
-        SourceShare  = '<\\fileserver\share\folder>'   # where install files are copied FROM
-        TargetFolder = 'C:\Temp'                          # created on each host if missing
-        Packages     = @(
-            @{ Name = '<package-name>'; Path = '<relative\path\file.iso>'; Sha256 = ''; Source = '<download url or team>'; AppliesTo = '*' }
+        # Media repository: where you download and keep everything the hosts need.
+        #   <share>\Win_Server_2019_EN_US.iso, Win_Server_2019_FR_FR.iso ...  OS images at the root
+        #   <share>\<HOST>\SQLServer2016SP3-KB5003279-x64-FRA.exe ...       files for that host only
+        #   <file>.sha256 (optional, next to any file)                       SHA256 to verify against
+        # Each host gets: the image for OsMediaVersion in its install language + everything in its folder.
+        SourceShare    = '<\\fileserver\share\project\iso-repository>'   # media repository root
+        TargetFolder   = 'C:\Temp'                          # created on each host if missing
+        Layout         = 'Repository'                       # Repository (above) | Packages (only the list below)
+        OsMediaVersion = '2019'                             # image version staged for the upgrade
+        OsMediaPattern = '^Win_Server_(?<Version>\d{4}(R2)?)_(?<Lang>[A-Za-z]{2,3}[_-][A-Za-z]{2,4})\.iso$'
+        HostFolders    = @{ }                               # optional: fleet name -> folder name when they differ
+        Packages       = @(                                 # optional extra files for every host (path relative to SourceShare)
+            # @{ Name = 'Tool'; Path = 'Common\tool.msi'; Sha256 = ''; Source = '<download url or team>'; AppliesTo = '*Server 2016*' }
         )
     }
 
@@ -106,7 +115,7 @@
 
     Upgrade = @{
         Mode        = 'Guided'   # Guided = you run it in RDP/RDM | RunCommand = Azure only, launched remotely
-        CommandLine = ''         # e.g. C:\Temp\<media>\setup.exe /auto upgrade /quiet /eula accept
+        CommandLine = ''         # e.g. <ISO drive>:\setup.exe /auto upgrade /quiet /eula accept  (mount the staged ISO first; the RDP guide shows how)
         ExpectedOs  = '*Server 2019*'   # Verify passes only if the OS caption matches
     }
 

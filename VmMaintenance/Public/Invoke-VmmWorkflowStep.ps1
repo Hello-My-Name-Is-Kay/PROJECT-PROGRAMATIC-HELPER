@@ -72,7 +72,7 @@ function Invoke-VmmWorkflowStep {
                 $r = @(Invoke-VmmFleetCheck -Name $name -Azure:([bool](Get-VmmSetting 'Azure.TenantId')) -PassThru -Quiet)[0]
                 $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
                 if ($r.Reachable -ne 'Yes') { throw "Host not reachable over WMI: $($r.Error)" }
-                if (-not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $r.OS; Build = $r.Build; Sql = $r.Sql } }
+                if (-not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $r.OS; Lang = $r.Lang; Build = $r.Build; Sql = $r.Sql } }
                 $note = "$($r.OS) build $($r.Build), C: $($r.CFreeGB) GB free, SQL: $($r.Sql), reboot pending: $($r.PendingReboot)"
                 if ($r.PendingReboot -eq 'Yes') { $note += ' - REBOOT PENDING: reboot in the maintenance window before upgrading' }
             }

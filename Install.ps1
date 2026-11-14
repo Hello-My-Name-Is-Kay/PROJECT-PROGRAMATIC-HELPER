@@ -5,6 +5,8 @@
     - Checks Windows + PowerShell 5.1/7, unblocks the downloaded files.
     - Copies the module to your user module folders (Windows PowerShell 5.1 and PowerShell 7).
     - Creates the 'vmm' command (%LOCALAPPDATA%\VmMaintenance\bin, added to your user PATH).
+    - Creates 'VM Maintenance' shortcuts on your desktop and in the Start menu (they open the installed
+      copy, so this folder can be moved or deleted afterwards).
     - Runs the setup wizard: important warnings (type YES) and every option, page by page
       (change any of them later with 'vmm setup' or vmm > Settings).
     - Creates your local config (%APPDATA%\VmMaintenance\config.psd1) and the encrypted data store.
@@ -48,6 +50,11 @@ Say ' ------------------------------------------------------------' DarkGray
 
 # --- 2. Installer-only options (everything else is asked by the setup wizard after the copy)
 $wantTask = if ($Update) { $false } else { AskYes ' Export the daily report automatically every day (scheduled task, runs while you are logged on)' 'Y' }
+$linkName = 'VM Maintenance.lnk'
+$linkDirs = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs')) | Where-Object { $_ }
+# Update: (re)create them unless you said no at install time (marker file no-shortcuts)
+$noLinks = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'VmMaintenance\no-shortcuts'
+$wantLinks = if ($Update) { -not (Test-Path -LiteralPath $noLinks) } else { AskYes ' Create desktop and Start menu shortcuts' 'Y' }
 $taskAt   = if ($wantTask) { Ask ' Time for the daily export (laptop clock, HH:mm)' '17:15' } else { $null }
 if ($taskAt -and $taskAt -notmatch '^([01]\d|2[0-3]):[0-5]\d$') { Say " '$taskAt' is not HH:mm - using 17:15." Yellow; $taskAt = '17:15' }
 
@@ -94,6 +101,25 @@ if (($userPath -split ';') -notcontains $bin) {
     Say " Added $bin to your user PATH (open a new terminal to use 'vmm')" Green
 }
 $env:Path = "$env:Path;$bin"
+
+# Shortcuts: target the installed launcher, never the folder this installer runs from
+if (-not $Update) { if ($wantLinks) { Remove-Item -LiteralPath $noLinks -Force -ErrorAction SilentlyContinue } else { Set-Content -LiteralPath $noLinks -Value 'shortcuts declined at install' -Encoding ASCII } }
+if ($wantLinks) {
+    try {
+        $ws = New-Object -ComObject WScript.Shell
+        $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        foreach ($d in $linkDirs) {
+            $lnk = $ws.CreateShortcut((Join-Path $d $linkName))
+            $lnk.TargetPath = Join-Path $bin 'vmm.cmd'
+            $lnk.WorkingDirectory = $env:USERPROFILE
+            $lnk.Description = 'VmMaintenance fleet console (vmm)'
+            $lnk.IconLocation = "$ps,0"
+            $lnk.Save()
+        }
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ws)
+        Say " Shortcuts: $($linkDirs -join ', ') -> $linkName" Green
+    } catch { Say " WARNING: could not create shortcuts: $($_.Exception.Message). Start it with: vmm" Yellow }
+}
 
 # --- 6. Config + encrypted store
 Import-Module (Join-Path $targets[0] 'VmMaintenance.psd1') -Force

@@ -1,5 +1,20 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 221 - 2026-11-14:4-10 | 220 - 2026-11-14:11-18 | 210 - 2026-11-14:19-36 | 200 - 2026-11-14:37-42 | 100 - 2026-11-14:43-47 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.3.0 - 2026-11-14:4-18 | 2.2.1 - 2026-11-14:19-25 | 2.2.0 - 2026-11-14:26-33 | 2.1.0 - 2026-11-14:34-51 | 2.0.0 - 2026-11-14:52-57 | 1.0.0 - 2026-11-14:58-62 -->
 # Changelog
+
+## 2.3.0 - 2026-11-14
+
+- Media repository layout for `Staging.SourceShare`: Windows Server images at the root
+  (`Win_Server_<version>_<LANG>.iso`, `_` or `-`, any case), one folder per host with files only that host needs
+  (SQL Server updates). Each host gets the `Staging.OsMediaVersion` image in its install language plus its folder;
+  no language fallback. Optional `<file>.sha256` sidecars are verified. `Staging.HostFolders` maps different folder
+  names. `Staging.Layout = 'Packages'` keeps the old fixed list.
+- Host install language collected by Check, the RDP collector and the host agent (`Lang`).
+- `vmm media` / `4` > `M`: images by version and language, host folders vs fleet, what is still missing.
+- Staging gate rows show which hosts need each file; SQL Server updates warn when the host has no instance of that version.
+- RDP guide: Stage lists the host's own files; Upgrade shows how to mount the staged image.
+- Installer: `VM Maintenance` shortcuts on the desktop and in the Start menu (installed copy; refreshed by updates
+  unless declined at install); removed by the uninstaller.
+- Fix: the host agent ignored the staged-file list in its plan (`Package=` lines were never read).
 
 ## 2.2.1 - 2026-11-14
 
@@ -44,4 +59,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 04:02 UTC_
+_Last updated: 2026-11-14 04:16 UTC_

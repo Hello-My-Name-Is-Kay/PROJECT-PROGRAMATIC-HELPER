@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, checkpoint snapshots and prune, blockers, daily target, host agent steps. SECTIONS: OS policy:7-13 | Steps:14-32 | Time rules Europe/Lisbon:33-53 | Snapshot after every success:54-82 | Blockers:83-95 | Daily target:96-101 | Inside the host the host age:102-121 -->
+<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, checkpoint snapshots and prune, blockers, daily target, host agent steps. SECTIONS: OS policy:7-13 | Steps:14-32 | Time rules EuropeLisbon:33-53 | Snapshot after every success:54-82 | Blockers:83-95 | Daily target:96-101 | Inside the host the host age:102-121 -->
 # Workflow
 
 How one host moves from "imported" to "done", what the time rules allow, where snapshots
@@ -16,7 +16,7 @@ host; Stage and change steps only on hosts in scope.
 | # | Step | Class | Mode | What happens |
 |---|---|---|---|---|
 | 1 | Precheck | ReadOnly | Auto | Ping, ports, CIM: OS/SP, SQL version, C: free, pending reboot, watched software. Baseline saved on first success |
-| 2 | Stage | Staging | Auto | Copies each package from `Staging.SourceShare` to `C:\Temp` on the host (folder created if missing), SHA256 verified |
+| 2 | Stage | Staging | Auto | Copies from the media repository (`Staging.SourceShare`) to `C:\Temp` on the host (folder created if missing): the Windows Server image for `Staging.OsMediaVersion` in the host's install language, every file in `<share>\<HOST>\`, and any `Staging.Packages`; SHA256 verified when a hash is known |
 | 3 | PreSnapshot | Change | Hybrid | Azure: snapshot of all disks. Other platforms: you confirm a backup/snapshot was taken in their console |
 | 4 | ExpandDisk | Change | Hybrid | Azure: grow OS disk to the next tier and extend C: when free space is under `Lansweeper.OkGB`. Otherwise guided. `NotNeeded` when space is fine |
 | 5 | Upgrade | Change | Guided | You run setup in RDP/RDM with the checklist. `Upgrade.Mode = RunCommand` launches it remotely on Azure VMs |
@@ -118,4 +118,4 @@ Change steps need the window or an override (typed `OVERRIDE` + reason), and the
 confirmation. The export carries every logged event; the laptop adds them to the host history and
 records host-side overrides in the daily report.
 
-_Last updated: 2026-11-14 03:48 UTC_
+_Last updated: 2026-11-14 04:16 UTC_

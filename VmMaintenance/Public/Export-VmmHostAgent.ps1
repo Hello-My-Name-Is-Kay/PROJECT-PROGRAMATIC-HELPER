@@ -74,9 +74,10 @@ function Export-VmmHostAgent {
         foreach ($p in $rec.Steps.PSObject.Properties) {
             $lines.Add('Step.' + $p.Name + '=' + $p.Value.Status + '|' + $p.Value.At + '|' + (& $flat $p.Value.Note).Replace('|', '/'))
         }
-        $pk = @(); try { $pk = @(Get-VmmStagingPackage -Record $rec) } catch { Write-VmmLog 'No staging packages defined (Staging.Packages): the agent cannot check staged files.' -Level Warn }
+        $pk = @(); try { $pk = @(Get-VmmStagingPackage -Record $rec) } catch { Write-VmmLog "Media repository not readable now ($($_.Exception.Message.Split([Environment]::NewLine)[0])): the agent cannot check staged files." -Level Warn }
         foreach ($p in $pk) {
-            $lines.Add('Package=' + (& $flat $p.Name).Replace('|', '/') + '|' + [IO.Path]::GetFileName($p.Path) + '|' + $p.Sha256 + '|' + $p.Path)
+            if ($p.Gate) { Write-VmmLog "$($rec.Name): $($p.Gate)" -Level Warn; continue }
+            $lines.Add('Package=' + (& $flat $p.Name).Replace('|', '/') + '|' + $p.DestName + '|' + $p.Sha256 + '|' + $p.Path)
         }
         $card = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))
         $marker = "`$CardText = ''   # VMM-CARD"

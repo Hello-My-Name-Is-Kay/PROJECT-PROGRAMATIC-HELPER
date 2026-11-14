@@ -6,7 +6,7 @@ function Show-VmmMainMenu {
         @{ K = '1'; T = 'Plan today        what is allowed right now and the next host for each step' }
         @{ K = '2'; T = 'Fleet             all hosts: health, stage, OS, SQL, C: free - open a host' }
         @{ K = '3'; T = 'Check fleet now   parallel read-only check of every host (allowed any time)' }
-        @{ K = '4'; T = 'Staging gate      are all install files on the network share?' }
+        @{ K = '4'; T = 'Staging gate      OS images + host files on the media repository?' }
         @{ K = '5'; T = 'Azure             sign in / pick tenant + subscription (no stuck picker)' }
         @{ K = '6'; T = 'Credentials       set or clear this session''s Windows / SQL credentials' }
         @{ K = '7'; T = 'Reports           daily CSV + HTML for your manager, blocker reports' }

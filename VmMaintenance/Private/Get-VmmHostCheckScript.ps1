@@ -8,7 +8,7 @@ function Get-VmmHostCheckScript {
 param($Name, $A)
 $r = [ordered]@{
     Name = $Name; CheckedAt = (Get-Date).ToUniversalTime().ToString('o'); IPv4 = $null; Ping = 'No'; Ports = ''
-    Reachable = 'No'; OS = $null; Version = $null; Build = $null; SP = $null; LastBoot = $null
+    Reachable = 'No'; OS = $null; Lang = $null; Version = $null; Build = $null; SP = $null; LastBoot = $null
     Manufacturer = $null; Model = $null; Platform = $null; CTotalGB = $null; CFreeGB = $null
     PendingReboot = $null; Sql = ''; Software = ''; Error = $null
 }
@@ -41,6 +41,8 @@ try {
     $c  = Get-CimInstance -CimSession $s -ClassName Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
     $r.Reachable = 'Yes'
     $r.OS = $os.Caption; $r.Version = $os.Version; $r.Build = $os.BuildNumber; $r.SP = $os.ServicePackMajorVersion
+    # Install language (e.g. fr-FR): an in-place upgrade needs media in the same language.
+    try { $r.Lang = [Globalization.CultureInfo]::GetCultureInfo([int]$os.OSLanguage).Name } catch { }
     $r.LastBoot = if ($os.LastBootUpTime) { ([datetime]$os.LastBootUpTime).ToUniversalTime().ToString('o') } else { $null }
     $r.Manufacturer = $cs.Manufacturer; $r.Model = $cs.Model
     $r.CTotalGB = [math]::Round($c.Size / 1GB, 1); $r.CFreeGB = [math]::Round($c.FreeSpace / 1GB, 1)

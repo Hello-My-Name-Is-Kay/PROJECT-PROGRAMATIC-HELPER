@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host agent for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; TL;DR at the top. SECTIONS: TLDR:6-21 | Overview:22-37 | At a glance:38-54 | Quick start:55-73 | Host agent the program on th:74-92 | Console UI:93-123 | CLI:124-163 | GitHub integration:164-180 | OS policy:181-195 | Workflow per host:196-209 | Directory tree:210-240 | Where your data lives never :241-254 | Testing:255-267 | Errors:268-281 | Future your work AI model wi:282-291 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host agent for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; TL;DR at the top. SECTIONS: TLDR:6-22 | Overview:23-38 | At a glance:39-55 | Quick start:56-79 | Media repository:80-108 | Host agent the program on th:109-127 | Console UI:128-158 | CLI:159-199 | GitHub integration:200-216 | OS policy:217-231 | Workflow per host:232-245 | Directory tree:246-276 | Where your data lives never:277-290 | Testing:291-303 | Errors:304-317 | Future your work AI model wi:318-327 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.2.1 &nbsp;|&nbsp; **This file:** 2026-11-14
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.3.0 &nbsp;|&nbsp; **This file:** 2026-11-14
 
 ## TL;DR
 
@@ -9,8 +9,9 @@
 - **Warn management** about Windows Server 2008 (not R2; 2008 R2 is fine) and physical machines: `vmm policy -Notice`.
 - **Business hours, Mon-Fri 08:00-17:00 Lisbon:** read-only checks and staging into `C:\Temp` only. Changes off-hours and weekends.
 - **Disk expansion** (Azure) is after hours only, no override: the VM is shut down, the disk resized, the VM started.
-- **Install:** `Get-ChildItem -Recurse . | Unblock-File` then `powershell -ExecutionPolicy Bypass -File .\Install.ps1`, then `vmm`.
+- **Install:** `Get-ChildItem -Recurse . | Unblock-File` then `powershell -ExecutionPolicy Bypass -File .\Install.ps1`, then `vmm` or the **VM Maintenance** desktop shortcut. Runs from any folder; the installed copy does not depend on it.
 - **Test first:** `.\Tools\Invoke-SmokeTest.ps1`. GitHub checks pass on Windows PowerShell 5.1 and 7 (199 smoke checks, 46 Pester tests); real hosts, Azure, VPN and the UI are not tested yet.
+- **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
 - **Day:** `V` VPN, `6` credentials, `3` check fleet, `4` staging gate, `1` plan. Target 10 machines per day, shown in the header.
 - **Host without remote access:** open the host, `X` builds the host agent; run it on the host's desktop in RDP; export; `P` on the laptop; agent `6` Finish removes it.
 - **Blocked by access:** `B` writes the manager report (clipboard); answer Sent / Later / Bypass; the queue moves on.
@@ -42,7 +43,7 @@ Two PowerShell programs:
 | 10+ machines per 9-hour day | Header shows the Lisbon clock, `done/target`, expected-by-now and hours left; the Plan screen lists the next step for every host |
 | Business hours rule | Mon-Fri 08:00-17:00 Lisbon: read-only checks and staging into `C:\Temp` only. Off-hours and weekends: all steps. Override needs typing `OVERRIDE` plus a reason, and is logged |
 | Many hosts at once | Parallel checks (ping, ports, CIM, SQL version, C: space, pending reboot, software) in a runspace pool |
-| Missing install files | Staging gate lists exactly which file is missing, where it must go on the share, and where to download it |
+| Missing install files | Staging gate lists exactly which file is missing (e.g. the 2019 image in a host's language), the exact name and path to save it under, and which hosts need it |
 | Access denied / blocked | Ready-to-send manager report (copied to clipboard). You must answer "contacted manager?" - Sent / Later / Bypass. The tool never sends email |
 | No remote access | RDP/RDM guide: numbered steps, confirm each, paste the collector line back |
 | Azure sign-in stuck on "Select a tenant and subscription" | Picker turned off for the process, tenant + subscription passed explicitly; device-code sign-in available |
@@ -69,7 +70,41 @@ Azure tenant/subscription, credential mode), shows the important warnings and ma
 type `YES` to each, then offers the smoke test. Every answer can be changed later in
 Settings (key `9`) or with `vmm set -Name <Key> -Value <value>`.
 
-To remove: `.\Uninstall.ps1` (asks separately before deleting config, encrypted data and reports).
+Install location: run `Install.ps1` from any folder. It copies the module to your Documents module folders and
+`vmm` to `%LOCALAPPDATA%\VmMaintenance\bin` (on PATH), and creates **VM Maintenance** shortcuts on the desktop and
+in the Start menu that point at that installed copy. The source folder can be moved or deleted afterwards;
+only `vmm update` uses a git clone (`GitHub.SourcePath`).
+
+To remove: `.\Uninstall.ps1` (removes the shortcuts; asks separately before deleting config, encrypted data and reports).
+
+## Media repository
+
+One network folder holds everything the hosts need (`Staging.SourceShare`, asked at install):
+
+```
+\\<FILESERVER>\<SHARE>\<PROJECT>\<ISO_REPOSITORY>
+|   Win_Server_2016_EN_US.ISO
+|   Win_Server_2019_EN_US.ISO
+|   Win_Server_2019_FR_FR.ISO          <- one image per version and language
+|   Win_Server_2022_ES-ES.ISO          (_ or -, any case)
+|   Win_Server_2019_FR_FR.ISO.sha256   <- optional: SHA256 to verify against
++---<SERVER_01>
+|       SQLServer2014SP3-KB4022619-x64-FRA.exe   <- only this host gets these
+|       SQLServer2016SP3-KB5003279-x64-FRA.exe
+\---<SERVER_02>
+        SQLServer2014SP3-KB4022619-x64-ENU.exe
+```
+
+| Rule | Detail |
+|---|---|
+| Image per host | `Staging.OsMediaVersion` (default 2019) in the host's **install language** (read by Check, the collector and the host agent). An in-place upgrade needs the same language, so there is no fallback: a missing language closes the gate and names the exact file to download |
+| Host folder | `<share>\<HOST>\` (top level), matched to the fleet name, case-insensitive; different folder names go in `Staging.HostFolders` |
+| SQL updates | Staged with the host; a warning when the host has no SQL Server instance of that version. Not run by vmm |
+| Destination | `Staging.TargetFolder` (`C:\Temp`) on the host, verified by size and SHA256 when known |
+| Extra files | `Staging.Packages` (optional), for every host or by OS wildcard |
+| Check | `vmm media`, `4` > `M`; `vmm stage` for the gate |
+
+`Staging.Layout = 'Packages'` keeps the pre-2.3 fixed list instead.
 
 ## Host agent (the program on the remote host)
 
@@ -101,7 +136,7 @@ and today's progress bar with Azure context and credential state.
 | 1 | Plan today: what is allowed now and the next host for each step |
 | 2 | Fleet: every host with health, stage, OS, SQL, C: free; open a host |
 | 3 | Check fleet now (read-only, allowed any time) |
-| 4 | Staging gate: are all install files on the network share? |
+| 4 | Staging gate: OS images and host files on the media repository? `M` media report |
 | 5 | Azure: sign in, pick tenant + subscription |
 | 6 | Credentials: set or clear this session's Windows / SQL credentials |
 | 7 | Reports: daily CSV + HTML, blocker reports |
@@ -137,6 +172,7 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm guide -HostName x -Step Upgrade` | RDP/RDM checklist |
 | `vmm collect -Line "VMM1..."` | Record the collector result from inside RDP |
 | `vmm stage` | Staging gate: share reachable, files present, hashes |
+| `vmm media` | Media repository: images by version and language, host folders, what the fleet still needs |
 | `vmm blocker -HostName x -Step y -Message ".."` | Manager report for an access problem |
 | `vmm resolve -HostName x` | Access granted, unblock |
 | `vmm report [-Open]` | Daily CSV + HTML + JSON |
@@ -261,7 +297,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1                                         # before every commit/push
 ```
 
-Status: the offline smoke test (199 checks) and Pester (46 tests) pass on GitHub's Windows runners in
+Status (2.2.1): the offline smoke test (199 checks) and Pester (46 tests) pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -288,4 +324,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 04:02 UTC_
+_Last updated: 2026-11-14 04:16 UTC_

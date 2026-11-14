@@ -102,7 +102,7 @@ function Read-Card {
         if ($i -lt 1) { continue }
         $k = $line.Substring(0, $i); $v = $line.Substring($i + 1).TrimEnd("`r")
         if ($k -like 'Step.*') { $c.Steps[$k.Substring(5)] = $v }
-        elseif ($k -like 'Package.*') { $c.Packages += $v }
+        elseif ($k -eq 'Package') { $c.Packages += $v }
         else { $c[$k] = $v }
     }
     $c
@@ -187,10 +187,12 @@ function Get-Facts {
         $plat = 'Hyper-V'
         if (Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue) { $plat = 'Azure' }
     }
+    $lang = ''
+    try { $lang = (New-Object Globalization.CultureInfo([int]$os.OSLanguage)).Name } catch { }
     $boot = $null
     try { $boot = $os.ConvertToDateTime($os.LastBootUpTime).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') } catch { }
     New-Object PSObject -Property @{
-        Name = $env:COMPUTERNAME; OS = "$($os.Caption)".Trim(); Version = $os.Version; Build = $os.BuildNumber
+        Name = $env:COMPUTERNAME; OS = "$($os.Caption)".Trim(); Lang = $lang; Version = $os.Version; Build = $os.BuildNumber
         SP = $os.ServicePackMajorVersion; Manufacturer = $cs.Manufacturer; Model = $cs.Model; Platform = $plat
         CTotalGB = [math]::Round($c.Size / 1GB, 1); CFreeGB = [math]::Round($c.FreeSpace / 1GB, 1)
         PendingReboot = $pend; Sql = ($sql -join '; '); LastBoot = $boot; TempExists = (Test-Path $Card.TargetFolder)
@@ -264,7 +266,7 @@ function Get-Plan($Facts) {
             'Precheck' { $why = 'Read-only. Allowed any time.' }
             'Stage' {
                 $class = 'Staging'
-                if (-not $Card.Packages.Count) { $can = $false; $why = 'No packages in the plan. Define Staging.Packages on the laptop and export the agent again.' }
+                if (-not $Card.Packages.Count) { $can = $false; $why = 'No files in the plan. Check the media repository on the laptop (vmm media), run Check so the host language is known, then export the agent again.' }
                 elseif ($staged) { $why = 'All packages already in ' + $Card.TargetFolder + '. Re-run only to re-verify.' }
                 else { $why = 'Staging to ' + $Card.TargetFolder + ' is allowed any time (also in business hours).' }
             }
@@ -424,7 +426,7 @@ function Protect-Result([string]$Text) {
 function Export-Result {
     $f = Get-Facts
     $lines = @(
-        'Name=' + $f.Name, 'OS=' + $f.OS, 'Version=' + $f.Version, 'Build=' + $f.Build, 'SP=' + $f.SP,
+        'Name=' + $f.Name, 'OS=' + $f.OS, 'Lang=' + $f.Lang, 'Version=' + $f.Version, 'Build=' + $f.Build, 'SP=' + $f.SP,
         'Manufacturer=' + $f.Manufacturer, 'Model=' + $f.Model, 'Platform=' + $f.Platform,
         'CTotalGB=' + $f.CTotalGB.ToString($Script:Inv), 'CFreeGB=' + $f.CFreeGB.ToString($Script:Inv),
         'PendingReboot=' + $(if ($f.PendingReboot) { 'Yes' } else { 'No' }), 'Sql=' + $f.Sql, 'LastBoot=' + $f.LastBoot,
@@ -496,7 +498,7 @@ function Show-Header {
 }
 function Show-Facts($f) {
     Info ' This host'
-    Write-Host ("  OS            {0} (build {1}, SP {2})" -f $f.OS, $f.Build, $f.SP)
+    Write-Host ("  OS            {0} (build {1}, SP {2}, language {3})" -f $f.OS, $f.Build, $f.SP, $f.Lang)
     Write-Host ("  Platform      {0} ({1} / {2})" -f $f.Platform, $f.Manufacturer, $f.Model)
     $col = 'Green'; if ($f.CFreeGB -lt [double]::Parse($Card.OkGB, $Script:Inv)) { $col = 'Yellow' }; if ($f.CFreeGB -lt [double]::Parse($Card.CriticalGB, $Script:Inv)) { $col = 'Red' }
     Say ("  C:            {0} GB free of {1} GB" -f $f.CFreeGB, $f.CTotalGB) $col

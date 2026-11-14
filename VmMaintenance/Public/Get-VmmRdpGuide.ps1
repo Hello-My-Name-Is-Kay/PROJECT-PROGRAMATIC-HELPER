@@ -12,6 +12,8 @@ function Get-VmmRdpGuide {
     $target = Get-VmmSetting 'Staging.TargetFolder' -Default 'C:\Temp'
     $cmd    = Get-VmmSetting 'Upgrade.CommandLine' -Default ''
     $h = $HostName.ToUpper()
+    $rec = try { Get-VmmHostRecord -Store (Read-VmmStore) -Name $HostName } catch { $null }
+    $pk = if ($Step -in 'Stage', 'Upgrade') { try { @(Get-VmmStagingPackage -Record $rec) } catch { @() } } else { @() }
     $open = [pscustomobject]@{ Text = "Connect to $h in RDM, or with RDP:"; Command = "mstsc /v:$h" }
     $ps   = [pscustomobject]@{ Text = 'Open Windows PowerShell as Administrator (right-click > Run as administrator).'; Command = $null }
 
@@ -26,11 +28,12 @@ function Get-VmmRdpGuide {
         'Stage' {
             $open
             [pscustomobject]@{ Text = "Create $target if it is missing:"; Command = "New-Item -ItemType Directory -Path '$target' -Force" }
-            $pk = try { @(Get-VmmStagingPackage -Record $null) } catch { @() }
-            if (-not $pk) { [pscustomobject]@{ Text = 'No packages defined yet: add them to Staging.Packages (Settings > E).'; Command = $null } }
+            if (-not $pk) { [pscustomobject]@{ Text = 'Nothing resolved: check the media repository (vmm media) and that the host has been checked (its install language picks the image).'; Command = $null } }
             foreach ($p in $pk) {
+                if ($p.Gate) { [pscustomobject]@{ Text = "NOT READY: $($p.Gate)"; Command = $null }; continue }
                 [pscustomobject]@{ Text = "Copy $($p.Name) from the share:"; Command = "Copy-Item '$(Join-Path $share $p.Path)' '$target\' -Force" }
-                if ($p.Sha256) { [pscustomobject]@{ Text = "Verify: the hash must be $($p.Sha256)"; Command = "(Get-FileHash '$target\$([IO.Path]::GetFileName($p.Path))' -Algorithm SHA256).Hash" } }
+                if ($p.Sha256) { [pscustomobject]@{ Text = "Verify: the hash must be $($p.Sha256)"; Command = "(Get-FileHash '$target\$($p.DestName)' -Algorithm SHA256).Hash" } }
+                if ($p.Note) { [pscustomobject]@{ Text = "Note: $($p.Note)"; Command = $null } }
             }
         }
         'PreSnapshot' {
@@ -48,6 +51,11 @@ function Get-VmmRdpGuide {
             [pscustomobject]@{ Text = 'Confirm a rollback snapshot exists (PreSnapshot = Success) before you start.'; Command = $null }
             $open; $ps
             [pscustomobject]@{ Text = "Check the media is staged in ${target}:"; Command = "Get-ChildItem '$target'" }
+            $iso = @($pk | Where-Object { $_.Kind -eq 'OsMedia' -and -not $_.Gate }) | Select-Object -First 1
+            if ($iso) { [pscustomobject]@{ Text = 'Mount the OS image (Server 2012 or later) and note its drive letter:'; Command = "(Mount-DiskImage -ImagePath '$target\$($iso.DestName)' -PassThru | Get-Volume).DriveLetter" } }
+            foreach ($s in @($pk | Where-Object { $_.Kind -eq 'HostFile' -and $_.Name -like 'SQLServer*' })) {
+                [pscustomobject]@{ Text = "SQL Server update staged for this host (run it when your plan says so): $target\$($s.DestName)$(if ($s.Note) { ' - ' + $s.Note })"; Command = $null }
+            }
             if ($cmd) { [pscustomobject]@{ Text = 'Start the upgrade (from config Upgrade.CommandLine):'; Command = $cmd } }
             else { [pscustomobject]@{ Text = 'Run the installer from the staged files (set Upgrade.CommandLine in Settings to show the exact command here).'; Command = $null } }
             [pscustomobject]@{ Text = 'Wait for the reboots to finish, reconnect, check services, then run Verify.'; Command = $null }

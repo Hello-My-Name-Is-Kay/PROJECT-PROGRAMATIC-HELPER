@@ -1,6 +1,6 @@
 @{
     RootModule           = 'VmMaintenance.psm1'
-    ModuleVersion        = '2.2.1'
+    ModuleVersion        = '2.3.0'
     GUID                 = '63eba97e-c6ef-4ccb-b686-dd907935872a'
     Author               = 'Kay'
     Description          = 'Fleet maintenance console for Windows servers and Azure VMs: parallel checks, time-window rules, staging gate, guided RDP steps, checkpoint snapshots, blocker reports, daily CSV/HTML export. Encrypted local store; no stored credentials.'
@@ -20,6 +20,7 @@
         'Get-VmmFleet'
         'Get-VmmGitHubStatus'
         'Get-VmmLansweeperDiskSpace'
+        'Get-VmmMediaReport'
         'Get-VmmPolicyReport'
         'Get-VmmRdpGuide'
         'Get-VmmServerPlatform'
