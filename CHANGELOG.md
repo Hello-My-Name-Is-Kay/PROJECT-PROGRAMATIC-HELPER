@@ -1,5 +1,24 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.9.0 - 2026-11-14:4-16 | 2.8.0 - 2026-11-14:17-30 | 2.7.0 - 2026-11-14:31-48 | 2.6.0 - 2026-11-14:49-56 | 2.5.0 - 2026-11-14:57-69 | 2.4.0 - 2026-11-14:70-80 | 2.3.0 - 2026-11-14:81-95 | 2.2.1 - 2026-11-14:96-102 | 2.2.0 - 2026-11-14:103-110 | 2.1.0 - 2026-11-14:111-128 | 2.0.0 - 2026-11-14:129-134 | 1.0.0 - 2026-11-14:135-139 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.10.0 - 2026-11-14:4-22 | 2.9.0 - 2026-11-14:23-35 | 2.8.0 - 2026-11-14:36-49 | 2.7.0 - 2026-11-14:50-67 | 2.6.0 - 2026-11-14:68-75 | 2.5.0 - 2026-11-14:76-88 | 2.4.0 - 2026-11-14:89-99 | 2.3.0 - 2026-11-14:100-114 | 2.2.1 - 2026-11-14:115-121 | 2.2.0 - 2026-11-14:122-129 | 2.1.0 - 2026-11-14:130-147 | 2.0.0 - 2026-11-14:148-153 | 1.0.0 - 2026-11-14:154-158 -->
 # Changelog
+
+## 2.10.0 - 2026-11-14
+
+- Terminal first. `vmm snapshot` (menu `3`, `S` on a host) reads hosts from the laptop and tries, per host,
+  DCOM (TCP 135), then WinRM (5985), then WinRM-SSL (5986); the route that answered is stored and shown.
+  Before, a closed TCP 135 ended the check even when WinRM was open.
+- Hands-on only where every route fails: the reason per route is listed, the Extractor is built and the steps
+  are printed. `vmm access` tests the routes only. The guide (`G`) and `X` say when a host needs no hands-on.
+- A failed terminal read no longer erases facts that an Extractor result brought in.
+- Extractor is snapshot-only by default. The steps code sits between `VMM-STEPS-BEGIN` and `VMM-STEPS-END`
+  and is cut out when the file is built, so a snapshot Extractor cannot change a host. It writes one file
+  (the encrypted result on the desktop): no work folder, no log, no `icacls`. Its card carries no host name,
+  share path or upgrade command. Steps return for the per-host Extractor with `Extractor.AllowSteps = true`.
+- Extractor reads stand alone: a WMI class or key that fails becomes a `Problem=` line, the rest is still
+  sent; the laptop shows it as a snapshot gap. Before, one failing read could stop the whole extraction.
+- Snapshot no longer hashes staged multi-GB images (name check only). Pending reboot now also reads
+  `PendingFileRenameOperations`, like the laptop check. `-NoClipboard` leaves the host clipboard alone.
+- `Fleet.WindowsLicence = $false` skips the licence read (it wakes the Software Protection service).
+- New settings: `Fleet.Routes`, `Fleet.AccessMaxAgeHours`, `Fleet.WindowsLicence`, `Extractor.AllowSteps`.
 
 ## 2.9.0 - 2026-11-14
 
@@ -136,4 +155,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 13:07 UTC_
+_Last updated: 2026-11-14 13:18 UTC_

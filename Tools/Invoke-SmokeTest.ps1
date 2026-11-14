@@ -282,6 +282,62 @@ if (-not $isWin) {
             if ($h.InventoryAuto.PSObject.Properties['Bogus']) { throw 'unknown inventory key accepted' }
             Assert-Equal $h.Steps.Precheck.Status 'Success' 'precheck from extraction'
         }
+        Test-Step 'Extractor build: snapshot only, steps code cut out, parses' {
+            $f = & $m { Export-VmmHostAgent -Generic -NoClipboard -PassThru }
+            $text = [IO.File]::ReadAllText($f.FullName)
+            $err = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$err)
+            if (@($err).Count) { throw "built extractor does not parse: $($err[0].Message)" }
+            foreach ($w in 'VMM-STEPS-BEGIN', 'diskpart', 'Start-Process', 'function Invoke-Upgrade', 'function Write-Event', 'icacls') { if ($text.Contains($w)) { throw "snapshot extractor contains '$w'" } }
+            if ($text -notmatch "(?m)^\`$CardText = '([A-Za-z0-9+/=]+)'") { throw 'no plan card in the built extractor' }
+            $card = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Matches[1]))
+            if ($card -notmatch '(?m)^Mode=Snapshot$') { throw 'card is not Mode=Snapshot' }
+            if ($card -match '(?m)^(Host|Share|UpgradeCommand)=') { throw 'snapshot card carries host, share or upgrade command' }
+            $true
+        }
+        Test-Step 'Extractor per host: snapshot by default, steps only with Extractor.AllowSteps' {
+            $f = & $m { Export-VmmHostAgent -HostName 'smoke-host' -NoClipboard -PassThru }
+            $text = [IO.File]::ReadAllText($f.FullName)
+            if ($text.Contains('function Invoke-Upgrade')) { throw 'per-host extractor has steps although AllowSteps is off' }
+            $f2 = & $m { $script:VmmConfig.Extractor = @{ AllowSteps = $true }; try { Export-VmmHostAgent -HostName 'smoke-host' -NoClipboard -PassThru } finally { $script:VmmConfig.Extractor = @{ AllowSteps = $false } } }
+            $text2 = [IO.File]::ReadAllText($f2.FullName)
+            if (-not $text2.Contains('function Invoke-Upgrade')) { throw 'steps extractor has no steps code' }
+            $err = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($text2, [ref]$null, [ref]$err)
+            if (@($err).Count) { throw "steps extractor does not parse: $($err[0].Message)" }
+            if ($text2 -notmatch "(?m)^\`$CardText = '([A-Za-z0-9+/=]+)'") { throw 'no plan card' }
+            if ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Matches[1])) -notmatch '(?m)^Mode=Steps$') { throw 'card is not Mode=Steps' }
+            $true
+        }
+        Test-Step 'Extractor result with failed reads: imported, gaps listed, route = Hands-on' {
+            $agentPath = Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($agentPath, [ref]$null, [ref]$null)
+            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Protect-Result' }, $true) | Select-Object -First 1
+            . ([scriptblock]::Create($fn.Extent.Text))
+            $rsa = & $m { Get-VmmAgentKey }
+            try { $Card = @{ PublicKey = $rsa.ToXmlString($false) } } finally { $rsa.Clear() }
+            $line = Protect-Result ("Name=SMOKE-HOST`nOS=Microsoft Windows Server 2016 Standard`nLang=fr-FR`nBuild=14393`nCTotalGB=`nCFreeGB=`nSql=`nMode=Snapshot`nProblem=C: drive: Access denied`nProblem=Windows licence: provider load failure`nSeconds=4")
+            & $m { param($l) Import-VmmCollectorResult -Line $l } $line
+            $h = & $m { (Read-VmmStore).Hosts | Where-Object { $_.Name -eq 'SMOKE-HOST' } }
+            Assert-Equal $h.Check.Route 'Hands-on' 'route'
+            if ($h.Check.Problems -notmatch 'C: drive: Access denied \| Windows licence') { throw "problems not recorded: $($h.Check.Problems)" }
+            if ($null -ne $h.Check.CFreeGB) { throw 'empty C: value became a number' }
+            $true
+        }
+        Test-Step 'Fleet check: a host with no terminal route keeps its extractor facts and is marked hands-on' {
+            & $m {
+                $saved = @{ P = ${function:Invoke-VmmParallel}; V = ${function:Assert-VmmVpn}; C = ${function:Get-VmmSessionCredential} }
+                function script:Invoke-VmmParallel { param($InputObject, $ScriptText, $Arguments, $Throttle, $Activity) foreach ($n in $InputObject) { [pscustomobject]@{ Name = $n; Reachable = 'Partial'; Route = 'None'; Tried = 'DCOM: TCP 135 closed'; Ports = '3389'; IPv4 = $null; Platform = $null; Error = 'No terminal route' } } }
+                function script:Assert-VmmVpn { param($Activity) }
+                function script:Get-VmmSessionCredential { param($Purpose) $null }
+                try { $r = @(Invoke-VmmSnapshot -Name 'smoke-host' -NoExtractor -PassThru) }
+                finally { Set-Item function:script:Invoke-VmmParallel $saved.P; Set-Item function:script:Assert-VmmVpn $saved.V; Set-Item function:script:Get-VmmSessionCredential $saved.C }
+                $h = (Read-VmmStore).Hosts | Where-Object { $_.Name -eq 'SMOKE-HOST' }
+                if ($h.Access.Route -ne 'None') { throw "access route is '$($h.Access.Route)'" }
+                if ($h.Check.Route -ne 'Hands-on' -or $h.Check.OS -notmatch '2016') { throw 'the failed terminal read erased the extractor facts' }
+                $a = Get-VmmHostAccess -Record $h
+                if ($a.Terminal -ne $false) { throw 'terminal should be false' }
+                $true
+            }
+        }
         Test-Step 'Log: line encrypted on disk, readable with vmm log' {
             & $m { Write-VmmLog 'smoke log line for LOGHOST-77' -Level Info -FileOnly }
             $f = Get-ChildItem -LiteralPath (Join-Path $tmpRoot 'logs') -Filter 'vmm_*.log' | Select-Object -First 1

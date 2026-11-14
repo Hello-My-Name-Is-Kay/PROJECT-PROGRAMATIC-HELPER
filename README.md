@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-28 | Overview:29-47 | At a glance:48-64 | Quick start:65-88 | Adding machines external dat:89-111 | Media repository:112-140 | Server inventory:141-174 | Extractor the program on the:175-200 | Console UI:201-242 | CLI:243-291 | GitHub integration:292-308 | OS policy:309-323 | Workflow per host:324-337 | Directory tree:338-368 | Where your data lives never:369-385 | Testing:386-398 | Errors:399-412 | Future your work AI model wi:413-422 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-29 | Overview:30-48 | At a glance:49-65 | Quick start:66-89 | Adding machines external dat:90-112 | Media repository:113-141 | Server inventory:142-175 | Snapshot terminal first hand:176-191 | Extractor the program on the:192-224 | Console UI:225-266 | CLI:267-317 | GitHub integration:318-334 | OS policy:335-349 | Workflow per host:350-363 | Directory tree:364-394 | Where your data lives never:395-411 | Testing:412-424 | Errors:425-438 | Future your work AI model wi:439-448 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.6.0 &nbsp;|&nbsp; **This file:** 2026-11-14
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.10.0 &nbsp;|&nbsp; **This file:** 2026-11-14
 
 ## TL;DR
 
@@ -13,6 +13,7 @@
 - **Test first:** `.\Tools\Invoke-SmokeTest.ps1`. GitHub checks pass on Windows PowerShell 5.1 and 7 (234 smoke checks, 72 Pester tests); real hosts, Azure, VPN and the UI are not tested yet.
 - **New machines:** a CSV with three columns, *hostname or FQDN, domain, IP* (`,` or `;`, header optional). `0` in the menu (drag the file, or Enter to browse; preview, then confirm) or `vmm import -Path hosts.csv`. The check then connects by FQDN, or by IP when the name does not resolve.
 - **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
+- **Snapshot, terminal first:** `vmm snapshot` reads every host from the laptop (DCOM, then WinRM, then WinRM-SSL), read-only. Only hosts where every route fails need hands-on: vmm then builds the Extractor, which is snapshot-only and writes one encrypted file on the host desktop, nothing else. `vmm access` shows the route per host.
 - **Agent health:** Qualys, CrowdStrike, Zabbix, Ivanti and Lansweeper agents are reported as OK / WARN / FAIL with version and reason (stopped, start type, driver, port, silent log, old version), by the fleet check and by the Extractor. `vmm agents -Problems`, `A` on a host, and the inventory columns.
 - **SQL Server updates:** `vmm fetch -Preview` shows the SP/CU each SQL instance needs; `vmm fetch` (or `F` on the staging screen) downloads each one once into `<share>\_Downloads`, checks Microsoft's signature, and copies it into the host folders, so staging and RDP users find it there. Needs `Install-Module dbatools -Scope CurrentUser` once. The Windows Server ISO stays a manual download.
 - **Server inventory:** the 24-column team sheet per host. Read automatically where possible (check, Extractor), worked out from the workflow, else typed by you with a help window per column. `N` in the menu, `I` on a host, `vmm inventory -Export`. Help text unclear? `T` opens a GitHub issue.
@@ -172,31 +173,54 @@ Nothing about the six workflow steps changes: the inventory never blocks a step.
 `Reports\Inventory\Inventory_<date>.csv` with exactly these headers in this order
 (`Inventory.CsvDelimiter`: `,` or `;` for Excel with Portuguese/French settings).
 
+## Snapshot: terminal first, hands-on last
+
+`vmm snapshot` (menu `3`, or `S` on a host) reads every host **from this terminal**, read-only, any time:
+
+| Order | Route | Port | Used when |
+|---|---|---|---|
+| 1 | DCOM (WMI over RPC) | TCP 135 | Open and it answers |
+| 2 | WinRM | TCP 5985 | DCOM closed or refused |
+| 3 | WinRM-SSL | TCP 5986 | The two above closed or refused |
+| last | Hands-on: the Extractor in RDP/RDM | - | Every route failed. vmm says why per route, builds the Extractor and lists the steps |
+
+`vmm access` only tests the routes (fast) and shows who needs hands-on. The order is `Fleet.Routes`.
+Nothing is written, started, stopped or configured on a host, and nothing is reconfigured on the laptop
+(no TrustedHosts edit, no firewall change). The Windows licence read wakes the Software Protection service
+on the host for a moment; `Fleet.WindowsLicence = $false` skips it.
+
 ## Extractor (the program on the remote host)
 
-For hosts the Manager cannot reach over the network (no WMI/RPC, other domain, RDP-only):
+Only for hosts the terminal cannot read (no WMI/RPC, no WinRM, other domain, RDP-only). It is **snapshot
+only**: it reads the host and writes one encrypted result file on the host's desktop. The file holds no code
+that can change a host (the steps code is cut out when it is built), no host name, share path or address.
 
 | # | Where | You do | The programs do |
 |---|---|---|---|
-| 1 | Laptop | `E` > `B` once (or `vmm extractor`): one `VmmExtractor.ps1` for every host. With a host's plan (to run steps there): `X` on the host | Writes the file with this laptop's public key and puts it on the clipboard |
-| 2 | Host (RDP/RDM) | Paste on the desktop. Right-click > **Run with PowerShell** | Extracts at once (read-only, no admin needed) and saves `VMM_<HOST>_<time>.vmm` on the desktop, encrypted for your laptop only. Also on the clipboard |
+| 1 | Laptop | `vmm snapshot` (or `E` > `B`, `vmm extractor`): one `VmmExtractor.ps1` for every host | Writes the file with this laptop's public key and puts it on the clipboard |
+| 2 | Host (RDP/RDM) | Paste on the desktop. Right-click > **Run with PowerShell** | Reads the host (no admin needed) and saves `VMM_<HOST>_<time>.vmm` on the desktop, encrypted for your laptop only. Shows what it read and any read that failed |
 | 3 | Laptop | Copy that `.vmm` file to your Desktop or Downloads | Imported when vmm starts, with `E`, `P` on the host, or `vmm inbox`; the file is deleted after import. Precheck or Verify is chosen by itself |
-| 4 | Host, end of cycle | Extractor menu `6` Finish | Removes `C:\Temp\VmmAgent`, the Extractor, its result files and the clipboard |
+| 4 | Host | `F` in the Extractor | Deletes the Extractor and its result files from the desktop |
 
-The Extractor's menu (after the extraction): `1` Status, `2` Steps (current / future / why), `3` Run a step
-(the result file is refreshed after each step), `4` History, `5` Export again, `6` Finish. Change steps need
-PowerShell as administrator and the per-host Extractor.
+What it touches on the host: the result file on the desktop, and the clipboard (`-NoClipboard` leaves it
+alone). No folder, no log, no registry change, no service change, no network connection. Each read stands
+alone: one that fails is listed (`Problem=`) and shown on the laptop as a snapshot gap; the rest still go.
+Staged files are checked by name only (no hashing of multi-GB images during a snapshot).
 
-Without copying a file: `G` on the host shows a collector script to paste into PowerShell on the host; it
-saves the same kind of file (not encrypted).
+Keys after the snapshot: `Enter` close, `I` inventory columns, `R` read again, `F` finish.
 
 Run by hand instead of right-click: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\VmmExtractor.ps1"`
 (Bypass applies to that process only; if Group Policy enforces AllSigned, sign the file).
+Without copying a file: `G` on the host shows a collector script to paste into PowerShell on the host; it
+saves the same kind of file (not encrypted).
 
-The Extractor works on Windows PowerShell 2.0 to 5.1, refuses change steps for a plan made for another host,
-applies the same Lisbon time rules and override rules, and logs only sanitized lines
-(no IPs, user names, share paths or secrets) to `C:\Temp\VmmAgent\agent.log`, readable by
-Administrators, SYSTEM and you only.
+**Steps from inside the host (second priority, off by default):** `vmm set -Name Extractor.AllowSteps -Value true`
+makes the per-host Extractor (`X` on a host) also carry the six workflow steps, with the same Lisbon time
+rules and override rules, a sanitized log in `C:\Temp\VmmAgent` (Administrators, SYSTEM and you only) and
+the menu `1` Status, `2` Steps, `3` Run, `4` History, `5` Export, `6` Finish. It refuses change steps for a
+plan made for another host. The any-host Extractor never carries steps.
+
+The Extractor works on Windows PowerShell 2.0 to 5.1.
 
 ## Console UI
 
@@ -247,7 +271,9 @@ Every UI action has a command. `vmm help` prints this list.
 | Command | Does |
 |---|---|
 | `vmm status [-Filter srv*]` | Fleet table |
-| `vmm check [-Name a,b] [-Azure]` | Parallel read-only check |
+| `vmm snapshot [-Name a,b]` | Read-only snapshot, terminal first; Extractor built only for hosts with no route |
+| `vmm access [-Name a,b]` | Which terminal route works per host; who needs hands-on |
+| `vmm check [-Name a,b] [-Azure] [-AccessOnly]` | Parallel read-only check (what snapshot runs) |
 | `vmm import -Path hosts.csv [-Preview] [-Update] [-RemoveSource]` | Add/update hosts from a CSV (hostname or FQDN, domain, IP), a .txt list, or `-Name a,b` |
 | `vmm remove -Name a,b` | Remove hosts |
 | `vmm plan` | Work queue: next step per host and whether it is allowed now |
@@ -419,4 +445,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 13:07 UTC_
+_Last updated: 2026-11-14 13:18 UTC_

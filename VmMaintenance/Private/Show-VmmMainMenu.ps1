@@ -5,7 +5,7 @@ function Show-VmmMainMenu {
     $items = @(
         @{ K = '1'; T = 'Plan today        what is allowed right now and the next host for each step' }
         @{ K = '2'; T = 'Fleet             all hosts: health, stage, OS, SQL, C: free - open a host' }
-        @{ K = '3'; T = 'Check fleet now   parallel read-only check of every host (allowed any time)' }
+        @{ K = '3'; T = 'Snapshot fleet    read every host from this terminal (read-only); hands-on only where it fails' }
         @{ K = '4'; T = 'Staging gate      OS images + host files on the media repository?' }
         @{ K = '5'; T = 'Azure             sign in / pick tenant + subscription (no stuck picker)' }
         @{ K = '6'; T = 'Credentials       set or clear this session''s Windows / SQL credentials' }
@@ -13,7 +13,7 @@ function Show-VmmMainMenu {
         @{ K = '8'; T = 'Snapshots, prune  preview and delete expired snapshots' }
         @{ K = '9'; T = 'Settings          share, targets, hours, snapshot policy, upgrade command...' }
         @{ K = '0'; T = 'Import hosts      new machines: CSV (hostname/FQDN, domain, IP), .txt list or names' }
-        @{ K = 'E'; T = 'Extractor         import result files (VMM_*.vmm) from Desktop/Downloads; build the extractor' }
+        @{ K = 'E'; T = 'Extractor         hands-on fallback: import result files (VMM_*.vmm), build the extractor' }
         @{ K = 'N'; T = 'Inventory         24 columns per host: what is missing, export CSV (I on a host to fill)' }
         @{ K = 'V'; T = 'VPN               status, connect, disconnect (you sign in in the VPN client)' }
         @{ K = 'A'; T = 'Assistant         optional AI help: explain an error, next step (off by default)' }
@@ -35,7 +35,7 @@ function Show-VmmMainMenu {
         switch ($key) {
             '1' { Show-VmmPlanScreen }
             '2' { Show-VmmFleetScreen }
-            '3' { [void](Invoke-VmmTuiAction -Title 'Fleet check (read-only)' -Action { Invoke-VmmFleetCheck -Azure:([bool](Get-VmmSetting 'Azure.TenantId')) }) }
+            '3' { [void](Invoke-VmmTuiAction -Title 'Snapshot (read-only, terminal first)' -Action { Invoke-VmmSnapshot -Azure:([bool](Get-VmmSetting 'Azure.TenantId')) }) }
             '4' { Show-VmmStagingScreen }
             '5' { Show-VmmAzureScreen }
             '6' { Show-VmmCredentialScreen }

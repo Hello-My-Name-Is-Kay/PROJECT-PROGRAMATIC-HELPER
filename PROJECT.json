@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "license": "private",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
@@ -112,6 +112,7 @@
     "Invoke-VmmMaintenance",
     "Invoke-VmmNextStep",
     "Invoke-VmmPrune",
+    "Invoke-VmmSnapshot",
     "Invoke-VmmWorkflowStep",
     "Mount-VmmUpgradeMedia",
     "New-VmmBlockerReport",
@@ -130,6 +131,7 @@
     "Set-VmmSetting",
     "Start-VmmConsole",
     "Start-VmmSetupWizard",
+    "Test-VmmHostAccess",
     "Test-VmmStagingSource",
     "Update-VmmFromGitHub"
   ],
@@ -166,6 +168,7 @@
     "Get-VmmErrorHint",
     "Get-VmmExtendScript",
     "Get-VmmGitHubRepo",
+    "Get-VmmHostAccess",
     "Get-VmmHostCheckScript",
     "Get-VmmHostHealth",
     "Get-VmmHostPolicy",
@@ -325,5 +328,13 @@
     "agents": "Qualys, CrowdStrike, Zabbix, Ivanti, LansweeperAgent (Resources/InventoryFields.psd1: Services + Agent = @{ Products; Drivers; Ports; Log })",
     "verdict": "Get-AgentVerdict in Resources/VmmHostAgent.ps1 (PS 2.0), pasted by AST into the fleet check script and the RDP collector: FAIL = not installed / service not running / driver not running; WARN = start type not Auto, port, log older than Agents.LogMaxAgeHours, version below Agents.MinVersion.<Key>",
     "where": "inventory columns ('OK - Running, v7.16...'), Check.Agents per host, vmm agents [-Problems], A on a host, fleet check table, host health Warn on FAIL (Agents.AffectHealth)"
+  },
+  "snapshot": {
+    "principle": "terminal first, hands-on last; read-only everywhere",
+    "command": "vmm snapshot [-Name a,b] (menu 3, S on a host); vmm access tests routes only",
+    "routes": "Fleet.Routes, default DCOM (TCP 135) > WinRM (5985) > WinRM-SSL (5986); first that answers is used; stored per host in Access {At, Route, Ports, Why, Tried}",
+    "hands_on": "only when every route fails: Export-VmmHostAgent -Generic is built, steps printed; a failed terminal read never erases Extractor facts",
+    "extractor": "snapshot-only by default: steps code between VMM-STEPS-BEGIN/END is cut out at build; writes one encrypted result file on the host desktop; Problem= line per failed read; Extractor.AllowSteps=true adds steps to the per-host file only",
+    "laptop": "no TrustedHosts or firewall change; Fleet.WindowsLicence=false skips the licence query"
   }
 }

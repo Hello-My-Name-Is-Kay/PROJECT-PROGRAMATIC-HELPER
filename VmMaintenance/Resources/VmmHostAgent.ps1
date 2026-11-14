@@ -1,45 +1,50 @@
 <#
 .SYNOPSIS
-    VmMaintenance EXTRACTOR - the small program you run ON a remote host inside RDP/RDM.
+    VmMaintenance EXTRACTOR - takes a read-only snapshot of THIS host and saves it as one encrypted file.
     (The Manager is vmm on your laptop; it builds this file and reads what it extracts.)
 .DESCRIPTION
+    Use it only for hosts the laptop cannot read over its own terminal (vmm snapshot tries that first).
+
     1. Paste this file on the host's desktop (the Manager put it on your clipboard).
     2. Right-click it > Run with PowerShell. (Or: powershell.exe -NoProfile -ExecutionPolicy Bypass -File <file>.
        Bypass applies to this one process only; nothing on the host is reconfigured.)
-    3. It extracts at once and saves VMM_<HOST>_<time>.vmm on this desktop (and the same text on the
-       clipboard). Copy that file to your laptop's Desktop or Downloads: the Manager imports it by itself.
+    3. It reads the host and saves VMM_<HOST>_<time>.vmm on this desktop. Copy that file to your laptop's
+       Desktop or Downloads: the Manager imports it by itself.
 
-    What it does:
-      - Extracts this host's facts and inventory columns (OS, language, build, SQL, C: space, pending reboot,
-        domain, licence, security/monitoring agents, legacy TLS, staged files). Read-only.
-      - Shows every workflow step: done, current, future, and WHY a step is or is not available now
-        (Lisbon business hours, admin rights, rollback snapshot, staged files, free space).
-      - Runs the steps that can be done from inside the host (check, stage, extend C:, start the
-        upgrade, verify), with the same time rules and override rules as the laptop. After each step the
-        result file on the desktop is refreshed.
-      - Keeps a sanitized log of what this program did here (no IPs, user names, share paths, secrets).
-      - The result file is ENCRYPTED for your laptop only (RSA-OAEP + AES-256 + HMAC-SHA256).
-      - "Finish" removes the work folder, this file, the result files and the clipboard at the end of the cycle.
+    SNAPSHOT (the default, and the only thing a snapshot extractor can do):
+      - Reads: OS, language, build, platform, C: size and free space, pending reboot, SQL instances, domain,
+        Windows licence state, security/monitoring agents (state, version), legacy TLS, staged file names.
+      - Writes exactly ONE thing on the host: the result file on this desktop (and the same text on the
+        clipboard, unless -NoClipboard). No folder, no log, no registry change, no service change, no install,
+        no network connection. Needs no administrator rights.
+      - Each read is independent: one that fails is listed in the result (Problem=...) and the rest still go.
+      - The result is ENCRYPTED for your laptop only (RSA-OAEP + AES-256 + HMAC-SHA256).
+      - "Finish" deletes this file and its result files from the host.
 
-    Work folder: C:\Temp\VmmAgent (Administrators, SYSTEM and you only).
-    Compatible with Windows PowerShell 2.0 to 5.1. Extraction needs no administrator rights; change steps do.
+    STEPS (second priority; only in a per-host extractor built with Extractor.AllowSteps = true):
+      the code between VMM-STEPS-BEGIN and VMM-STEPS-END. It adds the workflow steps (check, stage, extend C:,
+      start the upgrade, verify) with the same time and override rules as the laptop, and keeps a sanitized
+      log in C:\Temp\VmmAgent. A snapshot extractor is built WITHOUT that block: it holds no code that can
+      change a host.
+
+    Compatible with Windows PowerShell 2.0 to 5.1.
 
     [SEC] Treat everything shown here as business data carried over the VPN: do not copy it anywhere
     other than the vmm Manager on your laptop.
 .PARAMETER Extract
-    No menu: extract, save the result file on the desktop, copy it to the clipboard, exit.
+    No menu: take the snapshot, save the result file on the desktop, exit.
 .PARAMETER Finish
-    No menu: remove the work folder, this file and the result files (end of the maintenance cycle).
+    No menu: delete this file and its result files from the host.
 .PARAMETER NoClipboard
-    Do not put the result line on the clipboard.
+    Leave the host's clipboard alone (the result file is still saved).
 .PARAMETER NoColor
     Plain output (for consoles that render colours badly).
 .PARAMETER WorkDir
-    Work folder (default C:\Temp\VmmAgent). Removed by Finish.
+    Steps mode only: work folder (default C:\Temp\VmmAgent). Removed by Finish.
 .EXAMPLE
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\VmmHostAgent.ps1
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\VmmExtractor.ps1
 .EXAMPLE
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\VmmHostAgent.ps1 -Extract
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\VmmExtractor.ps1 -Extract -NoClipboard
 #>
 param(
     [switch]$Extract,
@@ -49,12 +54,13 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.9.0'
+$AgentVersion = '2.10.0'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
 $Script:SelfPath = $MyInvocation.MyCommand.Path
 $Script:Inv = [Globalization.CultureInfo]::InvariantCulture
+$Script:Problems = @()   # reads that failed during the snapshot (sent to the laptop as Problem= lines)
 
 # ============================================================== output
 function Say([string]$Text, [string]$Color) {
@@ -67,7 +73,7 @@ function Bad([string]$t)  { Say $t 'Red' }
 function Mute([string]$t) { Say $t 'DarkGray' }
 
 # ============================================================== sanitizing
-# [SEC] Everything written to the log or shown in an error passes through here.
+# [SEC] Everything shown in an error, sent as a Problem line or written to the steps log passes through here.
 function Protect-Text([string]$Text) {
     if (-not $Text) { return '' }
     $t = $Text
@@ -81,8 +87,17 @@ function Protect-Text([string]$Text) {
     if ($t.Length -gt 300) { $t = $t.Substring(0, 300) + '...' }
     $t
 }
+function Add-Problem([string]$What, $Err) {
+    # A read that failed: remembered for the result, the snapshot carries on.
+    $m = ''
+    if ($Err) { try { $m = $Err.Exception.Message } catch { $m = "$Err" } }
+    $t = Protect-Text ($What + ': ' + $m)
+    if ($t.Length -gt 160) { $t = $t.Substring(0, 160) }
+    $Script:Problems += $t
+}
+function Num($v) { if ($null -eq $v) { '' } else { ([double]$v).ToString($Script:Inv) } }
 
-# ============================================================== card (plan from the laptop)
+# ============================================================== card (settings from the laptop)
 function Read-Card {
     $c = @{
         Host = ''; Generated = ''; ValidHours = '48'; TimeZoneId = 'GMT Standard Time'
@@ -91,6 +106,8 @@ function Read-Card {
         ExpectedOs = '*Server 2019*'; UpgradeCommand = ''; Share = ''; PublicKey = ''; Platform = ''; AzureVm = 'No'
         TargetOs = '*Server 2019*'; PolicyScope = ''; PolicyWhy = ''; PolicyWarnings = ''
         Steps = @{}; Packages = @()
+        Mode = 'Snapshot'   # 'Steps' only in a per-host extractor built with Extractor.AllowSteps
+        Licence = 'True'    # 'False' = skip the Windows licence query (it wakes the Software Protection service)
         # Inventory agent columns: service Name/DisplayName wildcards (the plan replaces these with the laptop's list)
         Services = @{ Qualys = @('QualysAgent', 'Qualys*'); CrowdStrike = @('CSFalconService', 'CrowdStrike*'); Zabbix = @('Zabbix Agent*', 'Zabbix*')
                       Ivanti = @('*Ivanti*', '*LANDesk*'); LansweeperAgent = @('LansweeperAgentService', 'Lansweeper*Agent*') }
@@ -134,33 +151,7 @@ function Read-Card {
 }
 $Card = Read-Card
 
-# ============================================================== work folder and log
-function Initialize-WorkDir {
-    if (Test-Path -LiteralPath $WorkDir) { return }
-    New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
-    # [SEC] Only Administrators, SYSTEM and the current user (by SID, no names) can read the folder.
-    try {
-        $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-        $null = & icacls.exe $WorkDir /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' "*${me}:(OI)(CI)F" 2>&1
-    } catch { Warn 'Could not restrict the work folder permissions (icacls failed). Contents are sanitized anyway.' }
-}
-function Write-Event([string]$Step, [string]$Status, [string]$Note) {
-    Initialize-WorkDir
-    $line = '{0}|{1}|{2}|{3}' -f [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'), $Step, $Status, (Protect-Text $Note)
-    Add-Content -LiteralPath (Join-Path $WorkDir 'agent.log') -Value $line -Encoding ASCII
-}
-function Read-Events {
-    $f = Join-Path $WorkDir 'agent.log'
-    if (-not (Test-Path -LiteralPath $f)) { return @() }
-    $out = @()
-    foreach ($l in (Get-Content -LiteralPath $f)) {
-        $p = $l -split '\|', 4
-        if ($p.Count -eq 4) { $out += New-Object PSObject -Property @{ At = $p[0]; Step = $p[1]; Status = $p[2]; Note = $p[3] } }
-    }
-    $out
-}
-
-# ============================================================== facts
+# ============================================================== reads (all read-only)
 function Test-Admin {
     $p = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -180,7 +171,8 @@ function Get-PackageState {
         $state = 'Missing'
         if (Test-Path -LiteralPath $file) {
             $state = 'Present'
-            if ($f[2]) {
+            # Hashing a multi-GB image is heavy disk work: only in steps mode, never for a snapshot
+            if ($f[2] -and $Script:StepsMode) {
                 try { if ((Get-FileSha256 $file) -eq $f[2].ToUpper()) { $state = 'Verified' } else { $state = 'HashMismatch' } }
                 catch { $state = 'Unreadable' }
             }
@@ -188,6 +180,19 @@ function Get-PackageState {
         $res += New-Object PSObject -Property @{ Name = $f[0]; File = $file; Sha256 = $f[2]; Rel = $f[3]; State = $state }
     }
     $res
+}
+function Read-Events {
+    # The steps log, when a steps extractor ran here before. Read only.
+    $out = @()
+    try {
+        $f = Join-Path $WorkDir 'agent.log'
+        if (-not (Test-Path -LiteralPath $f)) { return @() }
+        foreach ($l in (Get-Content -LiteralPath $f)) {
+            $p = $l -split '\|', 4
+            if ($p.Count -eq 4) { $out += New-Object PSObject -Property @{ At = $p[0]; Step = $p[1]; Status = $p[2]; Note = $p[3] } }
+        }
+    } catch { }
+    $out
 }
 function Get-AgentVerdict($Svc, $Version, $DriversDown, $PortsClosed, $LogAgeH, $Spec) {
     # OK / WARN / FAIL for one agent (Qualys, CrowdStrike...) from facts read on the host or over WMI.
@@ -225,33 +230,42 @@ function Get-AgentVerdict($Svc, $Version, $DriversDown, $PortsClosed, $LogAgeH, 
     if ($issues.Count) { $t += ': ' + ($issues -join '; ') }
     @{ Status = $status; State = "$($Svc.State)"; StartMode = "$($Svc.StartMode)"; Version = "$Version"; Issues = ($issues -join '; '); Text = $t }
 }
-function Get-InvProbe($Services, $Agents) {
+function Get-InvProbe($Services, $Agents, $SkipLicence) {
     # Inventory columns readable on this host (PowerShell 2.0+, read-only). Returns 'Inv.<Key>=<value>' lines,
-    # plus 'Agent.<Key>=Status|State|StartMode|Version|Issues' per agent when $Agents (health specs) is given.
+    # 'Agent.<Key>=Status|State|StartMode|Version|Issues' per agent when $Agents (health specs) is given, and a
+    # 'Problem=<what>: <why>' line for each read that failed (the other reads still run).
     # Also pasted into the RDP collector by the laptop, so it must stay self-contained (with Get-AgentVerdict).
     $out = @()
-    $cs = Get-WmiObject Win32_ComputerSystem
-    $dom = "$($cs.Domain)"
-    if (-not $cs.PartOfDomain) { $dom = 'WORKGROUP (' + $dom + ')' }
-    $out += 'Inv.Domain=' + $dom
-    $dc = 'No'
-    if ($cs.DomainRole -ge 4) { $dc = 'Yes' }
-    $out += 'Inv.DomainController=' + $dc
-    $ip = ''
-    foreach ($a in @(Get-WmiObject Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True')) {
-        foreach ($x in @($a.IPAddress)) { if (-not $ip -and "$x" -match '^\d{1,3}(\.\d{1,3}){3}$' -and "$x" -notmatch '^(127|169\.254)\.') { $ip = "$x" } }
-    }
-    $out += 'Inv.IPAddress=' + $ip
-    $lic = 'Unknown (run slmgr /dli)'
-    $names = @{ 0 = 'Unlicensed'; 1 = 'Licensed'; 2 = 'Grace period (OOB)'; 3 = 'Grace period (OOT)'; 4 = 'Grace period (non-genuine)'; 5 = 'Notification'; 6 = 'Grace period (extended)' }
+    $why = { param($e) $m = ''; try { $m = "$($e.Exception.Message)" } catch { }; $m = $m -replace '[\r\n|]+', ' '; if ($m.Length -gt 100) { $m = $m.Substring(0, 100) }; $m }
     try {
-        $p = @(Get-WmiObject SoftwareLicensingProduct -Filter "Name LIKE 'Windows%' AND PartialProductKey IS NOT NULL" -ErrorAction Stop)
-        if ($p.Count) { $lic = $names[[int]$p[0].LicenseStatus] } else { $lic = 'No product key installed' }
-    } catch { }
-    $out += 'Inv.WindowsLicense=' + $lic
-    $svc = @(Get-WmiObject Win32_Service)
-    if ($Agents -and $Agents.Count) {
-        # Installed programs (name + version) from both Uninstall keys, read once
+        $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction Stop
+        $dom = "$($cs.Domain)"
+        if (-not $cs.PartOfDomain) { $dom = 'WORKGROUP (' + $dom + ')' }
+        $out += 'Inv.Domain=' + $dom
+        $dc = 'No'
+        if ($cs.DomainRole -ge 4) { $dc = 'Yes' }
+        $out += 'Inv.DomainController=' + $dc
+    } catch { $out += 'Problem=Domain: ' + (& $why $_) }
+    try {
+        $ip = ''
+        foreach ($a in @(Get-WmiObject Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True' -ErrorAction Stop)) {
+            foreach ($x in @($a.IPAddress)) { if (-not $ip -and "$x" -match '^\d{1,3}(\.\d{1,3}){3}$' -and "$x" -notmatch '^(127|169\.254)\.') { $ip = "$x" } }
+        }
+        $out += 'Inv.IPAddress=' + $ip
+    } catch { $out += 'Problem=IP address: ' + (& $why $_) }
+    if (-not $SkipLicence) {
+        $lic = 'Unknown (run slmgr /dli)'
+        $names = @{ 0 = 'Unlicensed'; 1 = 'Licensed'; 2 = 'Grace period (OOB)'; 3 = 'Grace period (OOT)'; 4 = 'Grace period (non-genuine)'; 5 = 'Notification'; 6 = 'Grace period (extended)' }
+        try {
+            $p = @(Get-WmiObject SoftwareLicensingProduct -Filter "Name LIKE 'Windows%' AND PartialProductKey IS NOT NULL" -ErrorAction Stop)
+            if ($p.Count) { $lic = $names[[int]$p[0].LicenseStatus] } else { $lic = 'No product key installed' }
+        } catch { $out += 'Problem=Windows licence: ' + (& $why $_) }
+        $out += 'Inv.WindowsLicense=' + $lic
+    }
+    $svc = $null
+    try { $svc = @(Get-WmiObject Win32_Service -ErrorAction Stop) } catch { $out += 'Problem=Services (agent columns left empty): ' + (& $why $_) }
+    if ($null -ne $svc -and $Agents -and $Agents.Count) {
+        # Installed programs (name + version) from both Uninstall keys, read once (never the WMI product class: querying it starts MSI repairs)
         $apps = @()
         foreach ($root in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall') {
             foreach ($i in @(Get-ChildItem $root -ErrorAction SilentlyContinue)) {
@@ -262,28 +276,30 @@ function Get-InvProbe($Services, $Agents) {
         $listen = ''
         try { $listen = (& netstat.exe -an) -join "`n" } catch { }
         foreach ($k in $Agents.Keys) {
-            $sp = $Agents[$k]
-            $pats = @($sp.Services); if ($Services -and $Services[$k]) { $pats = @($Services[$k]) }
-            $hit = $null
-            foreach ($pat in $pats) { if (-not $hit -and $pat) { $hit = $svc | Where-Object { $_.Name -like $pat -or $_.DisplayName -like $pat } | Select-Object -First 1 } }
-            $ver = ''; $dd = @(); $pc = @(); $age = $null
-            if ($hit) {
-                foreach ($pat in @($sp.Products)) { if (-not $ver -and $pat) { $a = $apps | Where-Object { $_.Name -like $pat -and $_.Version } | Select-Object -First 1; if ($a) { $ver = $a.Version } } }
-                if (-not $ver -and $hit.PathName) {
-                    $exe = ''
-                    if ("$($hit.PathName)" -match '^\s*"([^"]+)"') { $exe = $Matches[1] } elseif ("$($hit.PathName)" -match '^\s*(\S+\.exe)') { $exe = $Matches[1] }
-                    if ($exe -and (Test-Path -LiteralPath $exe)) { try { $ver = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion } catch { } }
+            try {
+                $sp = $Agents[$k]
+                $pats = @($sp.Services); if ($Services -and $Services[$k]) { $pats = @($Services[$k]) }
+                $hit = $null
+                foreach ($pat in $pats) { if (-not $hit -and $pat) { $hit = $svc | Where-Object { $_.Name -like $pat -or $_.DisplayName -like $pat } | Select-Object -First 1 } }
+                $ver = ''; $dd = @(); $pc = @(); $age = $null
+                if ($hit) {
+                    foreach ($pat in @($sp.Products)) { if (-not $ver -and $pat) { $a = $apps | Where-Object { $_.Name -like $pat -and $_.Version } | Select-Object -First 1; if ($a) { $ver = $a.Version } } }
+                    if (-not $ver -and $hit.PathName) {
+                        $exe = ''
+                        if ("$($hit.PathName)" -match '^\s*"([^"]+)"') { $exe = $Matches[1] } elseif ("$($hit.PathName)" -match '^\s*(\S+\.exe)') { $exe = $Matches[1] }
+                        if ($exe -and (Test-Path -LiteralPath $exe)) { try { $ver = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion } catch { } }
+                    }
+                    foreach ($d in @($sp.Drivers)) { if ($d) { $dr = Get-WmiObject Win32_SystemDriver -Filter ("Name='" + $d + "'") -ErrorAction SilentlyContinue; if (-not $dr -or $dr.State -ne 'Running') { $dd += $d } } }
+                    # Listening on any address (language-neutral: the foreign address column is the any-address with port 0)
+                    if ($listen) { foreach ($p in @($sp.Ports)) { if ($p -and $listen -notmatch (':' + $p + '\s+(0\.0\.0\.0|\[::\]):0\s')) { $pc += ("$p not listening") } } }
+                    if ($sp.Log -and (Test-Path -LiteralPath $sp.Log)) { $age = ((Get-Date) - (Get-Item -LiteralPath $sp.Log).LastWriteTime).TotalHours }
                 }
-                foreach ($d in @($sp.Drivers)) { if ($d) { $dr = Get-WmiObject Win32_SystemDriver -Filter ("Name='" + $d + "'"); if (-not $dr -or $dr.State -ne 'Running') { $dd += $d } } }
-                # Listening on any address (language-neutral: the foreign address column is the any-address with port 0)
-                foreach ($p in @($sp.Ports)) { if ($p -and $listen -notmatch (':' + $p + '\s+(0\.0\.0\.0|\[::\]):0\s')) { $pc += ("$p not listening") } }
-                if ($sp.Log -and (Test-Path -LiteralPath $sp.Log)) { $age = ((Get-Date) - (Get-Item -LiteralPath $sp.Log).LastWriteTime).TotalHours }
-            }
-            $v = Get-AgentVerdict $hit $ver $dd $pc $age $sp
-            $out += 'Inv.' + $k + '=' + $v.Text
-            $out += 'Agent.' + $k + '=' + $v.Status + '|' + $v.State + '|' + $v.StartMode + '|' + $v.Version + '|' + $v.Issues
+                $v = Get-AgentVerdict $hit $ver $dd $pc $age $sp
+                $out += 'Inv.' + $k + '=' + $v.Text
+                $out += 'Agent.' + $k + '=' + $v.Status + '|' + $v.State + '|' + $v.StartMode + '|' + $v.Version + '|' + $v.Issues
+            } catch { $out += 'Problem=Agent ' + $k + ': ' + (& $why $_) }
         }
-    } else {
+    } elseif ($null -ne $svc -and $Services) {
         foreach ($k in $Services.Keys) {
             $hit = $null
             foreach ($pat in @($Services[$k])) { if (-not $hit) { $hit = $svc | Where-Object { $_.Name -like $pat -or $_.DisplayName -like $pat } | Select-Object -First 1 } }
@@ -302,60 +318,59 @@ function Get-InvProbe($Services, $Agents) {
     $out
 }
 function Get-Facts {
-    $os = Get-WmiObject Win32_OperatingSystem
-    $cs = Get-WmiObject Win32_ComputerSystem
-    $c  = Get-WmiObject Win32_LogicalDisk -Filter "DeviceID='C:'"
-    $sql = @()
-    $k = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL'
-    if (Test-Path $k) {
-        $props = Get-ItemProperty $k
-        foreach ($n in ($props.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' })) {
-            try {
-                $s = Get-ItemProperty ('HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\' + $n.Value + '\Setup')
-                $sql += ($n.Name + ' ' + $s.PatchLevel + ' ' + $s.Edition)
-            } catch { $sql += ($n.Name + ' (setup key unreadable)') }
-        }
+    # Each read stands alone: one that fails leaves its fields empty, is listed as a Problem, and the rest still run.
+    $f = @{
+        Name = $env:COMPUTERNAME; OS = ''; Lang = ''; Version = ''; Build = ''; SP = ''; Manufacturer = ''; Model = ''
+        Platform = 'Unknown'; CTotalGB = $null; CFreeGB = $null; PendingReboot = $false; Sql = ''; LastBoot = ''
+        TempExists = $false; PSVersion = "$($PSVersionTable.PSVersion)"; Admin = $false
     }
-    $pend = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or
-            (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
-    $plat = 'Physical'
-    if ($cs.Manufacturer -like '*VMware*' -or $cs.Model -like '*VMware*') { $plat = 'VMware' }
-    elseif ($cs.Model -like '*Virtual Machine*') {
-        $plat = 'Hyper-V'
-        if (Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue) { $plat = 'Azure' }
-    }
-    $lang = ''
-    try { $lang = (New-Object Globalization.CultureInfo([int]$os.OSLanguage)).Name } catch { }
-    $boot = $null
-    try { $boot = $os.ConvertToDateTime($os.LastBootUpTime).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') } catch { }
-    New-Object PSObject -Property @{
-        Name = $env:COMPUTERNAME; OS = "$($os.Caption)".Trim(); Lang = $lang; Version = $os.Version; Build = $os.BuildNumber
-        SP = $os.ServicePackMajorVersion; Manufacturer = $cs.Manufacturer; Model = $cs.Model; Platform = $plat
-        CTotalGB = [math]::Round($c.Size / 1GB, 1); CFreeGB = [math]::Round($c.FreeSpace / 1GB, 1)
-        PendingReboot = $pend; Sql = ($sql -join '; '); LastBoot = $boot; TempExists = (Test-Path $Card.TargetFolder)
-        PSVersion = "$($PSVersionTable.PSVersion)"; Admin = (Test-Admin)
-    }
-}
-
-# ============================================================== time rules (Europe/Lisbon by default)
-function Get-Window {
-    $known = $true; $now = [DateTime]::UtcNow
+    try { $f.Admin = (Test-Admin) } catch { }
     try {
-        $tz = [TimeZoneInfo]::FindSystemTimeZoneById($Card.TimeZoneId)
-        $now = [TimeZoneInfo]::ConvertTimeFromUtc([DateTime]::UtcNow, $tz)
-    } catch { $known = $false }
-    $days = $Card.BusinessDays -split ','
-    $hol  = $Card.Holidays -split ','
-    $start = [TimeSpan]::Parse($Card.BusinessStart); $end = [TimeSpan]::Parse($Card.BusinessEnd)
-    $isBiz = ($days -contains $now.DayOfWeek.ToString()) -and -not ($hol -contains $now.ToString('yyyy-MM-dd'))
-    $inHours = $isBiz -and $now.TimeOfDay -ge $start -and $now.TimeOfDay -lt $end
-    $allowed = $true
-    if ($inHours) { $allowed = $false }
-    elseif ($isBiz -and $Card.OffHoursWeekdays -ne 'True') { $allowed = $false }
-    $why = 'Maintenance window: changes allowed.'
-    if (-not $known) { $allowed = $false; $why = "Time zone '$($Card.TimeZoneId)' unknown on this host: treated as business hours (changes need an override)." }
-    elseif (-not $allowed) { $why = "Business hours ($($Card.BusinessStart)-$($Card.BusinessEnd) $($Card.TimeZoneId)): only checks and staging to $($Card.TargetFolder)." }
-    New-Object PSObject -Property @{ Now = $now; Known = $known; ChangesAllowed = $allowed; Why = $why }
+        $os = Get-WmiObject Win32_OperatingSystem -ErrorAction Stop
+        $f.OS = "$($os.Caption)".Trim(); $f.Version = $os.Version; $f.Build = $os.BuildNumber; $f.SP = $os.ServicePackMajorVersion
+        try { $f.Lang = (New-Object Globalization.CultureInfo([int]$os.OSLanguage)).Name } catch { }
+        try { $f.LastBoot = $os.ConvertToDateTime($os.LastBootUpTime).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') } catch { }
+    } catch { Add-Problem 'Operating system' $_ }
+    try {
+        $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction Stop
+        $f.Manufacturer = $cs.Manufacturer; $f.Model = $cs.Model
+        $f.Platform = 'Physical'
+        if ($cs.Manufacturer -like '*VMware*' -or $cs.Model -like '*VMware*') { $f.Platform = 'VMware' }
+        elseif ($cs.Model -like '*Virtual Machine*') {
+            $f.Platform = 'Hyper-V'
+            if (Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue) { $f.Platform = 'Azure' }
+        }
+    } catch { Add-Problem 'Computer model' $_ }
+    try {
+        $c = Get-WmiObject Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
+        $f.CTotalGB = [math]::Round($c.Size / 1GB, 1); $f.CFreeGB = [math]::Round($c.FreeSpace / 1GB, 1)
+    } catch { Add-Problem 'C: drive' $_ }
+    try {
+        $sql = @()
+        $k = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL'
+        if (Test-Path $k) {
+            $props = Get-ItemProperty $k
+            foreach ($n in ($props.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' })) {
+                try {
+                    $s = Get-ItemProperty ('HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\' + $n.Value + '\Setup')
+                    $sql += ($n.Name + ' ' + $s.PatchLevel + ' ' + $s.Edition)
+                } catch { $sql += ($n.Name + ' (setup key unreadable)') }
+            }
+        }
+        $f.Sql = ($sql -join '; ')
+    } catch { Add-Problem 'SQL instances' $_ }
+    try {
+        # Pending reboot: servicing, Windows Update, file renames queued for the next boot (same three as the laptop check)
+        $pend = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or
+                (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
+        if (-not $pend) {
+            $sm = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name PendingFileRenameOperations -ErrorAction SilentlyContinue
+            if ($sm -and $sm.PendingFileRenameOperations) { $pend = $true }
+        }
+        $f.PendingReboot = $pend
+    } catch { Add-Problem 'Pending reboot' $_ }
+    try { $f.TempExists = (Test-Path $Card.TargetFolder) } catch { }
+    New-Object PSObject -Property $f
 }
 
 # ============================================================== OS policy
@@ -379,7 +394,48 @@ function Get-Policy($Facts) {
     New-Object PSObject -Property @{ Scope = $scope; Why = $why; Warnings = $warn; Workable = $ok }
 }
 
-# ============================================================== step plan
+# VMM-STEPS-BEGIN
+# Everything down to VMM-STEPS-END is the STEPS code: the only part of this file that can change a host.
+# A snapshot extractor is built without this block.
+
+# ============================================================== steps: work folder and log
+function Initialize-WorkDir {
+    if (Test-Path -LiteralPath $WorkDir) { return }
+    New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
+    # [SEC] Only Administrators, SYSTEM and the current user (by SID, no names) can read the folder.
+    try {
+        $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+        $null = & icacls.exe $WorkDir /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' "*${me}:(OI)(CI)F" 2>&1
+    } catch { Warn 'Could not restrict the work folder permissions (icacls failed). Contents are sanitized anyway.' }
+}
+function Write-Event([string]$Step, [string]$Status, [string]$Note) {
+    Initialize-WorkDir
+    $line = '{0}|{1}|{2}|{3}' -f [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'), $Step, $Status, (Protect-Text $Note)
+    Add-Content -LiteralPath (Join-Path $WorkDir 'agent.log') -Value $line -Encoding ASCII
+}
+
+# ============================================================== steps: time rules (Europe/Lisbon by default)
+function Get-Window {
+    $known = $true; $now = [DateTime]::UtcNow
+    try {
+        $tz = [TimeZoneInfo]::FindSystemTimeZoneById($Card.TimeZoneId)
+        $now = [TimeZoneInfo]::ConvertTimeFromUtc([DateTime]::UtcNow, $tz)
+    } catch { $known = $false }
+    $days = $Card.BusinessDays -split ','
+    $hol  = $Card.Holidays -split ','
+    $start = [TimeSpan]::Parse($Card.BusinessStart); $end = [TimeSpan]::Parse($Card.BusinessEnd)
+    $isBiz = ($days -contains $now.DayOfWeek.ToString()) -and -not ($hol -contains $now.ToString('yyyy-MM-dd'))
+    $inHours = $isBiz -and $now.TimeOfDay -ge $start -and $now.TimeOfDay -lt $end
+    $allowed = $true
+    if ($inHours) { $allowed = $false }
+    elseif ($isBiz -and $Card.OffHoursWeekdays -ne 'True') { $allowed = $false }
+    $why = 'Maintenance window: changes allowed.'
+    if (-not $known) { $allowed = $false; $why = "Time zone '$($Card.TimeZoneId)' unknown on this host: treated as business hours (changes need an override)." }
+    elseif (-not $allowed) { $why = "Business hours ($($Card.BusinessStart)-$($Card.BusinessEnd) $($Card.TimeZoneId)): only checks and staging to $($Card.TargetFolder)." }
+    New-Object PSObject -Property @{ Now = $now; Known = $known; ChangesAllowed = $allowed; Why = $why }
+}
+
+# ============================================================== steps: plan
 $StepNames = @('Precheck', 'Stage', 'PreSnapshot', 'ExpandDisk', 'Upgrade', 'Verify')
 function Get-LastStatus([string]$Step) {
     $ev = @(Read-Events | Where-Object { $_.Step -eq $Step })
@@ -439,7 +495,7 @@ function Get-Plan($Facts) {
     $plan
 }
 
-# ============================================================== confirmations
+# ============================================================== steps: confirmations
 function Confirm-Change([string]$Step) {
     $w = Get-Window
     if (-not $w.ChangesAllowed) {
@@ -455,7 +511,7 @@ function Confirm-Change([string]$Step) {
     $true
 }
 
-# ============================================================== steps
+# ============================================================== steps: actions
 function Invoke-Check([string]$Step) {
     $f = Get-Facts
     Show-Facts $f
@@ -523,6 +579,92 @@ function Invoke-Upgrade {
     catch { Write-Event 'Upgrade' 'Failed' $_.Exception.Message; Bad ('Could not start: ' + (Protect-Text $_.Exception.Message)) }
 }
 
+# ============================================================== steps: screens
+function Show-Plan {
+    $f = Get-Facts
+    $plan = @(Get-Plan $f)
+    $current = $null
+    foreach ($p in $plan) { if (-not ($p.Status -match '^(Success|NotNeeded|Launched)')) { $current = $p.Step; break } }
+    Info (' {0,-3} {1,-12} {2,-20} {3,-6} {4}' -f '', 'Step', 'Status', 'Now?', 'Why')
+    $i = 1
+    foreach ($p in $plan) {
+        $mark = '   '; if ($p.Step -eq $current) { $mark = '>> ' }
+        $now = 'no'; if ($p.Available) { $now = 'yes' }
+        $col = 'Gray'
+        if ($p.Status -match '^(Success|NotNeeded|Launched)') { $col = 'Green' } elseif ($p.Status -match '^(Failed|Blocked)') { $col = 'Red' } elseif (-not $p.Available) { $col = 'DarkGray' }
+        Say (' {0}{1}. {2,-10} {3,-20} {4,-6} {5}' -f $mark, $i, $p.Step, $p.Status, $now, $p.Why) $col
+        $i++
+    }
+    if ($current) { Info " Current step: $current. Steps below it are future steps." } else { Good ' All steps done. Export the result, then Finish.' }
+    $plan
+}
+function Show-History {
+    $ev = @(Read-Events)
+    if (-not $ev.Count) { Mute ' Nothing logged on this host yet.'; return }
+    Info (' {0,-21} {1,-12} {2,-10} {3}' -f 'UTC', 'Step', 'Status', 'Note')
+    foreach ($e in $ev) {
+        $c = 'Gray'; if ($e.Status -match 'Success|NotNeeded') { $c = 'Green' } elseif ($e.Status -match 'Failed') { $c = 'Red' } elseif ($e.Status -match 'Override') { $c = 'Yellow' }
+        Say (' {0,-21} {1,-12} {2,-10} {3}' -f $e.At, $e.Step, $e.Status, $e.Note) $c
+    }
+    if ($Card.Steps.Count) {
+        Info ' From the laptop (at export time)'
+        foreach ($s in $StepNames) { if ($Card.Steps.ContainsKey($s)) { $p = $Card.Steps[$s] -split '\|', 3; Write-Host (' {0,-21} {1,-12} {2,-10} {3}' -f $p[1], $s, $p[0], $p[2]) } }
+    }
+}
+
+function Invoke-RunMenu {
+    $plan = @(Show-Plan)
+    Write-Host ''
+    $n = Read-Host ' Step number to run (Enter = back)'
+    if (-not $n) { return }
+    $idx = 0
+    if (-not [int]::TryParse($n, [ref]$idx) -or $idx -lt 1 -or $idx -gt $plan.Count) { Bad ' Not a step number.'; return }
+    $p = $plan[$idx - 1]
+    if (-not $p.Available -and -not ($p.Why -like '*override possible*')) { Warn (' Not available: ' + $p.Why); return }
+    switch ($p.Step) {
+        'Precheck'    { Invoke-Check 'Precheck' }
+        'Stage'       { Invoke-Stage }
+        'PreSnapshot' { Invoke-PreSnapshotConfirm }
+        'ExpandDisk'  { Invoke-Extend }
+        'Upgrade'     { Invoke-Upgrade }
+        'Verify'      { Invoke-Check 'Verify' }
+    }
+}
+function Invoke-StepsMenu {
+    while ($true) {
+        Show-Header
+        Write-Host ' 1 Status    live facts for this host'
+        Write-Host ' 2 Steps     current and future steps, and why each is or is not available'
+        Write-Host ' 3 Run       run a step from here'
+        Write-Host ' 4 History   what this program did on this host'
+        Write-Host ' 5 Export    save the result file on the desktop again'
+        Write-Host ' 6 Finish    end of maintenance: remove the extractor and its files from this host'
+        Write-Host ' Q Quit      keep files for the next session'
+        $k = Read-Host ' Choice'
+        Show-Header
+        try {
+            switch -Regex ($k) {
+                '^1$' { Show-Facts (Get-Facts); Show-Inventory; Pause-Agent }
+                '^2$' { [void](Show-Plan); Pause-Agent }
+                '^3$' { Invoke-RunMenu; if ($Card.PublicKey) { Export-Result -Auto }; Pause-Agent }
+                '^4$' { Show-History; Pause-Agent }
+                '^5$' { Export-Result; Pause-Agent }
+                '^6$' { if (Invoke-Finish) { return }; Pause-Agent }
+                '^[qQ]$' { return }
+            }
+        } catch {
+            # [SEC] Show the sanitized message only; no stack traces or paths with user names.
+            Bad (' ERROR: ' + (Protect-Text $_.Exception.Message))
+            try { Write-Event 'Agent' 'Error' $_.Exception.Message } catch { }
+            Pause-Agent
+        }
+    }
+}
+# VMM-STEPS-END
+
+# Steps run only when the block above is in this file AND the laptop built this extractor for steps.
+$Script:StepsMode = ($Card.Mode -eq 'Steps') -and [bool](Get-Command Invoke-StepsMenu -ErrorAction SilentlyContinue)
+
 # ============================================================== export (encrypted)
 function Protect-Result([string]$Text) {
     # [SEC] Hybrid: random 64-byte key (AES-256 + HMAC-SHA256) wrapped with the laptop's RSA public key (OAEP).
@@ -570,49 +712,68 @@ function Save-ResultFile([string]$Line) {
     $file
 }
 function Export-Result([switch]$Auto) {
-    if ($Auto -and -not $Card.PublicKey) { Warn ' No laptop key in this file: nothing saved. Build the extractor on the laptop (X on the host, or vmm extractor).'; return }
-    Info ' Extracting this host (read-only; the licence query can take a few seconds)...'
+    if ($Auto -and -not $Card.PublicKey) { Warn ' No laptop key in this file: nothing saved. Build the extractor on the laptop (vmm extractor).'; return }
+    Info ' Reading this host (read-only)...'
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $Script:Problems = @()
     $f = Get-Facts
+    $Script:LastFacts = $f
+    $mode = 'Snapshot'; if ($Script:StepsMode) { $mode = 'Steps' }
     $lines = @(
         'Name=' + $f.Name, 'OS=' + $f.OS, 'Lang=' + $f.Lang, 'Version=' + $f.Version, 'Build=' + $f.Build, 'SP=' + $f.SP,
         'Manufacturer=' + $f.Manufacturer, 'Model=' + $f.Model, 'Platform=' + $f.Platform,
-        'CTotalGB=' + $f.CTotalGB.ToString($Script:Inv), 'CFreeGB=' + $f.CFreeGB.ToString($Script:Inv),
+        'CTotalGB=' + (Num $f.CTotalGB), 'CFreeGB=' + (Num $f.CFreeGB),
         'PendingReboot=' + $(if ($f.PendingReboot) { 'Yes' } else { 'No' }), 'Sql=' + $f.Sql, 'LastBoot=' + $f.LastBoot,
-        'TempExists=' + $f.TempExists, 'AgentVersion=' + $AgentVersion, 'ExportedAt=' + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        'TempExists=' + $f.TempExists, 'PSVersion=' + $f.PSVersion, 'Elevated=' + $(if ($f.Admin) { 'Yes' } else { 'No' }),
+        'Mode=' + $mode, 'AgentVersion=' + $AgentVersion, 'ExportedAt=' + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     )
-    try { $lines += @(Get-InvProbe $Card.Services $Card.Agents) } catch { Warn ' Inventory columns could not be read; fill them on the laptop (I on the host screen).' }
-    foreach ($p in (Get-PackageState)) { $lines += ('Package=' + $p.Name + '|' + $p.State) }
+    $Script:LastInv = @()
+    try {
+        foreach ($l in @(Get-InvProbe $Card.Services $Card.Agents ($Card.Licence -eq 'False'))) {
+            if ($l -like 'Problem=*') { $Script:Problems += (Protect-Text $l.Substring(8)) } else { $lines += $l; $Script:LastInv += $l }
+        }
+    } catch { Add-Problem 'Inventory columns' $_ }
+    try { foreach ($p in (Get-PackageState)) { $lines += ('Package=' + $p.Name + '|' + $p.State) } } catch { Add-Problem 'Staged files' $_ }
     foreach ($e in (Read-Events)) { $lines += ('Event=' + $e.At + '|' + $e.Step + '|' + $e.Status + '|' + $e.Note) }
+    foreach ($p in $Script:Problems) { $lines += ('Problem=' + $p) }
+    $sw.Stop()
+    $lines += ('Seconds=' + [int]$sw.Elapsed.TotalSeconds)
     $text = $lines -join "`n"
     if ($Card.PublicKey) {
         $out = Protect-Result $text
     } else {
-        Warn 'This is a generic agent without the laptop key: the result cannot be encrypted.'
-        Warn 'Export the agent for this host from the laptop (vmm agent -HostName <host>) instead.'
+        Warn 'This file has no laptop key: the result cannot be encrypted.'
+        Warn 'Build the extractor on the laptop (vmm extractor) instead.'
         Warn 'Type PLAIN to produce an unencrypted line anyway (it carries host facts only), anything else cancels.'
         if ((Read-Host ' >') -cne 'PLAIN') { Mute 'Cancelled.'; return }
         $out = 'VMM1|' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text))
     }
-    try { Write-Event 'Export' 'Success' ('result exported (' + $out.Substring(0, 4) + ')') } catch { }   # no log folder rights: the file still gets saved
+    if ($Script:StepsMode) { try { Write-Event 'Export' 'Success' ('result exported (' + $out.Substring(0, 4) + ')') } catch { } }
     $file = $null
     try { $file = Save-ResultFile $out } catch { Warn (' Could not save the result file on the desktop: ' + (Protect-Text $_.Exception.Message)) }
-    if (-not $NoClipboard) { try { $out | & clip.exe } catch { } }
+    $clip = $false
+    if (-not $NoClipboard) { try { $out | & clip.exe; $clip = $true } catch { } }
+    Write-Host ''
+    Show-Facts $f
+    if ($Script:Problems.Count) {
+        Warn (' {0} read(s) failed; the rest of the snapshot is complete:' -f $Script:Problems.Count)
+        foreach ($p in $Script:Problems) { Warn ('   ' + $p) }
+    }
     Write-Host ''
     if ($file) {
-        Good ' ================================================================================'
-        Good (' RESULT SAVED ON THE DESKTOP: ' + [IO.Path]::GetFileName($file))
-        Good ' Copy this file to your laptop''s Desktop or Downloads. The Manager imports it by itself.'
-        Good ' (Also on the clipboard: on the laptop press P on the host screen, or run vmm collect.)'
-        Good ' ================================================================================'
-    } elseif (-not $NoClipboard) { Good ' Result copied to the clipboard. On the laptop: P on the host screen, or vmm collect.'; Write-Host $out }
+        Good (' SAVED ON THE DESKTOP: ' + [IO.Path]::GetFileName($file) + ('   ({0} s, encrypted)' -f [int]$sw.Elapsed.TotalSeconds))
+        Write-Host ' Copy that file to your laptop''s Desktop or Downloads. The Manager imports it by itself.'
+        if ($clip) { Mute ' Same text is on the clipboard (laptop: P on the host screen, or vmm collect).' }
+    } elseif ($clip) { Good ' Result copied to the clipboard. On the laptop: P on the host screen, or vmm collect.' }
     else { Write-Host $out }
 }
 
 # ============================================================== finish
 function Invoke-Finish([switch]$Force) {
     if (-not $Force) {
-        Warn "Removes $WorkDir (log, temp files), this extractor, its result files on the desktop and the clipboard."
-        Warn 'Staged install files in the target folder are NOT touched. Type FINISH to continue.'
+        Warn ' Deletes this extractor and its result files from this desktop, and clears the clipboard.'
+        if (Test-Path -LiteralPath $WorkDir) { Warn " Also removes $WorkDir (steps log)." }
+        Warn ' Staged install files are NOT touched. Type FINISH to continue.'
         if ((Read-Host ' >') -cne 'FINISH') { Mute 'Cancelled.'; return $false }
     }
     $ok = $true
@@ -620,12 +781,12 @@ function Invoke-Finish([switch]$Force) {
         try { Remove-Item -LiteralPath $WorkDir -Recurse -Force; Good "Removed $WorkDir" }
         catch { $ok = $false; Bad ('Could not remove the work folder: ' + (Protect-Text $_.Exception.Message)) }
     }
-    try { & cmd.exe /c 'echo off | clip' } catch { }
+    if (-not $NoClipboard) { try { & cmd.exe /c 'echo off | clip' } catch { } }
     $desk = [Environment]::GetFolderPath('Desktop')
     if ($desk) { Get-ChildItem -LiteralPath $desk -Filter ('VMM_' + $env:COMPUTERNAME + '_*.vmm') -ErrorAction SilentlyContinue | ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force; Good ('Removed ' + $_.Name) } catch { } } }
     if ($Script:SelfPath -and (Test-Path -LiteralPath $Script:SelfPath)) {
-        try { Remove-Item -LiteralPath $Script:SelfPath -Force; Good 'Removed the agent file.' }
-        catch { $ok = $false; Bad 'Could not remove the agent file; delete it from the desktop by hand.' }
+        try { Remove-Item -LiteralPath $Script:SelfPath -Force; Good 'Removed the extractor file.' }
+        catch { $ok = $false; Bad 'Could not remove the extractor file; delete it from the desktop by hand.' }
     }
     if ($ok) { Good 'Host clean. Close this window and the RDP session.' }
     $ok
@@ -634,139 +795,80 @@ function Invoke-Finish([switch]$Force) {
 # ============================================================== screens
 function Show-Header {
     Clear-Host
-    $w = Get-Window
-    Say (" VMM extractor $AgentVersion | $env:COMPUTERNAME | {0} {1}" -f $w.Now.ToString('ddd yyyy-MM-dd HH:mm'), $Card.TimeZoneId) 'White'
-    if ($w.ChangesAllowed) { Good (' ' + $w.Why) } else { Warn (' ' + $w.Why) }
-    if (-not (Test-Admin)) { Warn ' Not elevated: checks and staging only. For changes, run PowerShell as administrator.' }
+    $mode = 'snapshot (read-only)'; if ($Script:StepsMode) { $mode = 'steps' }
+    Say (" VMM extractor $AgentVersion | $env:COMPUTERNAME | $mode | {0}" -f (Get-Date).ToString('ddd yyyy-MM-dd HH:mm')) 'White'
+    if ($Script:StepsMode) {
+        $w = Get-Window
+        if ($w.ChangesAllowed) { Good (' ' + $w.Why) } else { Warn (' ' + $w.Why) }
+        if (-not (Test-Admin)) { Warn ' Not elevated: checks and staging only. For changes, run PowerShell as administrator.' }
+        if ($Card.Host -and $Card.Host -ne $env:COMPUTERNAME) { Bad " PLAN IS FOR $($Card.Host), NOT THIS HOST. Do not run change steps here." }
+        elseif ($Card.Generated) {
+            try {
+                $age = ([DateTime]::UtcNow - [DateTime]::Parse($Card.Generated, $Script:Inv).ToUniversalTime()).TotalHours
+                if ($age -gt [double]$Card.ValidHours) { Warn (" Plan is {0:N0} h old: build a fresh extractor on the laptop." -f $age) }
+            } catch { }
+        }
+    }
     try {
         $pf = New-Object PSObject -Property @{ OS = "$((Get-WmiObject Win32_OperatingSystem).Caption)"; Platform = $Card.Platform }
         $pol = Get-Policy $pf
         if (-not $pol.Workable) { Warn (' POLICY: ' + $pol.Why) }
         foreach ($x in $pol.Warnings) { Bad (' WARN MANAGEMENT: ' + $x) }
     } catch { }
-    if (-not $Card.PublicKey) { Warn ' Template without the laptop key: results cannot be encrypted. Build the extractor on the laptop (vmm extractor).' }
-    elseif (-not $Card.Host) { Mute ' Extractor for any host (no plan for this one): extraction only. To run steps here use the per-host extractor (X on the laptop).' }
-    elseif ($Card.Host -and $Card.Host -ne $env:COMPUTERNAME) { Bad " PLAN IS FOR $($Card.Host), NOT THIS HOST. Do not run change steps here." }
-    elseif ($Card.Generated) {
-        try {
-            $age = ([DateTime]::UtcNow - [DateTime]::Parse($Card.Generated, $Script:Inv).ToUniversalTime()).TotalHours
-            if ($age -gt [double]$Card.ValidHours) { Warn (" Plan is {0:N0} h old: export a fresh agent from the laptop." -f $age) }
-        } catch { }
-    }
+    if (-not $Card.PublicKey) { Warn ' No laptop key in this file: results cannot be encrypted. Build the extractor on the laptop (vmm extractor).' }
     Mute ' ---------------------------------------------------------------------------------------'
 }
 function Show-Facts($f) {
     Info ' This host'
     Write-Host ("  OS            {0} (build {1}, SP {2}, language {3})" -f $f.OS, $f.Build, $f.SP, $f.Lang)
     Write-Host ("  Platform      {0} ({1} / {2})" -f $f.Platform, $f.Manufacturer, $f.Model)
-    $col = 'Green'; if ($f.CFreeGB -lt [double]::Parse($Card.OkGB, $Script:Inv)) { $col = 'Yellow' }; if ($f.CFreeGB -lt [double]::Parse($Card.CriticalGB, $Script:Inv)) { $col = 'Red' }
-    Say ("  C:            {0} GB free of {1} GB" -f $f.CFreeGB, $f.CTotalGB) $col
+    if ($null -eq $f.CFreeGB) { Warn '  C:            not read' }
+    else {
+        $col = 'Green'; if ($f.CFreeGB -lt [double]::Parse($Card.OkGB, $Script:Inv)) { $col = 'Yellow' }; if ($f.CFreeGB -lt [double]::Parse($Card.CriticalGB, $Script:Inv)) { $col = 'Red' }
+        Say ("  C:            {0} GB free of {1} GB" -f $f.CFreeGB, $f.CTotalGB) $col
+    }
     if ($f.PendingReboot) { Warn '  Reboot        PENDING' } else { Write-Host '  Reboot        not pending' }
     Write-Host ("  SQL           {0}" -f $(if ($f.Sql) { $f.Sql } else { 'none' }))
     Write-Host ("  Last boot     {0} UTC   PowerShell {1}   Admin {2}" -f $f.LastBoot, $f.PSVersion, $f.Admin)
-    $pk = @(Get-PackageState)
+    $pk = @(); try { $pk = @(Get-PackageState) } catch { }
     if ($pk.Count) { Info ' Staged files'; foreach ($p in $pk) { $c = 'Red'; if ($p.State -eq 'Verified' -or $p.State -eq 'Present') { $c = 'Green' }; Say ("  {0,-24} {1}" -f $p.Name, $p.State) $c } }
 }
 function Show-Inventory {
-    Info ' Inventory (sent to the laptop with Export)'
-    foreach ($l in @(Get-InvProbe $Card.Services $Card.Agents)) {
+    # Shows what the last snapshot read (no second read of the host)
+    Info ' Inventory (in the result file)'
+    $src = @($Script:LastInv)
+    if (-not $src.Count) { $src = @(Get-InvProbe $Card.Services $Card.Agents ($Card.Licence -eq 'False')) }
+    foreach ($l in $src) {
         if ($l -notlike 'Inv.*') { continue }
         $i = $l.IndexOf('='); $k = $l.Substring(4, $i - 4); $v = $l.Substring($i + 1)
         $col = 'Gray'; if ($v -match '^(Not installed|No |Unlicensed|Unknown|WARN)') { $col = 'Yellow' } elseif ($v -match '^FAIL') { $col = 'Red' } elseif ($v -match '^OK') { $col = 'Green' }
         Say ('  {0,-18} {1}' -f $k, $v) $col
     }
 }
-function Show-Plan {
-    $f = Get-Facts
-    $plan = @(Get-Plan $f)
-    $current = $null
-    foreach ($p in $plan) { if (-not ($p.Status -match '^(Success|NotNeeded|Launched)')) { $current = $p.Step; break } }
-    Info (' {0,-3} {1,-12} {2,-20} {3,-6} {4}' -f '', 'Step', 'Status', 'Now?', 'Why')
-    $i = 1
-    foreach ($p in $plan) {
-        $mark = '   '; if ($p.Step -eq $current) { $mark = '>> ' }
-        $now = 'no'; if ($p.Available) { $now = 'yes' }
-        $col = 'Gray'
-        if ($p.Status -match '^(Success|NotNeeded|Launched)') { $col = 'Green' } elseif ($p.Status -match '^(Failed|Blocked)') { $col = 'Red' } elseif (-not $p.Available) { $col = 'DarkGray' }
-        Say (' {0}{1}. {2,-10} {3,-20} {4,-6} {5}' -f $mark, $i, $p.Step, $p.Status, $now, $p.Why) $col
-        $i++
-    }
-    if ($current) { Info " Current step: $current. Steps below it are future steps." } else { Good ' All steps done. Export the result, then Finish.' }
-    $plan
-}
-function Show-History {
-    $ev = @(Read-Events)
-    if (-not $ev.Count) { Mute ' Nothing logged on this host yet.'; return }
-    Info (' {0,-21} {1,-12} {2,-10} {3}' -f 'UTC', 'Step', 'Status', 'Note')
-    foreach ($e in $ev) {
-        $c = 'Gray'; if ($e.Status -match 'Success|NotNeeded') { $c = 'Green' } elseif ($e.Status -match 'Failed') { $c = 'Red' } elseif ($e.Status -match 'Override') { $c = 'Yellow' }
-        Say (' {0,-21} {1,-12} {2,-10} {3}' -f $e.At, $e.Step, $e.Status, $e.Note) $c
-    }
-    if ($Card.Steps.Count) {
-        Info ' From the laptop (at export time)'
-        foreach ($s in $StepNames) { if ($Card.Steps.ContainsKey($s)) { $p = $Card.Steps[$s] -split '\|', 3; Write-Host (' {0,-21} {1,-12} {2,-10} {3}' -f $p[1], $s, $p[0], $p[2]) } }
-    }
-}
 function Pause-Agent { Write-Host ''; Read-Host ' Enter to continue' | Out-Null }
-
-function Invoke-RunMenu {
-    $plan = @(Show-Plan)
-    Write-Host ''
-    $n = Read-Host ' Step number to run (Enter = back)'
-    if (-not $n) { return }
-    $idx = 0
-    if (-not [int]::TryParse($n, [ref]$idx) -or $idx -lt 1 -or $idx -gt $plan.Count) { Bad ' Not a step number.'; return }
-    $p = $plan[$idx - 1]
-    if (-not $p.Available -and -not ($p.Why -like '*override possible*')) { Warn (' Not available: ' + $p.Why); return }
-    switch ($p.Step) {
-        'Precheck'    { Invoke-Check 'Precheck' }
-        'Stage'       { Invoke-Stage }
-        'PreSnapshot' { Invoke-PreSnapshotConfirm }
-        'ExpandDisk'  { Invoke-Extend }
-        'Upgrade'     { Invoke-Upgrade }
-        'Verify'      { Invoke-Check 'Verify' }
-    }
-}
 
 # ============================================================== main
 try {
     if ($Finish) { [void](Invoke-Finish -Force); return }
     if ($Extract) { Export-Result -Auto; return }
 
-    # Extract straight away, so the result file is on the desktop before any menu choice.
+    # Snapshot straight away, so the result file is on the desktop before any key is pressed.
     Show-Header
     try { Export-Result -Auto } catch { Bad (' ERROR: ' + (Protect-Text $_.Exception.Message)) }
-    Write-Host ''
-    Mute ' Menu below for status, steps and history. Q closes this window; the result file stays on the desktop.'
-    Pause-Agent
+    if ($Script:StepsMode) { Pause-Agent; Invoke-StepsMenu; return }
 
     while ($true) {
-        Show-Header
-        Write-Host ' 1 Status    live facts for this host'
-        Write-Host ' 2 Steps     current and future steps, and why each is or is not available'
-        Write-Host ' 3 Run       run a step from here'
-        Write-Host ' 4 History   what this program did on this host'
-        Write-Host ' 5 Export    save the result file on the desktop again (and clipboard)'
-        Write-Host ' 6 Finish    end of maintenance: remove the extractor and its files from this host'
-        Write-Host ' Q Quit      keep files for the next session'
+        Write-Host ''
+        Mute ' Enter = close (the result file stays)   I = inventory columns   R = read again   F = finish (delete this file and its results)'
         $k = Read-Host ' Choice'
-        Show-Header
         try {
             switch -Regex ($k) {
-                '^1$' { Show-Facts (Get-Facts); Show-Inventory; Pause-Agent }
-                '^2$' { [void](Show-Plan); Pause-Agent }
-                '^3$' { Invoke-RunMenu; if ($Card.PublicKey) { Export-Result -Auto }; Pause-Agent }
-                '^4$' { Show-History; Pause-Agent }
-                '^5$' { Export-Result; Pause-Agent }
-                '^6$' { if (Invoke-Finish) { return }; Pause-Agent }
-                '^[qQ]$' { return }
+                '^[iI]$' { Show-Inventory }
+                '^[rR]$' { Show-Header; Export-Result -Auto }
+                '^[fF]$' { if (Invoke-Finish) { return } }
+                default  { return }
             }
-        } catch {
-            # [SEC] Show the sanitized message only; no stack traces or paths with user names.
-            Bad (' ERROR: ' + (Protect-Text $_.Exception.Message))
-            try { Write-Event 'Agent' 'Error' $_.Exception.Message } catch { }
-            Pause-Agent
-        }
+        } catch { Bad (' ERROR: ' + (Protect-Text $_.Exception.Message)) }
     }
 } catch {
     Bad (' ERROR: ' + (Protect-Text $_.Exception.Message))

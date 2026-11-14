@@ -23,7 +23,7 @@ Rules this project follows, how each is implemented, and the honest limits.
 | Store key `store.key` | same | 64 random bytes, DPAPI CurrentUser + entropy |
 | Agent key `agent.key` | same | RSA-3072 private key XML, DPAPI CurrentUser; never in the Windows key container |
 | Extractor results `VMM2\|...` / `VMM_<HOST>_<time>.vmm` | host desktop, clipboard, laptop Desktop/Downloads until imported | RSA-OAEP wraps a random 64-byte key; AES-256-CBC + HMAC-SHA256 |
-| Extractor log | `C:\Temp\VmmAgent` on the host | Sanitized lines only; folder ACL: Administrators, SYSTEM, you (by SID); removed by Finish |
+| Extractor log (steps mode only; a snapshot Extractor writes no log) | `C:\Temp\VmmAgent` on the host | Sanitized lines only; folder ACL: Administrators, SYSTEM, you (by SID); removed by Finish |
 | Reports | `%LOCALAPPDATA%\VmMaintenance\Reports` | Plaintext on purpose (for your manager); no credentials |
 | Inventory | Fleet store (encrypted); export `Reports\Inventory\*.csv` plaintext | Typed values are control-char stripped, length-capped and masked; host-side columns accepted only for known automatic keys, IP must be IPv4 |
 | Day logs | `%LOCALAPPDATA%\VmMaintenance\logs\vmm_<date>.log` | Every line passes `Protect-VmmLogText`, then is encrypted on its own (`E1:` + AES-256-CBC + HMAC with the store key), because host names and IPs are in it. `vmm log -Export` makes a plaintext copy on request only |
@@ -71,4 +71,4 @@ Not verified: mouse input in Windows Terminal and the interactive UI; `Update-Az
 `Set-Clipboard -Path`; `vpncli.exe` output parsing on your Cisco Secure Client version; Foundry Local's
 port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the `icacls` ACL; Pester 5 tests.
 
-_Last updated: 2026-11-14 11:53 UTC_
+_Last updated: 2026-11-14 13:18 UTC_

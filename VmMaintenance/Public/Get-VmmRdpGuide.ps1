@@ -19,7 +19,11 @@ function Get-VmmRdpGuide {
 
     $items = switch ($Step) {
         { $_ -in 'Precheck', 'Verify' } {
-            [pscustomobject]@{ Text = "Preferred: the extractor. Build it with X on this host (or: vmm extractor for one file that works on every host). It is on the clipboard: paste it on the RDP desktop."; Command = $null }
+            $acc = if ($rec) { Get-VmmHostAccess -Record $rec } else { $null }
+            if ($acc -and $acc.Terminal -eq $true) { [pscustomobject]@{ Text = "NO HANDS-ON NEEDED: this host answers over the terminal ($($acc.Why)). Press S on the host (or run the command) and skip the rest of this page."; Command = "vmm snapshot -Name $h" } }
+            elseif (-not $acc -or $null -eq $acc.Terminal) { [pscustomobject]@{ Text = 'FIRST try the terminal: press S on the host (or run the command). Continue below only if it reports no working route.'; Command = "vmm snapshot -Name $h" } }
+            else { [pscustomobject]@{ Text = "The terminal cannot read this host ($($acc.Why)). Hands-on steps:"; Command = $null } }
+            [pscustomobject]@{ Text = "The extractor (snapshot only: it writes one result file on the host desktop, nothing else). Build it with X on this host (or: vmm extractor for one file that works on every host). It is on the clipboard: paste it on the RDP desktop."; Command = $null }
             [pscustomobject]@{ Text = 'On the host: right-click the file > Run with PowerShell. It saves VMM_<HOST>_<time>.vmm on the desktop. Copy that file to this laptop''s Desktop or Downloads: vmm imports it by itself (E in the menu).'; Command = $null }
             [pscustomobject]@{ Text = 'Without copying a file: paste the collector below into PowerShell on the host (same read-only extraction):'; Command = $null }
             $open; $ps

@@ -10,7 +10,9 @@ function Show-VmmHostScreen {
         $w = Get-VmmTimeWindow
         $steps = @(Get-VmmWorkflowDefinition)
         $c = $rec.Check
-        $facts = "$($rec.Name) | $($rec.Platform) | $($rec.Health) | $(if ($c) { "$($c.OS) b$($c.Build) | C: $($c.CFreeGB) GB free | SQL: $($c.Sql) | reboot pending: $($c.PendingReboot)" } else { 'not checked yet' })$(if ($rec.Hold) { ' | ON HOLD' })"
+        $acc = Get-VmmHostAccess -Record $rec
+        $via = if ($acc.Terminal -eq $true) { "terminal: $($acc.Route)" } elseif ($acc.Terminal -eq $false) { 'terminal: NO ROUTE (hands-on)' } else { 'terminal: not tried' }
+        $facts = "$($rec.Name) | $($rec.Platform) | $($rec.Health) | $via | $(if ($c) { "$($c.OS) b$($c.Build) | C: $($c.CFreeGB) GB free | SQL: $($c.Sql) | reboot pending: $($c.PendingReboot)" } else { 'not checked yet' })$(if ($rec.Hold) { ' | ON HOLD' })"
         $rows = foreach ($s in $steps) {
             $st = $rec.Steps.PSObject.Properties[$s.Name]
             $state = if ($st) { $st.Value.Status } else { '-' }
@@ -25,6 +27,9 @@ function Show-VmmHostScreen {
             if (-not $pol.Workable) { $status = "POLICY: $($pol.Why)" }
             elseif ($pol.Warnings) { $status = "WARN MANAGEMENT: $($pol.Warnings -join ' | ') (vmm policy -Notice)" }
         }
+        if (-not $status -and $acc.Terminal -eq $false) { $status = "No terminal route: $($acc.Why)" }
+        if (-not $status -and $null -eq $acc.Terminal) { $status = 'Press S: snapshot from the terminal first. Hands-on (X) only if that fails.' }
+        if (-not $status -and $c -and $c.PSObject.Properties['Problems'] -and $c.Problems) { $status = "Snapshot gaps: $($c.Problems)" }
         if (-not $status -and $c -and $c.PSObject.Properties['Agents'] -and $c.Agents) {
             $ab = @($c.Agents.PSObject.Properties | Where-Object { $_.Value.Status -ne 'OK' } | ForEach-Object { "$($_.Name) $($_.Value.Status)" })
             if ($ab) { $status = "Agents: $($ab -join ', ') (A for detail)" }
@@ -32,8 +37,8 @@ function Show-VmmHostScreen {
         $open = @($rec.Blockers | Where-Object { -not $_.Resolved })
         if ($open) { $status = "Open blocker: $($open[-1].Step) - $($open[-1].Summary) (contact: $($open[-1].Contact))" }
         $r = Invoke-VmmListView -Title $facts -ColumnHeader ('   {0,-12} {1,-10} {2,-7} {3,-8} {4}' -f 'Step', 'Status', 'Mode', 'Allowed', 'Note') `
-             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X', 'I', 'A') `
-             -Help 'Enter run | G guide | X extractor | Y confirm | P import result | B blocker | R resolve | L mstsc | H hold | C check | I inventory | A agents | Esc'
+             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X', 'I', 'A', 'S') `
+             -Help 'Enter run | S snapshot (terminal first) | G guide | X extractor | Y confirm | P import result | B blocker | R resolve | L mstsc | H hold | C check | I inventory | A agents | Esc'
         $sel = $r.Index; $status = ''
         $step = $steps[$r.Index].Name
         switch ($r.Action) {
@@ -56,6 +61,7 @@ function Show-VmmHostScreen {
             'R'     { [void](Invoke-VmmTuiAction -Title 'Resolve blockers' -Action { Resolve-VmmBlocker -HostName $HostName }) }
             'L'     { $t = if ($rec.PSObject.Properties['Fqdn'] -and $rec.Fqdn) { $rec.Fqdn } else { $HostName }; Start-Process mstsc.exe -ArgumentList "/v:$t"; $status = "mstsc started for $t (or open it in RDM)" }
             'H'     { $rec.Hold = -not $rec.Hold; Save-VmmStore -Store $store; $status = "Hold = $($rec.Hold)" }
+            'S'     { [void](Invoke-VmmTuiAction -Title "Snapshot $HostName (terminal first)" -Action { Invoke-VmmSnapshot -Name $HostName }) }
             'C'     { [void](Invoke-VmmTuiAction -Title "Check $HostName" -Action { Invoke-VmmFleetCheck -Name $HostName }) }
             'I'     { Show-VmmInventoryScreen -HostName $HostName }
             'A'     { [void](Invoke-VmmTuiAction -Title "Agent health - $HostName" -Action { Get-VmmAgentHealth -HostName $HostName }) }

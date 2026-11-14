@@ -87,7 +87,13 @@
     Fleet = @{
         Throttle      = 16                          # hosts checked in parallel
         TimeoutMs     = 1500                        # ping / TCP connect timeout
-        Ports         = @(135, 445, 3389, 5985)     # RPC, SMB, RDP, WinRM
+        Ports         = @(135, 445, 3389, 5985)     # RPC, SMB, RDP, WinRM (route ports are always probed too)
+        # Terminal routes tried in this order; the first that answers reads the host. All read-only.
+        #   DCOM = WMI over RPC (TCP 135 + dynamic ports), WinRM = TCP 5985, WinRM-SSL = TCP 5986
+        # Hands-on (the Extractor in RDP/RDM) is proposed only for hosts where every route fails.
+        Routes        = @('DCOM', 'WinRM', 'WinRM-SSL')
+        AccessMaxAgeHours = 24                      # older access results count as "not tried": try the terminal again
+        WindowsLicence = $true                      # read the Windows licence state ($false = skip: the query wakes the Software Protection service on the host for a moment)
         SoftwareWatch = @('Microsoft SQL Server*')  # installed software to report (wildcards)
     }
 
@@ -197,6 +203,12 @@
         Branch       = 'main'    # branch 'vmm update' installs from
         SourcePath   = ''        # local git clone (vmm clone) used by update and pull requests
         CheckOnStart = $true     # one quick call at start: shows 'Update available' in the menu
+    }
+
+    Extractor = @{
+        # The .ps1 run by hand on a host the terminal cannot read. Default: SNAPSHOT ONLY - it reads the host and
+        # writes one encrypted result file on the host desktop; the steps code is cut out of the file.
+        AllowSteps = $false      # $true = a per-host extractor (X on a host) also carries the workflow steps
     }
 
     # Feature flags: turn whole areas on or off without touching code

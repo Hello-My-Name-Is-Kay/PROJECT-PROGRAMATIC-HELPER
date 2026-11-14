@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, checkpoint snapshots and prune, blockers, daily target, Extractor steps. SECTIONS: OS policy:7-13 | Steps:14-32 | Time rules EuropeLisbon:33-53 | Snapshot after every success:54-82 | Blockers:83-95 | Daily target:96-101 | Inside the host the Extracto:102-121 -->
+<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, checkpoint snapshots and prune, blockers, daily target, Extractor steps. SECTIONS: OS policy:7-13 | Steps:14-32 | Time rules EuropeLisbon:33-53 | Snapshot after every success:54-82 | Blockers:83-95 | Daily target:96-101 | Inside the host the Extracto:102-122 -->
 # Workflow
 
 How one host moves from "imported" to "done", what the time rules allow, where snapshots
@@ -101,7 +101,8 @@ day when one of `Target.CountedSteps` (default Stage, Verify) succeeded that day
 
 ## Inside the host: the Extractor
 
-The Extractor first extracts and saves `VMM_<HOST>_<time>.vmm` on the desktop, then shows the same six steps for its host with: status (from the laptop at export time, then
+Off by default: the Extractor is snapshot-only unless `Extractor.AllowSteps` is true, and then only the per-host
+Extractor (`X`) carries steps. With steps on, it first saves `VMM_<HOST>_<time>.vmm` on the desktop, then shows the same six steps for its host with: status (from the laptop at export time, then
 from its own log), whether the step is available **now**, and **why**. It evaluates locally: Lisbon
 time rule, admin rights, rollback snapshot done, staged files present and hash-verified, C: free space
 against `Lansweeper.OkGB` / `CriticalGB`, pending reboot, and whether the plan is for this host.
@@ -118,4 +119,4 @@ Change steps need the window or an override (typed `OVERRIDE` + reason), and the
 confirmation. The export carries every logged event; the laptop adds them to the host history and
 records host-side overrides in the daily report.
 
-_Last updated: 2026-11-14 04:53 UTC_
+_Last updated: 2026-11-14 13:18 UTC_

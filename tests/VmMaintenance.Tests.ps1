@@ -295,6 +295,73 @@ Describe 'Manager and extractor' {
     }
 }
 
+Describe 'Non-invasive snapshot, terminal first' {
+    BeforeAll {
+        $script:AgentText = [IO.File]::ReadAllText((Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'))
+        $b = $script:AgentText.IndexOf('# VMM-STEPS-BEGIN'); $e = $script:AgentText.IndexOf('# VMM-STEPS-END')
+        $script:SnapText = $script:AgentText.Substring(0, $b) + $script:AgentText.Substring($e + 15)
+    }
+    It 'the snapshot build parses and holds no code that changes a host' {
+        $err = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($script:SnapText, [ref]$null, [ref]$err)
+        @($err).Count | Should -Be 0
+        foreach ($w in 'diskpart', 'Start-Process', 'New-Item', 'Set-Content', 'Add-Content', 'icacls', 'Copy-Item', 'Set-ItemProperty', 'New-ItemProperty', 'Set-Service', 'Start-Service', 'Stop-Service', 'Restart-Computer', 'Win32_Product', 'Invoke-WebRequest', 'Net.WebClient', 'Invoke-Expression') {
+            $script:SnapText | Should -Not -Match ([regex]::Escape($w))
+        }
+        # the one write: the result file on the desktop
+        ([regex]::Matches($script:SnapText, 'WriteAllText')).Count | Should -Be 1
+    }
+    It 'steps run only when the block is in the file and the card says Steps' {
+        $script:AgentText | Should -Match "Mode = 'Snapshot'"
+        $script:AgentText | Should -Match "\(\`$Card\.Mode -eq 'Steps'\) -and \[bool\]\(Get-Command Invoke-StepsMenu"
+        $steps = $script:AgentText.Substring($script:AgentText.IndexOf('# VMM-STEPS-BEGIN'))
+        $steps | Should -Match 'function Invoke-Extend'
+        $steps | Should -Match 'function Invoke-Upgrade'
+    }
+    It 'a read that fails becomes a Problem line and the rest still goes' {
+        $ast = [System.Management.Automation.Language.Parser]::ParseInput($script:SnapText, [ref]$null, [ref]$null)
+        foreach ($n in 'Protect-Text', 'Add-Problem', 'Get-Facts', 'Test-Admin') {
+            $fn = $ast.FindAll({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq $n }, $true) | Select-Object -First 1
+            . ([scriptblock]::Create($fn.Extent.Text))
+        }
+        function Test-Admin { $false }
+        function Get-WmiObject { param($Class, $Filter, $ErrorAction)
+            if ($Class -eq 'Win32_LogicalDisk') { throw 'Access denied' }
+            if ($Class -eq 'Win32_OperatingSystem') { return [pscustomobject]@{ Caption = 'Microsoft Windows Server 2016 Standard'; Version = '10.0.14393'; BuildNumber = '14393'; ServicePackMajorVersion = 0; OSLanguage = 1036 } }
+            [pscustomobject]@{ Manufacturer = 'VMware, Inc.'; Model = 'VMware7,1' }
+        }
+        $Script:Problems = @(); $Card = @{ TargetFolder = 'C:\Temp' }
+        $f = Get-Facts
+        $f.OS | Should -Be 'Microsoft Windows Server 2016 Standard'
+        $f.Lang | Should -Be 'fr-FR'
+        $f.Platform | Should -Be 'VMware'
+        $f.CFreeGB | Should -BeNullOrEmpty
+        @($Script:Problems | Where-Object { $_ -match '^C: drive: Access denied' }).Count | Should -Be 1
+    }
+    It 'the fleet check tries DCOM, WinRM and WinRM-SSL and records the route' {
+        $t = InModuleScope VmMaintenance { Get-VmmHostCheckScript }
+        $e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($t, [ref]$null, [ref]$e)
+        @($e).Count | Should -Be 0
+        $t | Should -Match "'DCOM' = 135; 'WinRM' = 5985; 'WinRM-SSL' = 5986"
+        $t | Should -Match 'New-CimSessionOption -Protocol Wsman'
+        $t | Should -Match '\$r\.Route = \$route'
+        foreach ($w in 'Set-Item', 'TrustedHosts', 'Enable-PSRemoting', 'Invoke-Command', 'Win32_Product', 'Create\(') { $t | Should -Not -Match $w }
+    }
+    It 'access state: route works, no route, not tried' {
+        $r = InModuleScope VmMaintenance {
+            $saved = $script:VmmConfig; $script:VmmConfig = @{ Log = @{ ToFile = $false } }
+            $now = (Get-Date).ToUniversalTime()
+            $a = New-VmmHostRecord -Name 'acc-a'; $a | Add-Member -NotePropertyName Access -NotePropertyValue ([pscustomobject]@{ At = $now.AddHours(-1).ToString('o'); Route = 'WinRM'; Why = ''; Tried = '' })
+            $b = New-VmmHostRecord -Name 'acc-b'; $b | Add-Member -NotePropertyName Access -NotePropertyValue ([pscustomobject]@{ At = $now.AddHours(-1).ToString('o'); Route = 'None'; Why = 'No terminal route'; Tried = '' })
+            $c = New-VmmHostRecord -Name 'acc-c'
+            $d = New-VmmHostRecord -Name 'acc-d'; $d | Add-Member -NotePropertyName Access -NotePropertyValue ([pscustomobject]@{ At = $now.AddHours(-80).ToString('o'); Route = 'DCOM'; Why = ''; Tried = '' })
+            $x = @($a, $b, $c, $d | ForEach-Object { Get-VmmHostAccess -Record $_ }); $script:VmmConfig = $saved; $x }
+        $r[0].Terminal | Should -BeTrue;  $r[0].Route | Should -Be 'WinRM'
+        $r[1].Terminal | Should -BeFalse; $r[1].Why | Should -Match 'No terminal route'
+        $r[2].Terminal | Should -BeNullOrEmpty
+        $r[3].Terminal | Should -BeNullOrEmpty; $r[3].Why | Should -Match 'try again'
+    }
+}
+
 Describe 'External host list (CSV: hostname or FQDN, domain, IP)' {
     BeforeAll {
         $script:ip1 = ('192.0.2', '11') -join '.'; $script:ip2 = ('192.0.2', '12') -join '.'; $script:ip3 = ('198.51.100', '7') -join '.'

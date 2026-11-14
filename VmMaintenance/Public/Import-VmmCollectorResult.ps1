@@ -40,12 +40,13 @@ function Import-VmmCollectorResult {
 
     $clean = { param($v, [int]$max = 200) $t = ("$v" -replace '[\x00-\x1F\x7F]', ' ').Trim(); if ($t.Length -gt $max) { $t = $t.Substring(0, $max) }; Protect-VmmLogText $t }
     $num = { param($v) $d = 0.0; if ([double]::TryParse("$v", [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$d) -and $d -ge 0 -and $d -lt 1e6) { $d } else { $null } }
-    $f = @{}; $events = @(); $packages = @(); $invIn = @{}; $agIn = @{}
+    $f = @{}; $events = @(); $packages = @(); $invIn = @{}; $agIn = @{}; $problems = @()
     foreach ($l in ($text -split "`n" | Select-Object -First 2000)) {
         $i = $l.IndexOf('='); if ($i -lt 1) { continue }
         $k = $l.Substring(0, $i); $v = $l.Substring($i + 1)
         if ($k -eq 'Event') { $events += , ($v -split '\|', 4) }
         elseif ($k -eq 'Package') { $packages += & $clean $v 120 }
+        elseif ($k -eq 'Problem') { if ($problems.Count -lt 30) { $problems += & $clean $v 160 } }
         elseif ($k -match '^Inv\.([A-Za-z0-9]{1,40})$') { $invIn[$Matches[1]] = $v }
         elseif ($k -match '^Agent\.([A-Za-z0-9]{1,40})$') { $agIn[$Matches[1]] = $v }
         elseif ($k -match '^[A-Za-z]{1,20}$') { $f[$k] = $v }
@@ -65,6 +66,7 @@ function Import-VmmCollectorResult {
         PendingReboot = $(if ($f['PendingReboot'] -eq 'Yes') { 'Yes' } else { 'No' })
         Sql = $(if ($f['Sql']) { & $clean $f['Sql'] 300 } else { 'none' }); Software = (($packages | Select-Object -First 20) -join '; ')
         Error = $null; Via = $via; Inv = $null; Agents = $null
+        Route = 'Hands-on'; Problems = ($problems -join ' | ')   # reads that failed on the host; the rest of the snapshot is complete
     }
     # Inventory columns: only Auto keys from the field list, cleaned and length-capped; IP must be IPv4
     $auto = @(try { Get-VmmInventoryCatalog | Where-Object Source -eq 'Auto' | ForEach-Object Key } catch { })
@@ -120,5 +122,6 @@ function Import-VmmCollectorResult {
     } elseif (-not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $check.OS; Lang = $check.Lang; Build = $check.Build; Sql = $check.Sql } }
     Save-VmmStore -Store $store
     Write-VmmLog "$($rec.Name): facts recorded via $via ($($check.OS), C: $($check.CFreeGB) GB free), $added new host event(s)." -Level Success
+    if ($problems) { Write-VmmLog "$($rec.Name): $($problems.Count) read(s) failed on the host, those fields are empty: $($problems -join ' | ')" -Level Warn }
     if ($PassThru) { [pscustomobject]@{ Host = $rec.Name; Step = $Step; Via = $via; Events = $added } }
 }

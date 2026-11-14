@@ -1,7 +1,12 @@
 function Get-VmmHostCheckScript {
-    # Self-contained check run per host inside a runspace. Read-only: DNS, ping, TCP ports, then CIM over
-    # DCOM (same transport as Get-WmiObject) for OS, model, C:, Azure agent, SQL instances, pending
-    # reboot and watched software (registry Uninstall keys - never Win32_Product, which triggers MSI repairs).
+    # Self-contained snapshot of one host, run inside a runspace. Read-only: DNS, ping, TCP ports, then CIM for
+    # OS, model, C:, Azure agent, SQL instances, pending reboot and watched software (registry Uninstall keys -
+    # never Win32_Product, which triggers MSI repairs).
+    # Terminal routes are tried in order (Fleet.Routes): DCOM (TCP 135, same transport as Get-WmiObject), WinRM
+    # (TCP 5985), WinRM-SSL (TCP 5986). The first that answers is used and recorded in Route; every failure is
+    # kept in Tried. Route = None means hands-on (the Extractor over RDP/RDM) is the only way left.
+    # Nothing is written, started, stopped or configured on the host, and nothing is changed on this laptop
+    # (no TrustedHosts edit, no firewall change).
     # Agent health uses Get-AgentVerdict from the Extractor (Resources\VmmHostAgent.ps1): one set of rules.
     [CmdletBinding()]
     param()
@@ -10,7 +15,7 @@ param($Name, $A)
 # VMM-AGENTVERDICT
 $r = [ordered]@{
     Name = $Name; CheckedAt = (Get-Date).ToUniversalTime().ToString('o'); IPv4 = $null; Ping = 'No'; Ports = ''
-    Reachable = 'No'; OS = $null; Lang = $null; Version = $null; Build = $null; SP = $null; LastBoot = $null
+    Reachable = 'No'; Route = 'None'; Tried = ''; OS = $null; Lang = $null; Version = $null; Build = $null; SP = $null; LastBoot = $null
     Manufacturer = $null; Model = $null; Platform = $null; CTotalGB = $null; CFreeGB = $null
     PendingReboot = $null; Sql = ''; SqlLang = ''; Software = ''; Inv = $null; Agents = $null; AgentSummary = ''; Error = $null
 }
@@ -32,26 +37,58 @@ try {
 try { $png = New-Object System.Net.NetworkInformation.Ping; if ($png.Send($conn, $A.TimeoutMs).Status -eq 'Success') { $r.Ping = 'Yes' } } catch { } finally { if ($png) { $png.Dispose() } }
 
 $open = @()
-foreach ($port in $A.Ports) {
+$routePort = @{ 'DCOM' = 135; 'WinRM' = 5985; 'WinRM-SSL' = 5986 }
+$order = @(@($A.Routes) | Where-Object { $routePort.ContainsKey("$_") }); if (-not $order) { $order = @('DCOM', 'WinRM', 'WinRM-SSL') }
+$probe = @(@($A.Ports) + @($order | ForEach-Object { $routePort[$_] }) | ForEach-Object { [int]$_ } | Sort-Object -Unique)
+foreach ($port in $probe) {
     $c = New-Object System.Net.Sockets.TcpClient
     try { $ar = $c.BeginConnect($conn, [int]$port, $null, $null); if ($ar.AsyncWaitHandle.WaitOne($A.TimeoutMs) -and $c.Connected) { $open += $port } } catch { } finally { $c.Close() }
 }
 $r.Ports = $open -join ','
 & $say ("ping {0}, open ports: {1}" -f $r.Ping, $(if ($open) { $open -join ',' } else { 'none' }))
-if ($open -notcontains 135) {
-    & $say 'stopped: TCP 135 (RPC) closed, WMI checks skipped'
+$routes = @($order | Where-Object { $open -contains $routePort[$_] })
+if (-not $routes) {
+    & $say 'stopped: no terminal route open (TCP 135, 5985, 5986 all closed)'
     $r.Reachable = if ($r.Ping -eq 'Yes' -or $open) { 'Partial' } else { 'No' }
-    $r.Error = 'TCP 135 (RPC) closed: WMI/DCOM checks skipped. Host down, firewall, or RDP-only access - use the RDP collector.'
+    $r.Tried = (@($order | ForEach-Object { "${_}: TCP $($routePort[$_]) closed" }) -join ' | ')
+    $r.Error = if ($r.Reachable -eq 'No') { 'No answer at all (no ping, no open port): host down, wrong address, or not reachable from this network/VPN.' }
+               else { 'No terminal route: TCP 135 (WMI), 5985 and 5986 (WinRM) are closed from this laptop. Hands-on needed: run the Extractor on the host (RDP/RDM).' }
     return [pscustomobject]$r
 }
 
 $s = $null
 try {
-    & $say 'connecting over WMI/DCOM'
-    $sp = @{ ComputerName = $conn; SessionOption = (New-CimSessionOption -Protocol Dcom); ErrorAction = 'Stop'; OperationTimeoutSec = 30 }
-    if ($A.Credential) { $sp.Credential = $A.Credential }
-    $s = New-CimSession @sp
-    $os = Get-CimInstance -CimSession $s -ClassName Win32_OperatingSystem -ErrorAction Stop
+    # Try each open route in order; the first that answers a real query wins.
+    $os = $null; $tried = @()
+    foreach ($route in $routes) {
+        & $say "trying $route (TCP $($routePort[$route]))"
+        try {
+            $opt = switch ($route) { 'DCOM' { New-CimSessionOption -Protocol Dcom } 'WinRM' { New-CimSessionOption -Protocol Wsman } 'WinRM-SSL' { New-CimSessionOption -UseSsl } }
+            $sp = @{ ComputerName = $conn; SessionOption = $opt; ErrorAction = 'Stop'; OperationTimeoutSec = 30 }
+            if ($route -eq 'WinRM-SSL') { $sp.Port = 5986 }
+            if ($A.Credential) { $sp.Credential = $A.Credential }
+            $s = New-CimSession @sp
+            $os = Get-CimInstance -CimSession $s -ClassName Win32_OperatingSystem -ErrorAction Stop
+            $r.Route = $route
+            & $say "$route answered"
+            break
+        } catch {
+            $m = "$($_.Exception.Message)" -replace '\s+', ' '
+            $tried += "${route}: $m"
+            & $say "$route failed: $m"
+            if ($s) { Remove-CimSession -CimSession $s -ErrorAction SilentlyContinue; $s = $null }
+        }
+    }
+    $r.Tried = $tried -join ' | '
+    if (-not $s) {
+        $r.Reachable = 'Partial'
+        $r.Error = 'Terminal access failed on every open route (' + ($routes -join ', ') + '): ' + $r.Tried
+        return [pscustomobject]$r
+    }
+    if ($A.AccessOnly) {
+        $r.Reachable = 'Yes'; $r.OS = $os.Caption; $r.Build = $os.BuildNumber
+        return [pscustomobject]$r
+    }
     $cs = Get-CimInstance -CimSession $s -ClassName Win32_ComputerSystem -ErrorAction Stop
     $c  = Get-CimInstance -CimSession $s -ClassName Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
     $r.Reachable = 'Yes'
@@ -104,11 +141,14 @@ try {
     $inv.Domain = if ($cs.PartOfDomain) { "$($cs.Domain)" } else { "WORKGROUP ($($cs.Domain))" }
     $inv.DomainController = if ($cs.DomainRole -ge 4) { 'Yes' } else { 'No' }
     $names = @{ 0 = 'Unlicensed'; 1 = 'Licensed'; 2 = 'Grace period (OOB)'; 3 = 'Grace period (OOT)'; 4 = 'Grace period (non-genuine)'; 5 = 'Notification'; 6 = 'Grace period (extended)' }
-    & $say 'Windows licence query (can take up to 90 s)'
-    try {
-        $lp = @(Get-CimInstance -CimSession $s -ClassName SoftwareLicensingProduct -Filter "Name LIKE 'Windows%' AND PartialProductKey IS NOT NULL" -Property LicenseStatus -OperationTimeoutSec 90 -ErrorAction Stop)
-        $inv.WindowsLicense = if ($lp.Count) { $names[[int]$lp[0].LicenseStatus] } else { 'No product key installed' }
-    } catch { }
+    # The licence query wakes the Software Protection service on the host for a moment: Fleet.WindowsLicence = $false skips it
+    if ($A.Licence -ne $false) {
+        & $say 'Windows licence query (can take up to 90 s)'
+        try {
+            $lp = @(Get-CimInstance -CimSession $s -ClassName SoftwareLicensingProduct -Filter "Name LIKE 'Windows%' AND PartialProductKey IS NOT NULL" -Property LicenseStatus -OperationTimeoutSec 90 -ErrorAction Stop)
+            $inv.WindowsLicense = if ($lp.Count) { $names[[int]$lp[0].LicenseStatus] } else { 'No product key installed' }
+        } catch { & $say "licence not read: $($_.Exception.Message)" }
+    }
     # Installed programs (name + version) from both Uninstall keys, read once (agent versions, watch list)
     $cache = @{}
     $getApps = {
@@ -195,7 +235,7 @@ try {
     }
 } catch {
     if ($r.Reachable -ne 'Yes') { $r.Reachable = 'Partial' }
-    $r.Error = "CIM/DCOM: $($_.Exception.Message)"
+    $r.Error = "$($r.Route): $($_.Exception.Message)"
     & $say "WMI error: $($_.Exception.Message)"
 } finally { if ($s) { Remove-CimSession -CimSession $s -ErrorAction SilentlyContinue } }
 [pscustomobject]$r

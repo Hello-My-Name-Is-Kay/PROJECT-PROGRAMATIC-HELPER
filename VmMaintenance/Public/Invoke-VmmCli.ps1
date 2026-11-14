@@ -29,7 +29,9 @@ function Invoke-VmmCli {
     $map = [ordered]@{
         'ui'       = @{ F = 'Start-VmmConsole';           D = 'open the terminal UI (default)' }
         'status'   = @{ F = 'Get-VmmFleet';               D = 'fleet table            [-Filter srv*]' }
-        'check'    = @{ F = 'Invoke-VmmFleetCheck';       D = 'parallel read-only check [-Name a,b] [-Azure]' }
+        'snapshot' = @{ F = 'Invoke-VmmSnapshot';         D = 'read-only snapshot, terminal first; builds the extractor only for hosts with no route [-Name a,b]' }
+        'access'   = @{ F = 'Test-VmmHostAccess';         D = 'which terminal route works per host (DCOM, WinRM, WinRM-SSL), who needs hands-on [-Name a,b]' }
+        'check'    = @{ F = 'Invoke-VmmFleetCheck';       D = 'parallel read-only check [-Name a,b] [-Azure] [-AccessOnly]' }
         'import'   = @{ F = 'Import-VmmFleet';            D = 'add hosts              -Path hosts.csv (hostname/FQDN, domain, IP) | list.txt [-Preview] [-Update] [-RemoveSource] | -Name a,b' }
         'remove'   = @{ F = 'Remove-VmmFleetHost';        D = 'remove hosts           -Name a,b' }
         'plan'     = @{ F = 'Get-VmmQueue';               D = 'work queue: next step per host, allowed now?' }

@@ -1,6 +1,6 @@
 @{
     RootModule           = 'VmMaintenance.psm1'
-    ModuleVersion        = '2.9.0'
+    ModuleVersion        = '2.10.0'
     GUID                 = '63eba97e-c6ef-4ccb-b686-dd907935872a'
     Author               = 'Kay'
     Description          = 'Fleet maintenance console for Windows servers and Azure VMs: parallel checks, time-window rules, staging gate, guided RDP steps, checkpoint snapshots, blocker reports, daily CSV/HTML export. Encrypted local store; no stored credentials.'
@@ -41,6 +41,7 @@
         'Invoke-VmmMaintenance'
         'Invoke-VmmNextStep'
         'Invoke-VmmPrune'
+        'Invoke-VmmSnapshot'
         'Invoke-VmmWorkflowStep'
         'Mount-VmmUpgradeMedia'
         'New-VmmBlockerReport'
@@ -59,6 +60,7 @@
         'Set-VmmSetting'
         'Start-VmmConsole'
         'Start-VmmSetupWizard'
+        'Test-VmmHostAccess'
         'Test-VmmStagingSource'
         'Update-VmmFromGitHub'
     )
