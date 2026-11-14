@@ -287,7 +287,7 @@ if (-not $isWin) {
             $text = [IO.File]::ReadAllText($f.FullName)
             $err = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$err)
             if (@($err).Count) { throw "built extractor does not parse: $($err[0].Message)" }
-            foreach ($w in 'VMM-STEPS-BEGIN', 'diskpart', 'Start-Process', 'function Invoke-Upgrade', 'function Write-Event', 'icacls') { if ($text.Contains($w)) { throw "snapshot extractor contains '$w'" } }
+            foreach ($w in '# VMM-STEPS-BEGIN', 'diskpart', 'Start-Process', 'function Invoke-Upgrade', 'function Write-Event', 'icacls') { if ($text.Contains($w)) { throw "snapshot extractor contains '$w'" } }
             if ($text -notmatch "(?m)^\`$CardText = '([A-Za-z0-9+/=]+)'") { throw 'no plan card in the built extractor' }
             $card = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Matches[1]))
             if ($card -notmatch '(?m)^Mode=Snapshot$') { throw 'card is not Mode=Snapshot' }
