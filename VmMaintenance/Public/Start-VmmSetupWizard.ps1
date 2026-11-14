@@ -25,32 +25,63 @@ function Start-VmmSetupWizard {
 
     $answers = [ordered]@{}
     $cur = { param($k, $d) try { $v = Get-VmmSetting $k -Default $d; if ($v -is [array]) { $v -join ',' } else { "$v" } } catch { "$d" } }
+    # What each rule accepts, shown with the question when it is not obvious and after every invalid answer
+    $accepts = @{
+        time   = 'a 24-hour time HH:mm, e.g. 08:00 or 17:00'
+        int    = 'a whole number from 1 to 9999'
+        bool   = 'yes or no (y/n, true/false)'
+        share  = 'a network path like \\server\share\folder, or Enter to leave it empty'
+        url    = 'an address starting with http:// or https://, or Enter to leave it empty'
+        tz     = 'a city or country (Lisbon, London, Portugal), a Windows id (GMT Standard Time) or part of a zone name (UTC+01:00)'
+        choice = 'one of the options in brackets (upper/lower case does not matter)'
+    }
     $ask = {
         param($key, $question, $default, [string]$rule = 'any', [string[]]$choices)
         $d = & $cur $key $default
+        $tries = 0
         while ($true) {
             if ($AcceptDefaults) { $a = $d } else {
                 $hint = if ($choices) { ' (' + ($choices -join ' | ') + ')' } else { '' }
                 $a = Read-Host ("  {0}{1} [{2}]" -f $question, $hint, $d)
                 if ([string]::IsNullOrWhiteSpace($a)) { $a = $d } else { $a = $a.Trim() }
             }
-            $ok = switch ($rule) {
-                'time'  { $a -match '^([01]\d|2[0-3]):[0-5]\d$' }
-                'int'   { $a -match '^\d{1,4}$' -and [int]$a -ge 1 }
-                'bool'  { $a -match '^(?i)(true|false|yes|no|y|n)$' }
-                'share' { $a -eq '' -or $a -match '^\\\\[^\\]+\\[^\\]+' }
-                'tz'    { try { [void][TimeZoneInfo]::FindSystemTimeZoneById($a); $true } catch { $false } }
-                'url'   { $a -eq '' -or $a -match '^https?://[^\s]+$' }
-                'choice' { $choices -contains $a }
-                default { $true }
+            if ($a -eq '?') { Write-VmmLog "  Accepted: $($accepts[$rule]). Enter keeps [$d]." -Level Info; continue }
+            $ok = $false; $retry = $false   # 'continue' inside switch would only leave the switch
+            switch ($rule) {
+                'time'  { if ($a -match '^(\d{1,2})[:h\.]?(\d{2})$' -and [int]$Matches[1] -le 23 -and [int]$Matches[2] -le 59) { $a = '{0:D2}:{1}' -f [int]$Matches[1], $Matches[2]; $ok = $true } }
+                'int'   { $ok = $a -match '^\d{1,4}$' -and [int]$a -ge 1 }
+                'bool'  { if ($a -match '^(?i)(true|false|yes|no|y|n|1|0|on|off|sim|nao|s)$') { $a = [string]($a -match '^(?i)(true|yes|y|1|on|sim|s)$'); $ok = $true } }
+                'share' { $ok = $a -eq '' -or $a -match '^\\\\[^\\]+\\[^\\]+' }
+                'url'   { $ok = $a -eq '' -or $a -match '^https?://[^\s]+$' }
+                'choice' { $hit = @($choices | Where-Object { $_ -ieq $a }); if ($hit.Count -eq 1) { $a = $hit[0]; $ok = $true } }
+                'tz' {
+                    $z = Resolve-VmmTimeZone -Text $a
+                    if ($z.Id) {
+                        $tzi = [TimeZoneInfo]::FindSystemTimeZoneById($z.Id)
+                        if ($z.Id -ne $a) { Write-VmmLog "  '$a' -> $($z.Id)  $($tzi.DisplayName)" -Level Success }
+                        $a = $z.Id; $ok = $true
+                    } elseif ($z.Matches.Count -and -not $AcceptDefaults) {
+                        Write-VmmLog "  '$a' matches several time zones:" -Level Warn
+                        for ($i = 0; $i -lt $z.Matches.Count; $i++) { Write-Host ("    {0,2}. {1,-34} {2}" -f ($i + 1), $z.Matches[$i].Id, $z.Matches[$i].DisplayName) }
+                        $n = Read-Host '  Number (Enter = type again)'
+                        $k = 0
+                        if ([int]::TryParse($n, [ref]$k) -and $k -ge 1 -and $k -le $z.Matches.Count) { $a = $z.Matches[$k - 1].Id; $ok = $true } else { $retry = $true }
+                    }
+                }
+                default { $ok = $true }
             }
+            if ($retry) { continue }
             if ($ok) {
-                if ($rule -eq 'bool') { $a = [string]($a -match '^(?i)(true|yes|y)$') }
                 if ($a -ne $d -or $AcceptDefaults) { $answers[$key] = $a }
                 return $a
             }
-            Write-VmmLog "  '$a' is not valid here ($rule$(if ($choices) { ': ' + ($choices -join ', ') })). Try again." -Level Warn
+            $tries++
             if ($AcceptDefaults) { return $d }
+            if ($tries -ge 3) {
+                Write-VmmLog "  Keeping [$d] after 3 tries. Change it later with: vmm setup, or Settings (9)." -Level Warn
+                return $d
+            }
+            Write-VmmLog "  '$a' was not accepted. Expected: $($accepts[$rule])$(if ($choices) { ': ' + ($choices -join ', ') }). Enter keeps [$d]; ? shows this help." -Level Warn
         }
     }
     $title = { param($t, $why) Write-Host ''; Write-VmmLog "== $t ==" -Level Info; foreach ($l in $why) { Write-VmmLog "  $l" -Level Muted } }
@@ -58,7 +89,7 @@ function Start-VmmSetupWizard {
 
     try {
         if ($Page -eq 'All') {
-            & $title 'VmMaintenance setup' @('Every answer can be changed later: vmm setup, or Settings (9) in the console.')
+            & $title 'VmMaintenance setup' @('Enter keeps the value in [brackets]. Type ? at any question to see what it accepts.', 'Every answer can be changed later: vmm setup, or Settings (9) in the console.')
             Write-VmmLog '  IMPORTANT - read before continuing:' -Level Warn
             Write-VmmLog '  1. Fleet data is encrypted with a key that only YOUR Windows account on THIS laptop can open (DPAPI).' -Level Warn
             Write-VmmLog '     A password reset by an administrator or a new profile makes it unreadable. Daily exports are your backup.' -Level Warn
@@ -72,7 +103,7 @@ function Start-VmmSetupWizard {
         }
         if (& $want 'Rules') {
             & $title 'Working rules' @('Business hours: only read-only checks and staging into C:\Temp. Outside them: all steps.')
-            [void](& $ask 'Schedule.TimeZoneId' 'Time zone (Windows id; Lisbon = GMT Standard Time)' 'GMT Standard Time' 'tz')
+            [void](& $ask 'Schedule.TimeZoneId' 'Time zone (city like Lisbon, or Windows id; Enter keeps Lisbon/London time)' 'GMT Standard Time' 'tz')
             [void](& $ask 'Schedule.BusinessStart' 'Business hours start' '08:00' 'time')
             [void](& $ask 'Schedule.BusinessEnd' 'Business hours end' '17:00' 'time')
             [void](& $ask 'Schedule.AllowChangesOffHoursWeekdays' 'Allow changes on weekdays outside business hours' 'True' 'bool')

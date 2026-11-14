@@ -31,6 +31,16 @@ function Set-VmmSetting {
         else { $Value = $v }
     }
 
+    # Time zone: accept 'Lisbon', 'London', 'Europe/Lisbon'... and store the Windows id
+    if ($Name -eq 'Schedule.TimeZoneId') {
+        $z = Resolve-VmmTimeZone -Text "$Value"
+        if (-not $z.Id) {
+            $c = if ($z.Matches) { ' Candidates: ' + (($z.Matches | ForEach-Object Id) -join ', ') } else { '' }
+            throw (New-VmmErrorRecord -Activity "Unknown time zone '$Value'." -Cause "Not a city, country or Windows time zone id this tool knows.$c" `
+                -Fix "Use a city (Lisbon, London), a Windows id ('GMT Standard Time') or run: vmm setup -Page Rules" -Category InvalidArgument -ErrorId 'VmmTimeZone')
+        }
+        $Value = $z.Id
+    }
     $node = $cfg; $parts = $Name.Split('.')
     for ($i = 0; $i -lt $parts.Count - 1; $i++) {
         if (-not $node.Contains($parts[$i]) -or $node[$parts[$i]] -isnot [System.Collections.IDictionary]) { $node[$parts[$i]] = @{} }

@@ -14,6 +14,8 @@ function Get-VmmTimeWindow {
     param([datetime]$At = (Get-Date))
 
     $tzId = Get-VmmSetting 'Schedule.TimeZoneId' -Default 'GMT Standard Time'
+    $r = Resolve-VmmTimeZone -Text "$tzId"   # also accepts 'Lisbon', 'London', IANA ids
+    if ($r.Id) { $tzId = $r.Id }
     try { $tz = [TimeZoneInfo]::FindSystemTimeZoneById($tzId) }
     catch {
         throw (New-VmmErrorRecord -Activity "Unknown time zone id '$tzId'." -Target 'Schedule.TimeZoneId' -Exception $_.Exception `

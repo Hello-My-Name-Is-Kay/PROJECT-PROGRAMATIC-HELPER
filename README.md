@@ -1,7 +1,7 @@
 <!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host agent for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; TL;DR at the top. SECTIONS: TLDR:6-21 | Overview:22-37 | At a glance:38-54 | Quick start:55-73 | Host agent the program on th:74-92 | Console UI:93-123 | CLI:124-163 | GitHub integration:164-180 | OS policy:181-195 | Workflow per host:196-209 | Directory tree:210-240 | Where your data lives never :241-254 | Testing:255-267 | Errors:268-281 | Future your work AI model wi:282-291 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.2.0 &nbsp;|&nbsp; **This file:** 2026-11-14
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.2.1 &nbsp;|&nbsp; **This file:** 2026-11-14
 
 ## TL;DR
 
@@ -288,4 +288,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 03:53 UTC_
+_Last updated: 2026-11-14 04:02 UTC_

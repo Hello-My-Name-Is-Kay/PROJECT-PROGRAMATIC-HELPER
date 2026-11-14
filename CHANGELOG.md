@@ -1,5 +1,12 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 220 - 2026-11-14:4-11 | 210 - 2026-11-14:12-29 | 200 - 2026-11-14:30-35 | 100 - 2026-11-14:36-40 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 221 - 2026-11-14:4-10 | 220 - 2026-11-14:11-18 | 210 - 2026-11-14:19-36 | 200 - 2026-11-14:37-42 | 100 - 2026-11-14:43-47 -->
 # Changelog
+
+## 2.2.1 - 2026-11-14
+
+- Setup wizard: time zone accepts cities, countries and IANA ids (Lisbon, London, Portugal, Europe/Lisbon),
+  case-insensitive, with a numbered pick list when ambiguous; every question says what it accepts on a wrong
+  answer, `?` shows help, choices ignore case, times like 8:00 are accepted, and after 3 wrong answers the
+  current value is kept instead of looping. Set-VmmSetting and the time window accept the same names.
 
 ## 2.2.0 - 2026-11-14
 
@@ -37,4 +44,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 03:48 UTC_
+_Last updated: 2026-11-14 04:02 UTC_

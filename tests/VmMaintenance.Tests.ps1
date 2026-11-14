@@ -144,6 +144,26 @@ Describe 'Get-VmmHostPolicy (Server 2019 goal)' {
     }
 }
 
+Describe 'Resolve-VmmTimeZone (setup wizard input)' {
+    It "'<In>' -> <Want>" -TestCases @(
+        @{ In = 'Lisbon';            Want = 'GMT Standard Time' }
+        @{ In = 'lisbon';            Want = 'GMT Standard Time' }
+        @{ In = 'London';            Want = 'GMT Standard Time' }
+        @{ In = 'Portugal';          Want = 'GMT Standard Time' }
+        @{ In = 'Europe/Lisbon';     Want = 'GMT Standard Time' }
+        @{ In = 'gmt standard time'; Want = 'GMT Standard Time' }
+        @{ In = 'UTC';               Want = 'UTC' }
+    ) {
+        (InModuleScope VmMaintenance -Parameters @{ In = $In } { Resolve-VmmTimeZone -Text $In }).Id | Should -Be $Want
+    }
+    It 'returns candidates for an ambiguous text and nothing for nonsense' {
+        $amb = InModuleScope VmMaintenance { Resolve-VmmTimeZone -Text 'UTC+01:00' }
+        $amb.Id | Should -BeNullOrEmpty
+        $amb.Matches.Count | Should -BeGreaterThan 1
+        (InModuleScope VmMaintenance { Resolve-VmmTimeZone -Text 'zzz-not-a-zone' }).Id | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Logging and errors' {
     It 'Protect-VmmLogText masks secrets' {
         $o = InModuleScope VmMaintenance { Protect-VmmLogText 'pwd=abc123 token: xyz Bearer eyJhbGci.x.y' }
