@@ -318,6 +318,51 @@ Describe 'External host list (CSV: hostname or FQDN, domain, IP)' {
     }
 }
 
+Describe 'SQL Server update fetch' {
+    BeforeAll {
+        # dbatools stand-ins: 2016 SP2 (13.0.5026) -> target SP3 + CU, plus the SP3 base build
+        function global:Test-DbaBuild { param($Build, [switch]$Latest, $MaxBehind, [switch]$EnableException)
+            if ($Build -like '13.0.7*') { [pscustomobject]@{ Compliant = $true; BuildTarget = $Build } } else { [pscustomobject]@{ Compliant = $false; BuildTarget = '13.0.7050.2' } } }
+        function global:Get-DbaBuild { param($Build, $MajorVersion, $ServicePack, [switch]$EnableException, [switch]$Update)
+            if ($MajorVersion) { return [pscustomobject]@{ NameLevel = '2016'; SPLevel = 'SP3'; CULevel = ''; KBLevel = @('5003279') } }
+            switch -Wildcard ($Build) {
+                '13.0.5026*' { [pscustomobject]@{ NameLevel = '2016'; SPLevel = 'SP2'; CULevel = ''; KBLevel = @('4052908') } }
+                '13.0.7050*' { [pscustomobject]@{ NameLevel = '2016'; SPLevel = 'SP3'; CULevel = 'CU1'; KBLevel = @('5040944') } }
+                default      { [pscustomobject]@{ NameLevel = '2016'; SPLevel = 'SP3'; CULevel = 'CU1'; KBLevel = @('5040944') } }
+            } }
+    }
+    AfterAll { Remove-Item function:global:Test-DbaBuild, function:global:Get-DbaBuild -ErrorAction SilentlyContinue }
+    It 'turns PatchLevel into the Microsoft build number' {
+        InModuleScope VmMaintenance { (ConvertTo-VmmSqlBuild '13.2.5026.0'), (ConvertTo-VmmSqlBuild '10.53.6000.34'), (ConvertTo-VmmSqlBuild '15.0.4415.2') -join ',' } |
+            Should -Be '13.0.5026.0,10.50.6000.34,15.0.4415.2'
+    }
+    It 'maps install languages to the update file tag' {
+        InModuleScope VmMaintenance { (ConvertTo-VmmSqlLanguage '1036'), (ConvertTo-VmmSqlLanguage 'es-ES'), (ConvertTo-VmmSqlLanguage ''), (ConvertTo-VmmSqlLanguage 'pt-BR') -join ',' } |
+            Should -Be 'FRA,ESN,ENU,PTB'
+    }
+    It 'reads instances, with the SQL language before the OS language' {
+        $r = @(InModuleScope VmMaintenance {
+            $rec = [pscustomobject]@{ Name = 'H1'; Baseline = $null; Check = [pscustomobject]@{ Sql = 'MSSQLSERVER 13.2.5026.0 Standard Edition; SQL2 15.0.4415.2 Express Edition'; SqlLang = 'MSSQLSERVER=1036'; Lang = 'es-ES' } }
+            Get-VmmSqlInstance -Record $rec })
+        $r.Count | Should -Be 2
+        $r[0].Build | Should -Be '13.0.5026.0'
+        $r[0].Lang | Should -Be 'FRA'
+        $r[1].Lang | Should -Be 'ESN'
+    }
+    It 'plans the service pack first when the target CU belongs to a newer SP' {
+        $p = InModuleScope VmMaintenance { Get-VmmSqlUpdatePlan -Build '13.0.5026.0' }
+        (@($p.Steps | ForEach-Object { "$($_.Kind):$($_.Kb)" }) -join ',') | Should -Be 'SP:KB5003279,CU:KB5040944'
+    }
+    It 'plans nothing for a current build' {
+        (InModuleScope VmMaintenance { Get-VmmSqlUpdatePlan -Build '13.0.7050.2' }).Steps.Count | Should -Be 0
+    }
+    It 'does not treat the download cache as a host folder' {
+        New-Item -ItemType Directory -Path (Join-Path $TestDrive 'share\_Downloads\SQL'), (Join-Path $TestDrive 'share\H1') -Force | Out-Null
+        $inv = InModuleScope VmMaintenance -Parameters @{ S = (Join-Path $TestDrive 'share') } { Get-VmmMediaInventory -Share $S }
+        (@($inv.Folders | ForEach-Object Name) -join ',') | Should -Be 'H1'
+    }
+}
+
 Describe 'Logging and errors' {
     It 'Protect-VmmLogText masks secrets' {
         $o = InModuleScope VmMaintenance { Protect-VmmLogText 'pwd=abc123 token: xyz Bearer eyJhbGci.x.y' }

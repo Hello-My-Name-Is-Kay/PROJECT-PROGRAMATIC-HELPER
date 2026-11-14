@@ -18,12 +18,16 @@ function Show-VmmStagingScreen {
         }
         $open = if ($err) { "Share problem: $err" } elseif (@($pk | Where-Object Gate).Count) { 'GATE CLOSED - put the missing files on the share, then R' } else { "Gate open: $(@($pk).Count) package(s) ready" }
         $r = Invoke-VmmListView -Title "Staging gate - share: $(Get-VmmSetting 'Staging.SourceShare' -Default '(not set)')" -Rows @($rows) -Selected $sel -Status $open `
-             -Hotkeys @('R', 'O', 'S', 'M') -Help 'R re-check | M media report | O open share in Explorer | S set share path | Esc back'
+             -Hotkeys @('R', 'O', 'S', 'M', 'F') -Help 'R re-check | M media report | F fetch SQL updates | O open share in Explorer | S set share path | Esc back'
         $sel = $r.Index
         switch ($r.Action) {
             'Esc' { return }
             'R'   { $err = & $load }
             'M'   { Clear-Host; try { Get-VmmMediaReport } catch { Write-VmmLog $_.Exception.Message -Level Error }; [void](Read-Host 'Enter to go back'); Clear-Host }
+            'F'   { [void](Invoke-VmmTuiAction -Title 'SQL Server updates: download once, copy to host folders' -Action {
+                      Save-VmmSqlUpdate -Preview
+                      if ((Read-VmmPrompt 'Download what is missing and fill the host folders? (y/N)') -match '^[yY]') { Save-VmmSqlUpdate -Confirm:$false }
+                  }); $err = & $load }
             'O'   { $s = Get-VmmSetting 'Staging.SourceShare'; if ($s) { Start-Process explorer.exe -ArgumentList $s } }
             'S'   { $v = Read-VmmPrompt 'Media repository path (\\server\share\project\iso-folder)'; if ($v) { try { Set-VmmSetting -Name Staging.SourceShare -Value $v } catch { } }; $err = & $load; Clear-Host }
         }

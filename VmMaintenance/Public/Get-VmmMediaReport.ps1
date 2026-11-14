@@ -43,5 +43,6 @@ function Get-VmmMediaReport {
     if ($gates) { Write-VmmLog 'Still needed for your fleet:' -Level Warn; foreach ($g in $gates) { Write-VmmLog "  $($g.Gate)$(if ($g.Hosts) { " [hosts: $($g.Hosts)]" })" -Level Error } }
     elseif ($need) { Write-VmmLog "Everything your workable hosts need is on the share ($($need.Count) file(s))." -Level Success }
     foreach ($n in @($need | Where-Object { $_.Note })) { Write-VmmLog "  $($n.Name): $($n.Note)" -Level Warn }
+    Write-VmmLog 'SQL Server updates per host (download once, copy to the host folders): vmm fetch -Preview, or F on the staging screen.' -Level Muted
     if ($PassThru) { [pscustomobject]@{ Inventory = $inv; Folders = @($fold); Needed = $need } }
 }

@@ -1,5 +1,19 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.7.0 - 2026-11-14:4-21 | 2.6.0 - 2026-11-14:22-29 | 2.5.0 - 2026-11-14:30-42 | 2.4.0 - 2026-11-14:43-53 | 2.3.0 - 2026-11-14:54-68 | 2.2.1 - 2026-11-14:69-75 | 2.2.0 - 2026-11-14:76-83 | 2.1.0 - 2026-11-14:84-101 | 2.0.0 - 2026-11-14:102-107 | 1.0.0 - 2026-11-14:108-112 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.8.0 - 2026-11-14:4-17 | 2.7.0 - 2026-11-14:18-35 | 2.6.0 - 2026-11-14:36-43 | 2.5.0 - 2026-11-14:44-56 | 2.4.0 - 2026-11-14:57-67 | 2.3.0 - 2026-11-14:68-82 | 2.2.1 - 2026-11-14:83-89 | 2.2.0 - 2026-11-14:90-97 | 2.1.0 - 2026-11-14:98-115 | 2.0.0 - 2026-11-14:116-121 | 1.0.0 - 2026-11-14:122-126 -->
 # Changelog
+
+## 2.8.0 - 2026-11-14
+
+- SQL Server updates fetched for you: `vmm fetch` (or `F` on the staging screen) works out, per SQL instance, the
+  service pack and/or CU it needs (SP first when the target CU belongs to a newer SP) from the last check and the
+  dbatools build reference; `-Preview` shows the plan only. `SqlUpdates.MaxBehind` (e.g. `1CU`) relaxes "latest".
+- Downloaded once: each KB goes into a cache on the share (`<share>\_Downloads\SQL\<KB>`, setting
+  `Downloads.CacheFolder`), is kept only with a valid Microsoft signature, gets a `.sha256`, and is then copied
+  into every host folder that needs it. Next time it is copied over the network, not downloaded. A host folder
+  that already has a file with that KB number is left alone. Folders starting with `_` are not host folders.
+- Language: service packs before SQL 2017 come per language; the check now reads each instance's install
+  language (falls back to the OS language). CUs are one file for all languages.
+- Nothing is installed by vmm. The Windows Server ISO stays a manual download (licensed media has no API).
+  Needs dbatools once: `Install-Module dbatools -Scope CurrentUser`.
 
 ## 2.7.0 - 2026-11-14
 
@@ -109,4 +123,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 11:53 UTC_
+_Last updated: 2026-11-14 12:38 UTC_

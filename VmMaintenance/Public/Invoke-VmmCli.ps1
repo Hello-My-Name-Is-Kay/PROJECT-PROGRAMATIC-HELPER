@@ -44,6 +44,7 @@ function Invoke-VmmCli {
         'inventory' = @{ F = 'Get-VmmInventory';          D = 'server inventory (24 columns) [-HostName x] [-Missing] [-Export]' }
         'inventory-set' = @{ F = 'Set-VmmInventoryValue'; D = 'set a column by hand   -HostName x[,y] -Field "Server Owner" -Value ".." | -Clear' }
         'helptext' = @{ F = 'New-VmmHelpTextIssue';       D = 'ask for a help text change on GitHub -Field "<column>" | -Screen "<name>" [-Proposed ..]' }
+        'fetch'    = @{ F = 'Save-VmmSqlUpdate';          D = 'SQL Server SP/CU per host: download once (cache on the share), copy into host folders [-Preview] [-HostName a,b]' }
         'media'    = @{ F = 'Get-VmmMediaReport';         D = 'media repository: OS images by language, host folders, what is missing' }
         'blocker'  = @{ F = 'New-VmmBlockerReport';       D = 'report for manager     -HostName x -Step y -Message ".." [-Contact Sent|Later|Bypass]' }
         'resolve'  = @{ F = 'Resolve-VmmBlocker';         D = 'access granted         -HostName x [-Step y]' }

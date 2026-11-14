@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | Every morning business hours:19-34 | Evening weekend all steps:35-42 | Problems:43-54 | End of day:55-59 | Updates and GitHub:60-64 | Tests:65-73 -->
+<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | SQL Server updates:19-24 | Every morning business hours:25-40 | Evening weekend all steps:41-48 | Problems:49-60 | End of day:61-65 | Updates and GitHub:66-70 | Tests:71-79 -->
 # Usage - daily runbook
 
 ## Once
@@ -15,6 +15,12 @@ the plaintext list is deleted after import, names then live only in the encrypte
 
 You get a CSV with hostname or FQDN, domain, IP: `0` in the menu, drag the file in (or Enter to browse),
 check the preview, confirm, let it delete the plaintext file. Then `3` Check fleet.
+
+## SQL Server updates
+
+`vmm fetch -Preview` lists what each SQL instance needs and what is already cached. `vmm fetch` downloads the
+missing KBs once into `<share>\_Downloads`, then copies them into the host folders. Re-run it any time: nothing is
+downloaded twice. One-time setup: `Install-Module dbatools -Scope CurrentUser`.
 
 ## Every morning (business hours: checks + staging only)
 
@@ -70,4 +76,4 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1      # before any commit or push
 ```
 
-_Last updated: 2026-11-14 11:53 UTC_
+_Last updated: 2026-11-14 12:38 UTC_

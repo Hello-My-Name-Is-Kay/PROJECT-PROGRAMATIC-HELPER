@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "license": "private",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
@@ -122,6 +122,7 @@
     "Remove-VmmExpiredSnapshot",
     "Remove-VmmFleetHost",
     "Resolve-VmmBlocker",
+    "Save-VmmSqlUpdate",
     "Select-VmmAzureContext",
     "Set-VmmHostOrder",
     "Set-VmmInventoryValue",
@@ -143,12 +144,15 @@
     "ConvertTo-VmmMediaLanguage",
     "ConvertTo-VmmNote",
     "ConvertTo-VmmPsd1",
+    "ConvertTo-VmmSqlBuild",
+    "ConvertTo-VmmSqlLanguage",
     "ConvertTo-VmmUtcDate",
     "Copy-VmmFileWithProgress",
     "Export-VmmCsv",
     "Find-VmmPlaceholder",
     "Get-VmmAccessRequirement",
     "Get-VmmAgentKey",
+    "Get-VmmCachedSqlUpdate",
     "Get-VmmCollectorScript",
     "Get-VmmConfigCandidate",
     "Get-VmmCredentialState",
@@ -177,6 +181,8 @@
     "Get-VmmSessionCredential",
     "Get-VmmSetting",
     "Get-VmmSourceClone",
+    "Get-VmmSqlInstance",
+    "Get-VmmSqlUpdatePlan",
     "Get-VmmStagingPackage",
     "Get-VmmTagValue",
     "Get-VmmUniqueSnapshotName",
@@ -305,5 +311,12 @@
     "command": "vmm maint -Action Diagnose|CheckStore|Backup|ListBackups|Restore|CleanLogs|CleanTemp|ResetUi",
     "menu": "M",
     "auto_backup": "one encrypted fleet store copy per day at start (Maintenance.AutoBackup, KeepBackups 14) in data\\backups"
+  },
+  "sql_update_fetch": {
+    "command": "vmm fetch [-Preview] [-HostName a,b]  (F on the staging screen)",
+    "target": "per instance from the last check (PatchLevel -> build, SQL setup language or OS language), dbatools Test-DbaBuild -Latest or SqlUpdates.MaxBehind; SP first when the target CU belongs to a newer SP",
+    "cache": "each KB downloaded once into Downloads.CacheFolder (default <share>\\_Downloads\\SQL\\<KB>), Microsoft Authenticode signature required, .sha256 written; then copied into <share>\\<HOST>\\ unless a file with that KB is there",
+    "never": "installs nothing; Windows Server ISO stays a manual download (licensed media, no API)",
+    "needs": "dbatools (Install-Module dbatools -Scope CurrentUser), internet from the laptop"
   }
 }

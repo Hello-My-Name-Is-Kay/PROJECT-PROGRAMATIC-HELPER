@@ -5,7 +5,8 @@ function Get-VmmMediaInventory {
     #   <share>\<HOST>\*                    files only that host needs (SQL Server updates, tools)
     #   <file>.sha256                       optional sidecar holding the file's SHA256; when present the
     #                                       staging gate and the copy verify against it
-    # Hidden files (Thumbs.db, desktop.ini) are ignored.
+    # Hidden files (Thumbs.db, desktop.ini) are ignored, and so are folders starting with _ (the
+    # download cache _Downloads, your own _Archive...).
     [CmdletBinding()]
     param([string]$Share)
     if (-not $Share) { $Share = Get-VmmSetting 'Staging.SourceShare' -Required }
@@ -25,6 +26,7 @@ function Get-VmmMediaInventory {
     }
     $isos = @(); $folders = @(); $other = @()
     foreach ($i in @(Get-ChildItem -LiteralPath $Share -ErrorAction Stop)) {
+        if ($i.PSIsContainer -and $i.Name.StartsWith('_')) { continue }
         if ($i.PSIsContainer) {
             $files = foreach ($f in @(Get-ChildItem -LiteralPath $i.FullName -ErrorAction SilentlyContinue)) {
                 if ($f.PSIsContainer -or $f.Extension -eq '.sha256') { continue }

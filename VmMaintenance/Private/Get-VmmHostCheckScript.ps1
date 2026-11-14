@@ -10,7 +10,7 @@ $r = [ordered]@{
     Name = $Name; CheckedAt = (Get-Date).ToUniversalTime().ToString('o'); IPv4 = $null; Ping = 'No'; Ports = ''
     Reachable = 'No'; OS = $null; Lang = $null; Version = $null; Build = $null; SP = $null; LastBoot = $null
     Manufacturer = $null; Model = $null; Platform = $null; CTotalGB = $null; CFreeGB = $null
-    PendingReboot = $null; Sql = ''; Software = ''; Inv = $null; Error = $null
+    PendingReboot = $null; Sql = ''; SqlLang = ''; Software = ''; Inv = $null; Error = $null
 }
 # Live log: each step goes to the laptop's log as it happens (Invoke-VmmParallel drains the queue)
 $say = { param($m) if ($A.Trace) { $A.Trace.Enqueue("${Name}: $m") } }
@@ -76,12 +76,17 @@ try {
     & $say 'reading SQL instances and pending reboot (registry)'
     $inst = & $reg 'EnumValues' @{ hDefKey = $hk; sSubKeyName = 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' }
     if ($inst.ReturnValue -eq 0 -and $inst.sNames) {
+        $langs = @()
         $r.Sql = (@(foreach ($n in $inst.sNames) {
             $id = & $str 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' $n
             $ver = & $str "SOFTWARE\Microsoft\Microsoft SQL Server\$id\Setup" 'PatchLevel'
             $ed  = & $str "SOFTWARE\Microsoft\Microsoft SQL Server\$id\Setup" 'Edition'
+            # Install language (LCID): service packs before SQL 2017 come in one file per language
+            $lc = & $reg 'GetDWORDValue' @{ hDefKey = $hk; sSubKeyName = "SOFTWARE\Microsoft\Microsoft SQL Server\$id\Setup"; sValueName = 'Language' }
+            if ($lc.ReturnValue -eq 0 -and $lc.uValue) { $langs += "$n=$($lc.uValue)" }
             "$n $ver $ed".Trim()
         })) -join '; '
+        $r.SqlLang = $langs -join '; '
     } else { $r.Sql = 'none' }
 
     # Pending reboot (CBS, Windows Update, file rename operations)

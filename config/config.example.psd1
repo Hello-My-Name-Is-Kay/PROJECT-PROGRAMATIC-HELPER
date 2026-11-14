@@ -114,6 +114,16 @@
         AutoImport   = $true                       # import them when vmm starts (also: E in the menu, vmm inbox)
     }
 
+    Downloads = @{
+        # SQL Server updates fetched by 'vmm fetch' are downloaded once into this folder, then copied into
+        # each host's folder. Empty = <Staging.SourceShare>\_Downloads (folders starting with _ are not host folders).
+        CacheFolder = ''
+    }
+
+    SqlUpdates = @{
+        MaxBehind = ''              # '' = latest SP/CU | e.g. '1CU' = one CU behind latest is fine (dbatools Test-DbaBuild)
+    }
+
     Log = @{
         # Everything vmm does goes to one file per day in the logs folder (read it with: vmm log, L in the menu, F3 anywhere).
         Live             = $true    # live log pane at the bottom of every screen + progress lines; F2 toggles it on any screen

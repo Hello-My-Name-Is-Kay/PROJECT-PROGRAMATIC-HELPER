@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-26 | Overview:27-45 | At a glance:46-62 | Quick start:63-86 | Adding machines external dat:87-109 | Media repository:110-138 | Server inventory:139-172 | Extractor the program on the:173-198 | Console UI:199-240 | CLI:241-287 | GitHub integration:288-304 | OS policy:305-319 | Workflow per host:320-333 | Directory tree:334-364 | Where your data lives never:365-381 | Testing:382-394 | Errors:395-408 | Future your work AI model wi:409-418 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-27 | Overview:28-46 | At a glance:47-63 | Quick start:64-87 | Adding machines external dat:88-110 | Media repository:111-139 | Server inventory:140-173 | Extractor the program on the:174-199 | Console UI:200-241 | CLI:242-289 | GitHub integration:290-306 | OS policy:307-321 | Workflow per host:322-335 | Directory tree:336-366 | Where your data lives never:367-383 | Testing:384-396 | Errors:397-410 | Future your work AI model wi:411-420 -->
 # VmMaintenance
 
 **Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.6.0 &nbsp;|&nbsp; **This file:** 2026-11-14
@@ -13,6 +13,7 @@
 - **Test first:** `.\Tools\Invoke-SmokeTest.ps1`. GitHub checks pass on Windows PowerShell 5.1 and 7 (228 smoke checks, 66 Pester tests); real hosts, Azure, VPN and the UI are not tested yet.
 - **New machines:** a CSV with three columns, *hostname or FQDN, domain, IP* (`,` or `;`, header optional). `0` in the menu (drag the file, or Enter to browse; preview, then confirm) or `vmm import -Path hosts.csv`. The check then connects by FQDN, or by IP when the name does not resolve.
 - **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
+- **SQL Server updates:** `vmm fetch -Preview` shows the SP/CU each SQL instance needs; `vmm fetch` (or `F` on the staging screen) downloads each one once into `<share>\_Downloads`, checks Microsoft's signature, and copies it into the host folders, so staging and RDP users find it there. Needs `Install-Module dbatools -Scope CurrentUser` once. The Windows Server ISO stays a manual download.
 - **Server inventory:** the 24-column team sheet per host. Read automatically where possible (check, Extractor), worked out from the workflow, else typed by you with a help window per column. `N` in the menu, `I` on a host, `vmm inventory -Export`. Help text unclear? `T` opens a GitHub issue.
 - **Live log on every screen:** the bottom rows show what vmm is doing right now; long operations (fleet check, staging copies, Azure jobs) print each host's step, each finished host with its time, and every 5 s who is still running. `F2` hides/shows it on any screen, `F3` opens the full log. Everything also goes to an encrypted day log: `vmm log`, `vmm log -Follow` in a second window.
 - **Maintenance:** `M` in the menu or `vmm maint`: diagnose vmm, check / back up / restore the fleet store (one backup a day is automatic), clean old logs and temp files.
@@ -258,6 +259,7 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm inventory` | Server inventory: filled/missing per host; `-HostName x` all columns with source; `-Missing`; `-Export` CSV |
 | `vmm inventory-set` | Set a column by hand: `-HostName x[,y] -Field "Server Owner" -Value ".."` or `-Clear` |
 | `vmm helptext` | Ask for a help text change on GitHub: `-Field "<column>"` or `-Screen "<name>"` |
+| `vmm fetch [-Preview] [-HostName a,b]` | SQL Server SP/CU per host: download once into the share cache, copy into host folders (never installs) |
 | `vmm media` | Media repository: images by version and language, host folders, what the fleet still needs |
 | `vmm blocker -HostName x -Step y -Message ".."` | Manager report for an access problem |
 | `vmm resolve -HostName x` | Access granted, unblock |
@@ -415,4 +417,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 11:59 UTC_
+_Last updated: 2026-11-14 12:38 UTC_
