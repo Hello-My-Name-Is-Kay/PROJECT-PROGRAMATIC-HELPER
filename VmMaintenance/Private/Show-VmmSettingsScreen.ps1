@@ -5,6 +5,9 @@ function Show-VmmSettingsScreen {
     $keys = @(
         @('Staging.SourceShare', 'Media repository: OS images at the root, one folder per host')
         @('Staging.OsMediaVersion', 'Windows Server image version to stage (2019 = target)')
+        @('Inventory.Defaults.AssignedTechnician', 'Inventory: default Assigned Technician')
+        @('Inventory.Defaults.Phase', 'Inventory: default Phase')
+        @('Inventory.CsvDelimiter', 'Inventory CSV separator: , or ;')
         @('Staging.Layout', 'Repository (images + host folders) | Packages (fixed list only)')
         @('Staging.TargetFolder', 'Folder on each host files are copied TO')
         @('Target.MachinesPerDay', 'Daily target (machines)')

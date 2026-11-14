@@ -17,7 +17,7 @@ function Start-VmmSetupWizard {
         vmm setup -Page Vpn
     #>
     [CmdletBinding()]
-    param([ValidateSet('All', 'Rules', 'Staging', 'Workflow', 'Access', 'Vpn', 'Ai', 'GitHub', 'Display')][string]$Page = 'All', [switch]$AcceptDefaults)
+    param([ValidateSet('All', 'Rules', 'Staging', 'Workflow', 'Access', 'Inventory', 'Vpn', 'Ai', 'GitHub', 'Display')][string]$Page = 'All', [switch]$AcceptDefaults)
 
     if (-not (Resolve-VmmConfigPath)) { Initialize-VmmConfig | Out-Null }
     if (-not $script:VmmConfig) { Import-VmmConfig | Out-Null }
@@ -133,6 +133,14 @@ function Start-VmmSetupWizard {
             [void](& $ask 'Azure.Subscription' 'Azure subscription id or name (empty = choose later)' '')
             [void](& $ask 'Azure.UseDeviceAuthentication' 'Sign in with a device code instead of a browser pop-up' 'False' 'bool')
             [void](& $ask 'Lansweeper.SqlInstance' 'Lansweeper SQL instance host\instance (empty = not used)' '')
+        }
+        if (& $want 'Inventory') {
+            & $title 'Inventory' @('The 24-column server inventory is filled from the checks and the host agent; the rest you type, with a help window per column (I on a host).', 'Values that are the same for most hosts can be set once here (empty = ask per host). Change a host later with I or vmm inventory-set.')
+            [void](& $ask 'Inventory.Defaults.AssignedTechnician' 'Assigned Technician (usually you)' '')
+            [void](& $ask 'Inventory.Defaults.Company' 'Company (if the same for most hosts)' '')
+            [void](& $ask 'Inventory.Defaults.Perimeter' 'Perimeter (if the same for most hosts)' '')
+            [void](& $ask 'Inventory.Defaults.Phase' 'Phase / wave (if the same for most hosts)' '')
+            [void](& $ask 'Inventory.CsvDelimiter' 'CSV separator for the export (comma, or ; for Excel in PT/FR)' ',' 'choice' @(',', ';'))
         }
         if (& $want 'Vpn') {
             & $title 'VPN' @('The tool can check and start your VPN before host work. You always sign in inside the VPN client; credentials never pass through this tool.',

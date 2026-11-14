@@ -10,7 +10,7 @@ $r = [ordered]@{
     Name = $Name; CheckedAt = (Get-Date).ToUniversalTime().ToString('o'); IPv4 = $null; Ping = 'No'; Ports = ''
     Reachable = 'No'; OS = $null; Lang = $null; Version = $null; Build = $null; SP = $null; LastBoot = $null
     Manufacturer = $null; Model = $null; Platform = $null; CTotalGB = $null; CFreeGB = $null
-    PendingReboot = $null; Sql = ''; Software = ''; Error = $null
+    PendingReboot = $null; Sql = ''; Software = ''; Inv = $null; Error = $null
 }
 try {
     $ip = [System.Net.Dns]::GetHostAddresses($Name) | Where-Object { $_.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1
@@ -76,6 +76,33 @@ try {
     $pfr = & $reg 'GetMultiStringValue' @{ hDefKey = $hk; sSubKeyName = 'SYSTEM\CurrentControlSet\Control\Session Manager'; sValueName = 'PendingFileRenameOperations' }
     if ($pfr.ReturnValue -eq 0 -and $pfr.sValue) { $pend = $true }
     $r.PendingReboot = if ($pend) { 'Yes' } else { 'No' }
+
+    # Inventory columns: domain, DC role, Windows licence, agent services, legacy TLS (failures leave a column empty)
+    $inv = [ordered]@{}
+    $inv.Domain = if ($cs.PartOfDomain) { "$($cs.Domain)" } else { "WORKGROUP ($($cs.Domain))" }
+    $inv.DomainController = if ($cs.DomainRole -ge 4) { 'Yes' } else { 'No' }
+    $names = @{ 0 = 'Unlicensed'; 1 = 'Licensed'; 2 = 'Grace period (OOB)'; 3 = 'Grace period (OOT)'; 4 = 'Grace period (non-genuine)'; 5 = 'Notification'; 6 = 'Grace period (extended)' }
+    try {
+        $lp = @(Get-CimInstance -CimSession $s -ClassName SoftwareLicensingProduct -Filter "Name LIKE 'Windows%' AND PartialProductKey IS NOT NULL" -Property LicenseStatus -OperationTimeoutSec 90 -ErrorAction Stop)
+        $inv.WindowsLicense = if ($lp.Count) { $names[[int]$lp[0].LicenseStatus] } else { 'No product key installed' }
+    } catch { }
+    if ($A.Services -and $A.Services.Count) {
+        try {
+            $svc = @(Get-CimInstance -CimSession $s -ClassName Win32_Service -Property Name, DisplayName, State -ErrorAction Stop)
+            foreach ($k in @($A.Services.Keys)) {
+                $hit = $null
+                foreach ($pat in @($A.Services[$k])) { if (-not $hit) { $hit = $svc | Where-Object { $_.Name -like $pat -or $_.DisplayName -like $pat } | Select-Object -First 1 } }
+                $inv[$k] = if (-not $hit) { 'Not installed' } elseif ($hit.State -eq 'Running') { 'Running' } else { "Installed ($($hit.State))" }
+            }
+        } catch { }
+    }
+    $on = @()
+    foreach ($t in '1.0', '1.1') {
+        $q = & $reg 'GetDWORDValue' @{ hDefKey = $hk; sSubKeyName = "SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS $t\Server"; sValueName = 'Enabled' }
+        if (-not ($q.ReturnValue -eq 0 -and $q.uValue -eq 0)) { $on += "TLS $t" }   # no key = Windows default = enabled
+    }
+    $inv.TlsLegacyDisabled = if ($on) { "No ($($on -join ', ') enabled)" } else { 'Yes' }
+    $r.Inv = [pscustomobject]$inv
 
     # Watched software (only names matching Fleet.SoftwareWatch)
     if ($A.Watch) {

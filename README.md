@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host agent for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; TL;DR at the top. SECTIONS: TLDR:6-22 | Overview:23-38 | At a glance:39-55 | Quick start:56-79 | Media repository:80-108 | Host agent the program on th:109-127 | Console UI:128-158 | CLI:159-199 | GitHub integration:200-216 | OS policy:217-231 | Workflow per host:232-245 | Directory tree:246-276 | Where your data lives never:277-290 | Testing:291-303 | Errors:304-317 | Future your work AI model wi:318-327 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host agent for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; TL;DR at the top. SECTIONS: TLDR:6-23 | Overview:24-39 | At a glance:40-56 | Quick start:57-80 | Media repository:81-109 | Server inventory:110-143 | Host agent the program on th:144-162 | Console UI:163-194 | CLI:195-238 | GitHub integration:239-255 | OS policy:256-270 | Workflow per host:271-284 | Directory tree:285-315 | Where your data lives never:316-330 | Testing:331-343 | Errors:344-357 | Future your work AI model wi:358-367 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.3.0 &nbsp;|&nbsp; **This file:** 2026-11-14
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.4.0 &nbsp;|&nbsp; **This file:** 2026-11-14
 
 ## TL;DR
 
@@ -12,6 +12,7 @@
 - **Install:** `Get-ChildItem -Recurse . | Unblock-File` then `powershell -ExecutionPolicy Bypass -File .\Install.ps1`, then `vmm` or the **VM Maintenance** desktop shortcut. Runs from any folder; the installed copy does not depend on it.
 - **Test first:** `.\Tools\Invoke-SmokeTest.ps1`. GitHub checks pass on Windows PowerShell 5.1 and 7 (202 smoke checks, 57 Pester tests); real hosts, Azure, VPN and the UI are not tested yet.
 - **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
+- **Server inventory:** the 24-column team sheet per host. Read automatically where possible (check, host agent), worked out from the workflow, else typed by you with a help window per column. `N` in the menu, `I` on a host, `vmm inventory -Export`. Help text unclear? `T` opens a GitHub issue.
 - **Day:** `V` VPN, `6` credentials, `3` check fleet, `4` staging gate, `1` plan. Target 10 machines per day, shown in the header.
 - **Host without remote access:** open the host, `X` builds the host agent; run it on the host's desktop in RDP; export; `P` on the laptop; agent `6` Finish removes it.
 - **Blocked by access:** `B` writes the manager report (clipboard); answer Sent / Later / Bypass; the queue moves on.
@@ -106,6 +107,40 @@ One network folder holds everything the hosts need (`Staging.SourceShare`, asked
 
 `Staging.Layout = 'Packages'` keeps the pre-2.3 fixed list instead.
 
+## Server inventory
+
+The team keeps one sheet per server with 24 columns. vmm fills it **as early as possible, automatically
+first, and helps you with the rest**:
+
+1. **Automatic (from a terminal, no typing).** The fleet check (`3`, or `C` on a host) reads them over
+   WMI from the laptop. When a host cannot be reached that way, the host agent (`X`, export `5`) or the
+   RDP collector reads the same columns on the host and brings them back in the encrypted result.
+2. **Worked out by vmm.** From the workflow it already tracks: what is left to do, how far the host is,
+   when the upgrade happened.
+3. **Typed by you, with help.** Everything only people know. `I` on a host shows every column: red =
+   missing. Enter opens the column's **help window** (what it means and exactly where to find it, with the
+   command to run on the host when there is one), then asks for the value. `F` walks through all missing
+   columns. Values that are the same for most hosts (your name as technician, the phase) are set once in
+   the setup wizard, page Inventory.
+4. **Help text unclear?** `T` on the column (or `vmm helptext`) opens a GitHub issue with the current text
+   and your proposal (masked, previewed, confirmed). Help texts live in one file in the repository
+   (`VmMaintenance\Resources\InventoryFields.psd1`), so a fix reaches everyone with `vmm update`.
+
+| Column | How it is filled |
+|---|---|
+| Hostname, OS Version, SQL Present | Automatic: fleet check / host agent / collector |
+| Domain, IPAddress, Domain controller | Automatic (DNS, `Win32_ComputerSystem`, network adapters) |
+| Windows License | Automatic (activation state, as `slmgr /dli` shows it) |
+| QUALYS Cloud AGENT, CrowdStrike Agent, Zabbix, IVANTI, LANSWEEPER AGENT | Automatic: service found and running / installed (stopped) / not installed. Service names per agent are in the field file |
+| TLS 1.0-1.1 DISABLED | Automatic: SCHANNEL server keys; no key = Windows default = enabled |
+| Actions to be executed, Actions Status, Execution Date | From the workflow steps; a typed value replaces it |
+| Company, Perimeter, Localisation, Phase, Server Owner, Assigned Technician, Comments, Aplication | Typed by you (help window) or a fleet default |
+
+Nothing about the six workflow steps changes: the inventory never blocks a step. The export
+(`vmm inventory -Export`, `E` in the inventory screen, and with every daily report) writes
+`Reports\Inventory\Inventory_<date>.csv` with exactly these headers in this order
+(`Inventory.CsvDelimiter`: `,` or `;` for Excel with Portuguese/French settings).
+
 ## Host agent (the program on the remote host)
 
 1. On the laptop: open the host (Fleet, Enter) and press `X`, or run `vmm agent -HostName srv01`.
@@ -143,6 +178,7 @@ and today's progress bar with Azure context and credential state.
 | 8 | Snapshots: preview and prune expired |
 | 9 | Settings: every option, saved to your local config |
 | 0 | Import hosts |
+| N | Inventory: columns filled / missing per host, export CSV |
 | V | VPN status, connect, disconnect |
 | A | Assistant (optional AI) |
 | W | Setup wizard |
@@ -150,7 +186,7 @@ and today's progress bar with Azure context and credential state.
 | H / Q | Help / Quit (clears session credentials) |
 
 On a host screen: Enter run step, `G` RDP guide, `X` host agent, `P` paste result, `Y` confirm a
-guided step, `B` blocker report and move on, `R` resolve, `L` mstsc, `H` hold, `C` check.
+guided step, `B` blocker report and move on, `R` resolve, `L` mstsc, `H` hold, `C` check, `I` inventory.
 
 Arrows, PgUp/PgDn, Home/End move; Enter opens; Esc goes back; letters run the actions shown
 in the footer. Mouse: click selects, double-click opens, wheel scrolls (classic console and
@@ -172,6 +208,9 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm guide -HostName x -Step Upgrade` | RDP/RDM checklist |
 | `vmm collect -Line "VMM1..."` | Record the collector result from inside RDP |
 | `vmm stage` | Staging gate: share reachable, files present, hashes |
+| `vmm inventory` | Server inventory: filled/missing per host; `-HostName x` all columns with source; `-Missing`; `-Export` CSV |
+| `vmm inventory-set` | Set a column by hand: `-HostName x[,y] -Field "Server Owner" -Value ".."` or `-Clear` |
+| `vmm helptext` | Ask for a help text change on GitHub: `-Field "<column>"` or `-Screen "<name>"` |
 | `vmm media` | Media repository: images by version and language, host folders, what the fleet still needs |
 | `vmm blocker -HostName x -Step y -Message ".."` | Manager report for an access problem |
 | `vmm resolve -HostName x` | Access granted, unblock |
@@ -283,6 +322,7 @@ VmMaintenance\
 | Fleet store | `%LOCALAPPDATA%\VmMaintenance\data\fleet.vmm` | AES-256-CBC + HMAC-SHA256 |
 | Store key | `%LOCALAPPDATA%\VmMaintenance\data\store.key` | DPAPI, your Windows user on this laptop only |
 | Reports | `%LOCALAPPDATA%\VmMaintenance\Reports\` | Plaintext by design (they are for your manager) |
+| Inventory values | Inside the fleet store | Encrypted like the rest of the store; the export `Reports\Inventory\*.csv` is plaintext |
 | Agent key | `%LOCALAPPDATA%\VmMaintenance\data\agent.key` | RSA private key, DPAPI |
 | Built agents | `%LOCALAPPDATA%\VmMaintenance\agents\` | Plaintext plan for one host; older copies deleted on export |
 | Error log | `%LOCALAPPDATA%\VmMaintenance\logs\errors.log` | Sanitized, 1 MB cap |
@@ -324,4 +364,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 04:16 UTC_
+_Last updated: 2026-11-14 04:30 UTC_

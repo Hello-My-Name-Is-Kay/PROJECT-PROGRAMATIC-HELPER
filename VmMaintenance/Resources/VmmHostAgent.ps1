@@ -89,6 +89,9 @@ function Read-Card {
         ExpectedOs = '*Server 2019*'; UpgradeCommand = ''; Share = ''; PublicKey = ''; Platform = ''; AzureVm = 'No'
         TargetOs = '*Server 2019*'; PolicyScope = ''; PolicyWhy = ''; PolicyWarnings = ''
         Steps = @{}; Packages = @()
+        # Inventory agent columns: service Name/DisplayName wildcards (the plan replaces these with the laptop's list)
+        Services = @{ Qualys = @('QualysAgent', 'Qualys*'); CrowdStrike = @('CSFalconService', 'CrowdStrike*'); Zabbix = @('Zabbix Agent*', 'Zabbix*')
+                      Ivanti = @('*Ivanti*', '*LANDesk*'); LansweeperAgent = @('LansweeperAgentService', 'Lansweeper*Agent*') }
     }
     if (-not $CardText) { return $c }
     try {
@@ -103,6 +106,10 @@ function Read-Card {
         $k = $line.Substring(0, $i); $v = $line.Substring($i + 1).TrimEnd("`r")
         if ($k -like 'Step.*') { $c.Steps[$k.Substring(5)] = $v }
         elseif ($k -eq 'Package') { $c.Packages += $v }
+        elseif ($k -like 'Svc.*') {
+            if (-not $svcSeen) { $c.Services = @{}; $svcSeen = $true }
+            $c.Services[$k.Substring(4)] = @($v -split ';' | Where-Object { $_ })
+        }
         else { $c[$k] = $v }
     }
     $c
@@ -163,6 +170,46 @@ function Get-PackageState {
         $res += New-Object PSObject -Property @{ Name = $f[0]; File = $file; Sha256 = $f[2]; Rel = $f[3]; State = $state }
     }
     $res
+}
+function Get-InvProbe($Services) {
+    # Inventory columns readable on this host (PowerShell 2.0+, read-only). Returns 'Inv.<Key>=<value>' lines.
+    # Also pasted into the RDP collector by the laptop, so it must stay self-contained.
+    $out = @()
+    $cs = Get-WmiObject Win32_ComputerSystem
+    $dom = "$($cs.Domain)"
+    if (-not $cs.PartOfDomain) { $dom = 'WORKGROUP (' + $dom + ')' }
+    $out += 'Inv.Domain=' + $dom
+    $dc = 'No'
+    if ($cs.DomainRole -ge 4) { $dc = 'Yes' }
+    $out += 'Inv.DomainController=' + $dc
+    $ip = ''
+    foreach ($a in @(Get-WmiObject Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True')) {
+        foreach ($x in @($a.IPAddress)) { if (-not $ip -and "$x" -match '^\d{1,3}(\.\d{1,3}){3}$' -and "$x" -notmatch '^(127|169\.254)\.') { $ip = "$x" } }
+    }
+    $out += 'Inv.IPAddress=' + $ip
+    $lic = 'Unknown (run slmgr /dli)'
+    $names = @{ 0 = 'Unlicensed'; 1 = 'Licensed'; 2 = 'Grace period (OOB)'; 3 = 'Grace period (OOT)'; 4 = 'Grace period (non-genuine)'; 5 = 'Notification'; 6 = 'Grace period (extended)' }
+    try {
+        $p = @(Get-WmiObject SoftwareLicensingProduct -Filter "Name LIKE 'Windows%' AND PartialProductKey IS NOT NULL" -ErrorAction Stop)
+        if ($p.Count) { $lic = $names[[int]$p[0].LicenseStatus] } else { $lic = 'No product key installed' }
+    } catch { }
+    $out += 'Inv.WindowsLicense=' + $lic
+    $svc = @(Get-WmiObject Win32_Service)
+    foreach ($k in $Services.Keys) {
+        $hit = $null
+        foreach ($pat in @($Services[$k])) { if (-not $hit) { $hit = $svc | Where-Object { $_.Name -like $pat -or $_.DisplayName -like $pat } | Select-Object -First 1 } }
+        $v = 'Not installed'
+        if ($hit) { if ($hit.State -eq 'Running') { $v = 'Running' } else { $v = 'Installed (' + $hit.State + ')' } }
+        $out += 'Inv.' + $k + '=' + $v
+    }
+    $on = @()
+    foreach ($t in '1.0', '1.1') {
+        $e = $null
+        try { $e = (Get-ItemProperty ('HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS ' + $t + '\Server') -Name Enabled -ErrorAction Stop).Enabled } catch { }
+        if ($e -ne 0) { $on += ('TLS ' + $t) }   # no key = Windows default = enabled
+    }
+    if ($on.Count) { $out += ('Inv.TlsLegacyDisabled=No (' + ($on -join ', ') + ' enabled)') } else { $out += 'Inv.TlsLegacyDisabled=Yes' }
+    $out
 }
 function Get-Facts {
     $os = Get-WmiObject Win32_OperatingSystem
@@ -432,6 +479,8 @@ function Export-Result {
         'PendingReboot=' + $(if ($f.PendingReboot) { 'Yes' } else { 'No' }), 'Sql=' + $f.Sql, 'LastBoot=' + $f.LastBoot,
         'TempExists=' + $f.TempExists, 'AgentVersion=' + $AgentVersion, 'ExportedAt=' + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     )
+    Info ' Reading inventory columns (licence query can take a few seconds)...'
+    try { $lines += @(Get-InvProbe $Card.Services) } catch { Warn ' Inventory columns could not be read; fill them on the laptop (I on the host screen).' }
     foreach ($p in (Get-PackageState)) { $lines += ('Package=' + $p.Name + '|' + $p.State) }
     foreach ($e in (Read-Events)) { $lines += ('Event=' + $e.At + '|' + $e.Step + '|' + $e.Status + '|' + $e.Note) }
     $text = $lines -join "`n"
@@ -508,6 +557,14 @@ function Show-Facts($f) {
     $pk = @(Get-PackageState)
     if ($pk.Count) { Info ' Staged files'; foreach ($p in $pk) { $c = 'Red'; if ($p.State -eq 'Verified' -or $p.State -eq 'Present') { $c = 'Green' }; Say ("  {0,-24} {1}" -f $p.Name, $p.State) $c } }
 }
+function Show-Inventory {
+    Info ' Inventory (sent to the laptop with Export)'
+    foreach ($l in @(Get-InvProbe $Card.Services)) {
+        $i = $l.IndexOf('='); $k = $l.Substring(4, $i - 4); $v = $l.Substring($i + 1)
+        $col = 'Gray'; if ($v -match '^(Not installed|No |Unlicensed|Unknown)') { $col = 'Yellow' }
+        Say ('  {0,-18} {1}' -f $k, $v) $col
+    }
+}
 function Show-Plan {
     $f = Get-Facts
     $plan = @(Get-Plan $f)
@@ -578,7 +635,7 @@ try {
         Show-Header
         try {
             switch -Regex ($k) {
-                '^1$' { Show-Facts (Get-Facts); Pause-Agent }
+                '^1$' { Show-Facts (Get-Facts); Show-Inventory; Pause-Agent }
                 '^2$' { [void](Show-Plan); Pause-Agent }
                 '^3$' { Invoke-RunMenu; Pause-Agent }
                 '^4$' { Show-History; Pause-Agent }

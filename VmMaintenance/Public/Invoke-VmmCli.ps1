@@ -39,6 +39,9 @@ function Invoke-VmmCli {
         'agent'    = @{ F = 'Export-VmmHostAgent';        D = 'host agent .ps1 for RDP -HostName x | -Generic' }
         'collect'  = @{ F = 'Import-VmmCollectorResult';  D = 'record host result     [-Line "VMM2|..."] (default: clipboard) [-Step Verify]' }
         'stage'    = @{ F = 'Test-VmmStagingSource';      D = 'staging gate check (share + hashes)' }
+        'inventory' = @{ F = 'Get-VmmInventory';          D = 'server inventory (24 columns) [-HostName x] [-Missing] [-Export]' }
+        'inventory-set' = @{ F = 'Set-VmmInventoryValue'; D = 'set a column by hand   -HostName x[,y] -Field "Server Owner" -Value ".." | -Clear' }
+        'helptext' = @{ F = 'New-VmmHelpTextIssue';       D = 'ask for a help text change on GitHub -Field "<column>" | -Screen "<name>" [-Proposed ..]' }
         'media'    = @{ F = 'Get-VmmMediaReport';         D = 'media repository: OS images by language, host folders, what is missing' }
         'blocker'  = @{ F = 'New-VmmBlockerReport';       D = 'report for manager     -HostName x -Step y -Message ".." [-Contact Sent|Later|Bypass]' }
         'resolve'  = @{ F = 'Resolve-VmmBlocker';         D = 'access granted         -HostName x [-Step y]' }

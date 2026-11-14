@@ -27,6 +27,7 @@ function Invoke-VmmFleetCheck {
         TimeoutMs  = [int](Get-VmmSetting 'Fleet.TimeoutMs' -Default 1500)
         Ports      = @(Get-VmmSetting 'Fleet.Ports' -Default @(135, 445, 3389, 5985))
         Watch      = @(Get-VmmSetting 'Fleet.SoftwareWatch' -Default @('Microsoft SQL Server*'))
+        Services   = $(try { Get-VmmInventoryServiceMap } catch { @{} })
         Credential = Get-VmmSessionCredential -Purpose Windows
     }
     $throttle = [int](Get-VmmSetting 'Fleet.Throttle' -Default 16)
@@ -41,6 +42,7 @@ function Invoke-VmmFleetCheck {
         $rec.Health = Get-VmmHostHealth -Check $res
         if ($res.IPv4) { $rec.IPv4 = $res.IPv4 }
         if ($res.Platform) { $rec.Platform = $res.Platform }
+        if ($res.PSObject.Properties['Inv']) { Update-VmmInventoryAuto -Record $rec -Values $res.Inv -Via 'check' }
     }
     if ($Azure) { Update-VmmFleetAzure -Store $store -Name $targets }
     Save-VmmStore -Store $store
@@ -51,6 +53,10 @@ function Invoke-VmmFleetCheck {
         $bad = @($results | Where-Object { $_.Reachable -ne 'Yes' })
         if ($bad) { Write-VmmLog "$($bad.Count) host(s) not fully reachable. Use RDP guide (collector) for those, or check firewall/rights." -Level Warn }
         else { Write-VmmLog "All $($results.Count) host(s) answered." -Level Success }
+        try {
+            $gaps = @(foreach ($h in @($store.Hosts | Where-Object { $targets -contains $_.Name })) { $m = @(Get-VmmInventoryRow -Record $h | Where-Object Missing); if ($m) { $h.Name } })
+            if ($gaps) { Write-VmmLog "Inventory: $($gaps.Count) host(s) still miss columns - open a host and press I, or: vmm inventory -Missing" -Level Info }
+        } catch { }
     }
     if ($PassThru) { $results }
 }

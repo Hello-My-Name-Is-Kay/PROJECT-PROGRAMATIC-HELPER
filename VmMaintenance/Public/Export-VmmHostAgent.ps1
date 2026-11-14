@@ -66,6 +66,8 @@ function Export-VmmHostAgent {
         $lines.Add('Platform=' + $rec.Platform)
         $lines.Add('AzureVm=' + $(if ($rec.Azure) { 'Yes' } else { 'No' }))
         $lines.Add('PublicKey=' + $pub)
+        try { $svc = Get-VmmInventoryServiceMap; foreach ($k in $svc.Keys) { $lines.Add('Svc.' + $k + '=' + (@($svc[$k]) -join ';')) } }
+        catch { Write-VmmLog 'Inventory field list not readable: the agent uses its built-in agent service names.' -Level Warn }
         $pol = Get-VmmHostPolicy -Record $rec
         $lines.Add('TargetOs=' + (Get-VmmSetting 'Policy.TargetOs' -Default '*Server 2019*'))
         $lines.Add('PolicyScope=' + $pol.Scope)

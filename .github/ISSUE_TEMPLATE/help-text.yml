@@ -1,0 +1,25 @@
+name: Help text change
+description: Ask for a clearer help window (inventory column or any vmm screen). From vmm - T in the inventory screen, or vmm helptext.
+title: "Help text: "
+body:
+  - type: input
+    id: where
+    attributes:
+      label: Which help window
+      description: Inventory column header (e.g. Server Owner) or screen name (e.g. Staging gate)
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current text
+      description: Copy it from the help window. Remove host names, IPs, company names.
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed text, or what is unclear
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: Inventory help texts live in VmMaintenance/Resources/InventoryFields.psd1 (one entry per column); the fix reaches everyone with vmm update.

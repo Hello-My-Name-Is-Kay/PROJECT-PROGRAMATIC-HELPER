@@ -111,6 +111,9 @@ document.querySelectorAll('th').forEach(function(th){th.onclick=function(){var t
     Set-Content -LiteralPath "$base.html" -Value $html -Encoding UTF8
     if (-not $Quiet) {
         Write-VmmLog "Daily report: $base.html | .csv | .json" -Level Success
+        if (Get-VmmSetting 'Inventory.ExportWithDaily' -Default $true) {
+            try { Get-VmmInventory -Export } catch { Write-VmmLog "Inventory CSV not written: $($_.Exception.Message.Split([Environment]::NewLine)[0])" -Level Warn }
+        }
         Write-VmmLog 'These files are plaintext (host names) so your manager can read them. Send them yourself; delete old ones when no longer needed.' -Level Warn
     }
     if ($Open) { Start-Process "$base.html" }

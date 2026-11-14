@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "license": "private",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
@@ -98,6 +98,7 @@
     "Get-VmmDailyProgress",
     "Get-VmmFleet",
     "Get-VmmGitHubStatus",
+    "Get-VmmInventory",
     "Get-VmmLansweeperDiskSpace",
     "Get-VmmMediaReport",
     "Get-VmmPolicyReport",
@@ -121,12 +122,14 @@
     "New-VmmDiskFromSnapshot",
     "New-VmmGitHubIssue",
     "New-VmmGitHubPullRequest",
+    "New-VmmHelpTextIssue",
     "New-VmmSnapshot",
     "Remove-VmmExpiredSnapshot",
     "Remove-VmmFleetHost",
     "Resolve-VmmBlocker",
     "Select-VmmAzureContext",
     "Set-VmmHostOrder",
+    "Set-VmmInventoryValue",
     "Set-VmmSetting",
     "Start-VmmConsole",
     "Start-VmmSetupWizard",
@@ -165,6 +168,9 @@
     "Get-VmmHostPolicy",
     "Get-VmmHostRecord",
     "Get-VmmHostStage",
+    "Get-VmmInventoryCatalog",
+    "Get-VmmInventoryRow",
+    "Get-VmmInventoryServiceMap",
     "Get-VmmMediaInventory",
     "Get-VmmNextDiskTier",
     "Get-VmmNextStep",
@@ -221,6 +227,7 @@
     "Show-VmmGuideScreen",
     "Show-VmmHelpScreen",
     "Show-VmmHostScreen",
+    "Show-VmmInventoryScreen",
     "Show-VmmMainMenu",
     "Show-VmmPlanScreen",
     "Show-VmmPruneScreen",
@@ -235,6 +242,7 @@
     "Unprotect-VmmBytes",
     "Unprotect-VmmDpapi",
     "Update-VmmFleetAzure",
+    "Update-VmmInventoryAuto",
     "Wait-VmmJob",
     "Write-VmmErrorLog",
     "Write-VmmLog",
@@ -272,5 +280,13 @@
     "pick": "image for Staging.OsMediaVersion in the host's install language (Win32_OperatingSystem.OSLanguage); no fallback language",
     "hashes": "optional <file>.sha256 sidecar",
     "report": "vmm media"
+  },
+  "inventory": {
+    "fields": "VmMaintenance/Resources/InventoryFields.psd1 (24 columns, CSV order, help text, agent service names)",
+    "auto": "fleet check (CIM), host agent / collector Get-InvProbe -> Inv.<Key>= lines -> record.InventoryAuto",
+    "derived": "ActionsToExecute, ActionsStatus, ExecutionDate from workflow",
+    "manual": "record.Inventory via Set-VmmInventoryValue / I screen; Inventory.Defaults",
+    "export": "Reports/Inventory/Inventory_<date>.csv",
+    "help_change": "vmm helptext / T -> GitHub issue (.github/ISSUE_TEMPLATE/help-text.yml)"
   }
 }

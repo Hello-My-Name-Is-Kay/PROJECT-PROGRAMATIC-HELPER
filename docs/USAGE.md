@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | Every morning business hours:14-26 | Evening weekend all steps:27-33 | Problems:34-43 | End of day:44-48 | Updates and GitHub:49-53 | Tests:54-62 -->
+<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | Every morning business hours:14-28 | Evening weekend all steps:29-35 | Problems:36-45 | End of day:46-50 | Updates and GitHub:51-55 | Tests:56-64 -->
 # Usage - daily runbook
 
 ## Once
@@ -21,6 +21,8 @@ the plaintext list is deleted after import, names then live only in the encrypte
    language plus its own folder on the media repository. Missing files are listed with the exact name and
    path to save them under and the hosts that need them; nothing is staged until the share is complete.
 6. `1` - Plan: run Stage for every host that passed Precheck (allowed in business hours).
+   Inventory: the check already filled the automatic columns; `N` shows what is missing, `I` on a host
+   fills the rest with a help window per column.
 7. Hosts that do not answer: open the host (`2`, Enter), press `X` to build the host agent, run it in
    RDP/RDM, export, then `P` on the laptop.
 
@@ -59,4 +61,4 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1      # before any commit or push
 ```
 
-_Last updated: 2026-11-14 04:16 UTC_
+_Last updated: 2026-11-14 04:30 UTC_

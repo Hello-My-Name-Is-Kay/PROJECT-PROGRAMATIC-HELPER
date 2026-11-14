@@ -13,6 +13,7 @@ function Show-VmmMainMenu {
         @{ K = '8'; T = 'Snapshots, prune  preview and delete expired snapshots' }
         @{ K = '9'; T = 'Settings          share, targets, hours, snapshot policy, upgrade command...' }
         @{ K = '0'; T = 'Import hosts      add machines from a list file or names' }
+        @{ K = 'N'; T = 'Inventory         24 columns per host: what is missing, export CSV (I on a host to fill)' }
         @{ K = 'V'; T = 'VPN               status, connect, disconnect (you sign in in the VPN client)' }
         @{ K = 'A'; T = 'Assistant         optional AI help: explain an error, next step (off by default)' }
         @{ K = 'W'; T = 'Setup wizard      all options page by page, with explanations' }
@@ -57,6 +58,11 @@ function Show-VmmMainMenu {
                   }) }
             'W' { [void](Invoke-VmmTuiAction -Title 'Setup wizard' -Action { Start-VmmSetupWizard }) }
             'U' { Show-VmmGitHubScreen }
+            'N' { [void](Invoke-VmmTuiAction -Title 'Inventory' -Action {
+                      Get-VmmInventory
+                      $a = Read-VmmPrompt 'E = export CSV, M = missing only, a host name = its columns, Enter = back'
+                      if ($a -match '^[eE]$') { Get-VmmInventory -Export } elseif ($a -match '^[mM]$') { Get-VmmInventory -Missing } elseif ($a) { Get-VmmInventory -HostName $a }
+                  }) }
             'H' { Show-VmmHelpScreen }
             'Q' { return }
         }

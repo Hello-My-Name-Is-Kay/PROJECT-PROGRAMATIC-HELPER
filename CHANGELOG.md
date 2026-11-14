@@ -1,5 +1,16 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.3.0 - 2026-11-14:4-18 | 2.2.1 - 2026-11-14:19-25 | 2.2.0 - 2026-11-14:26-33 | 2.1.0 - 2026-11-14:34-51 | 2.0.0 - 2026-11-14:52-57 | 1.0.0 - 2026-11-14:58-62 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.4.0 - 2026-11-14:4-14 | 2.3.0 - 2026-11-14:15-29 | 2.2.1 - 2026-11-14:30-36 | 2.2.0 - 2026-11-14:37-44 | 2.1.0 - 2026-11-14:45-62 | 2.0.0 - 2026-11-14:63-68 | 1.0.0 - 2026-11-14:69-73 -->
 # Changelog
+
+## 2.4.0 - 2026-11-14
+
+- Server inventory: the team's 24 columns per host (`Resources\InventoryFields.psd1`: order, headers, help text,
+  agent service names). Automatic columns (domain, IP, licence, Qualys/CrowdStrike/Zabbix/Ivanti/Lansweeper agents,
+  legacy TLS, domain controller, SQL) are read by the fleet check, the host agent and the RDP collector; workflow
+  columns are derived; the rest is typed with a help window per column or set once as a fleet default.
+- `I` on a host (Enter = help + edit, `F` fill missing, `T` help-text issue, `E` export), `N` in the main menu,
+  `vmm inventory`, `vmm inventory-set`, `vmm helptext`; CSV export with the exact headers, also with every daily report.
+- Setup wizard page Inventory (default technician, company, perimeter, phase, CSV separator).
+- GitHub issue template "Help text change".
 
 ## 2.3.0 - 2026-11-14
 
@@ -59,4 +70,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 04:16 UTC_
+_Last updated: 2026-11-14 04:30 UTC_

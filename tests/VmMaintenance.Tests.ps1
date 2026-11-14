@@ -231,6 +231,57 @@ Describe 'Host agent plan card' {
     }
 }
 
+Describe 'Server inventory' {
+    BeforeAll {
+        InModuleScope VmMaintenance {
+            $script:SavedCfg3 = $script:VmmConfig
+            $script:VmmConfig = @{ Inventory = @{ Defaults = @{ AssignedTechnician = 'Tech A' } }; Staging = @{ OsMediaVersion = 2019 } }
+        }
+    }
+    AfterAll { InModuleScope VmMaintenance { $script:VmmConfig = $script:SavedCfg3 } }
+
+    It 'has the 24 columns in the agreed order, each with help' {
+        $want = 'Hostname,Domain,IPAddress,OS Version,Company,Perimeter,Localisation,Phase,Server Owner,Assigned Technician,Actions to be executed,Execution Date,Windows License,QUALYS Cloud AGENT,CrowdStrike Agent,Zabbix,IVANTI,LANSWEEPER AGENT,TLS 1.0-1.1 DISABLED,Actions Status,Domain controller,SQL Present,Comments,Aplication' -split ','
+        $cat = @(InModuleScope VmMaintenance { Get-VmmInventoryCatalog -Refresh })
+        ($cat | ForEach-Object Header) | Should -Be $want
+        @($cat | ForEach-Object Key | Sort-Object -Unique).Count | Should -Be 24
+        @($cat | Where-Object { -not $_.Help }).Count | Should -Be 0
+        (@($cat | Where-Object { $_.Services.Count }) | ForEach-Object Key) | Should -Be @('Qualys', 'CrowdStrike', 'Zabbix', 'Ivanti', 'LansweeperAgent')
+    }
+    It 'fills columns from the check, defaults and the workflow, and flags the gaps' {
+        $rows = @(InModuleScope VmMaintenance {
+            $r = New-VmmHostRecord -Name 'inv-test'
+            $r.Platform = 'VMware'; $r.IPv4 = ('192.0.2', '10') -join '.'
+            $r.Check = [pscustomobject]@{ OS = 'Microsoft Windows Server 2016 Standard'; Build = '14393'; Sql = 'MSSQLSERVER 13.0.6300.2 Standard Edition' }
+            $r.Steps = [pscustomobject]@{ Precheck = [pscustomobject]@{ Status = 'Success'; At = '2026-11-14T08:00:00Z'; Note = '' } }
+            Update-VmmInventoryAuto -Record $r -Values ([ordered]@{ Domain = 'corp.example'; TlsLegacyDisabled = 'Yes' }) -Via 'check'
+            Update-VmmInventoryAuto -Record $r -Values ([ordered]@{ Domain = ''; Zabbix = 'Running' }) -Via 'host agent (encrypted)'
+            Get-VmmInventoryRow -Record $r
+        })
+        $v = @{}; foreach ($x in $rows) { $v[$x.Key] = $x }
+        $v.Hostname.Value | Should -Be 'INV-TEST'
+        $v.OSVersion.Value | Should -Be 'Microsoft Windows Server 2016 Standard (build 14393)'
+        $v.SqlPresent.Value | Should -Match '^Yes: MSSQLSERVER 13'
+        $v.IPAddress.Value | Should -Be (('192.0.2', '10') -join '.')
+        $v.Domain.Value | Should -Be 'corp.example'          # an empty later read does not erase it
+        $v.Zabbix.Origin | Should -Be 'host agent (encrypted)'
+        $v.AssignedTechnician.Origin | Should -Be 'default'
+        $v.ActionsStatus.Value | Should -Be 'In progress (last: Precheck)'
+        $v.ActionsToExecute.Value | Should -Match 'Upgrade to Windows Server 2019'
+        $v.ActionsToExecute.Value | Should -Not -Match 'Precheck'
+        $v.Company.Missing | Should -BeTrue
+        $v.Comments.Missing | Should -BeFalse
+        $v.WindowsLicense.Missing | Should -BeTrue
+    }
+    It 'the RDP collector carries the same inventory probe as the host agent and parses' {
+        $text = InModuleScope VmMaintenance { Get-VmmCollectorScript }
+        $text | Should -Match 'function Get-InvProbe'
+        $text | Should -Match "'Qualys' = @\('QualysAgent', 'Qualys\*'\)"
+        $e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$e)
+        @($e).Count | Should -Be 0
+    }
+}
+
 Describe 'Logging and errors' {
     It 'Protect-VmmLogText masks secrets' {
         $o = InModuleScope VmMaintenance { Protect-VmmLogText 'pwd=abc123 token: xyz Bearer eyJhbGci.x.y' }

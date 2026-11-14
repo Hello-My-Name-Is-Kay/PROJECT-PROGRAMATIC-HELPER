@@ -108,6 +108,19 @@
         )
     }
 
+    Inventory = @{
+        # 24-column server inventory (column list, order and help texts: VmMaintenance\Resources\InventoryFields.psd1).
+        # Values typed here apply to every host that has no value of its own (empty = ask per host).
+        Defaults = @{
+            AssignedTechnician = ''
+            Company            = ''
+            Perimeter          = ''
+            Phase              = ''
+        }
+        CsvDelimiter    = ','       # ',' or ';' (Excel with Portuguese/French regional settings)
+        ExportWithDaily = $true     # write Reports\Inventory\Inventory_<date>.csv with every daily report
+    }
+
     Workflow = @{
         SnapshotAfter           = 'ChangingSteps'   # ChangingSteps | EveryStep | Off  (Azure VMs only)
         CheckpointRetentionDays = 7                 # RetentionDays tag on checkpoint snapshots (prune uses it)

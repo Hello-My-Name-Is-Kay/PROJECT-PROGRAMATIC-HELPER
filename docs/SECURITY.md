@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-41 | Honest limits:42-61 | Untested:62-71 -->
+<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-42 | Honest limits:43-62 | Untested:63-72 -->
 # Security
 
 Rules this project follows, how each is implemented, and the honest limits.
@@ -25,6 +25,7 @@ Rules this project follows, how each is implemented, and the honest limits.
 | Agent results `VMM2\|...` | clipboard, in transit | RSA-OAEP wraps a random 64-byte key; AES-256-CBC + HMAC-SHA256 |
 | Host agent log | `C:\Temp\VmmAgent` on the host | Sanitized lines only; folder ACL: Administrators, SYSTEM, you (by SID); removed by Finish |
 | Reports | `%LOCALAPPDATA%\VmMaintenance\Reports` | Plaintext on purpose (for your manager); no credentials |
+| Inventory | Fleet store (encrypted); export `Reports\Inventory\*.csv` plaintext | Typed values are control-char stripped, length-capped and masked; host-side columns accepted only for known automatic keys, IP must be IPv4 |
 | Error log | `%LOCALAPPDATA%\VmMaintenance\logs\errors.log` | Messages pass `Protect-VmmLogText`; 1 MB cap |
 
 Input from hosts is untrusted: result lines are size-limited, MAC-checked, field-validated,
@@ -68,4 +69,4 @@ Not verified: mouse input in Windows Terminal and the interactive UI; `Update-Az
 `Set-Clipboard -Path`; `vpncli.exe` output parsing on your Cisco Secure Client version; Foundry Local's
 port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the `icacls` ACL; Pester 5 tests.
 
-_Last updated: 2026-11-14 03:53 UTC_
+_Last updated: 2026-11-14 04:30 UTC_

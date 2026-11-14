@@ -28,8 +28,8 @@ function Show-VmmHostScreen {
         $open = @($rec.Blockers | Where-Object { -not $_.Resolved })
         if ($open) { $status = "Open blocker: $($open[-1].Step) - $($open[-1].Summary) (contact: $($open[-1].Contact))" }
         $r = Invoke-VmmListView -Title $facts -ColumnHeader ('   {0,-12} {1,-10} {2,-7} {3,-8} {4}' -f 'Step', 'Status', 'Mode', 'Allowed', 'Note') `
-             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X') `
-             -Help 'Enter run | G RDP guide | X host agent | Y confirm | P paste result | B blocker+move on | R resolve | L mstsc | H hold | C check | Esc'
+             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X', 'I') `
+             -Help 'Enter run | G guide | X agent | Y confirm | P paste | B blocker | R resolve | L mstsc | H hold | C check | I inventory | Esc'
         $sel = $r.Index; $status = ''
         $step = $steps[$r.Index].Name
         switch ($r.Action) {
@@ -50,6 +50,7 @@ function Show-VmmHostScreen {
             'L'     { Start-Process mstsc.exe -ArgumentList "/v:$HostName"; $status = "mstsc started for $HostName (or open it in RDM)" }
             'H'     { $rec.Hold = -not $rec.Hold; Save-VmmStore -Store $store; $status = "Hold = $($rec.Hold)" }
             'C'     { [void](Invoke-VmmTuiAction -Title "Check $HostName" -Action { Invoke-VmmFleetCheck -Name $HostName }) }
+            'I'     { Show-VmmInventoryScreen -HostName $HostName }
         }
     }
 }
