@@ -40,13 +40,14 @@ function Import-VmmCollectorResult {
 
     $clean = { param($v, [int]$max = 200) $t = ("$v" -replace '[\x00-\x1F\x7F]', ' ').Trim(); if ($t.Length -gt $max) { $t = $t.Substring(0, $max) }; Protect-VmmLogText $t }
     $num = { param($v) $d = 0.0; if ([double]::TryParse("$v", [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$d) -and $d -ge 0 -and $d -lt 1e6) { $d } else { $null } }
-    $f = @{}; $events = @(); $packages = @(); $invIn = @{}
+    $f = @{}; $events = @(); $packages = @(); $invIn = @{}; $agIn = @{}
     foreach ($l in ($text -split "`n" | Select-Object -First 2000)) {
         $i = $l.IndexOf('='); if ($i -lt 1) { continue }
         $k = $l.Substring(0, $i); $v = $l.Substring($i + 1)
         if ($k -eq 'Event') { $events += , ($v -split '\|', 4) }
         elseif ($k -eq 'Package') { $packages += & $clean $v 120 }
         elseif ($k -match '^Inv\.([A-Za-z0-9]{1,40})$') { $invIn[$Matches[1]] = $v }
+        elseif ($k -match '^Agent\.([A-Za-z0-9]{1,40})$') { $agIn[$Matches[1]] = $v }
         elseif ($k -match '^[A-Za-z]{1,20}$') { $f[$k] = $v }
     }
     if ("$($f['Name'])" -notmatch '^[A-Za-z0-9][A-Za-z0-9\-]{0,62}$') {
@@ -63,18 +64,27 @@ function Import-VmmCollectorResult {
         CTotalGB = (& $num $f['CTotalGB']); CFreeGB = (& $num $f['CFreeGB'])
         PendingReboot = $(if ($f['PendingReboot'] -eq 'Yes') { 'Yes' } else { 'No' })
         Sql = $(if ($f['Sql']) { & $clean $f['Sql'] 300 } else { 'none' }); Software = (($packages | Select-Object -First 20) -join '; ')
-        Error = $null; Via = $via; Inv = $null
+        Error = $null; Via = $via; Inv = $null; Agents = $null
     }
     # Inventory columns: only Auto keys from the field list, cleaned and length-capped; IP must be IPv4
     $auto = @(try { Get-VmmInventoryCatalog | Where-Object Source -eq 'Auto' | ForEach-Object Key } catch { })
     $inv = [ordered]@{}
     foreach ($k in $invIn.Keys) {
         if ($auto -notcontains $k) { continue }
-        $v = & $clean $invIn[$k] 120
+        $v = & $clean $invIn[$k] 240
         if ($k -eq 'IPAddress' -and $v -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { continue }
         $inv[$k] = $v
     }
     if ($inv.Count) { $check.Inv = [pscustomobject]$inv }
+    # Agent health detail: Status|State|StartMode|Version|Issues, only for known agent columns
+    $ag = [ordered]@{}
+    foreach ($k in $agIn.Keys) {
+        if ($auto -notcontains $k) { continue }
+        $p = @("$($agIn[$k])" -split '\|', 5)
+        if ($p.Count -lt 5 -or $p[0] -notin 'OK', 'WARN', 'FAIL') { continue }
+        $ag[$k] = [pscustomobject]@{ Status = $p[0]; State = (& $clean $p[1] 40); StartMode = (& $clean $p[2] 20); Version = (& $clean $p[3] 40); Issues = (& $clean $p[4] 200) }
+    }
+    if ($ag.Count) { $check.Agents = [pscustomobject]$ag }
     $rec.Check = $check; $rec.Platform = $check.Platform; $rec.Health = Get-VmmHostHealth -Check $check
     Update-VmmInventoryAuto -Record $rec -Values $check.Inv -Via $via
 

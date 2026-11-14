@@ -114,6 +114,15 @@
         AutoImport   = $true                       # import them when vmm starts (also: E in the menu, vmm inbox)
     }
 
+    Agents = @{
+        # Health of the agent columns (Qualys, CrowdStrike, Zabbix, Ivanti, Lansweeper): vmm agents, A on a host.
+        LogMaxAgeHours = 48         # an agent log not written for this long = WARN
+        AffectHealth   = $true      # a FAIL agent makes the host health Warn
+        MinVersion     = @{         # lowest accepted version per agent ('' = any); lower = WARN
+            Qualys = ''; CrowdStrike = ''; Zabbix = ''; Ivanti = ''; LansweeperAgent = ''
+        }
+    }
+
     Downloads = @{
         # SQL Server updates fetched by 'vmm fetch' are downloaded once into this folder, then copied into
         # each host's folder. Empty = <Staging.SourceShare>\_Downloads (folders starting with _ are not host folders).

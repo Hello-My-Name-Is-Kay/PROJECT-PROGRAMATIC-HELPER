@@ -1,6 +1,6 @@
 function Get-VmmInventoryCatalog {
     # Inventory columns from Resources\InventoryFields.psd1 (order = CSV column order), cached per session.
-    # Each field: Key, Header, Source (Auto | Derived | Manual), Required, Help, Services (agents only).
+    # Each field: Key, Header, Source (Auto | Derived | Manual), Required, Help, Services and Agent (agents only).
     [CmdletBinding()]
     param([switch]$Refresh)
     if ($script:VmmInventoryCatalog -and -not $Refresh) { return $script:VmmInventoryCatalog }
@@ -14,6 +14,7 @@ function Get-VmmInventoryCatalog {
         [pscustomobject]@{
             Key = "$($f.Key)"; Header = "$($f.Header)"; Source = $(if ($f.Source -in 'Auto', 'Derived', 'Manual') { $f.Source } else { 'Manual' })
             Required = $(if ($f.ContainsKey('Required')) { [bool]$f.Required } else { $true }); Help = "$($f.Help)"; Services = @($f.Services | Where-Object { $_ })
+            Agent = $(if ($f.ContainsKey('Agent') -and $f.Agent -is [System.Collections.IDictionary]) { $f.Agent } else { $null })
         }
     })
     $script:VmmInventoryCatalog

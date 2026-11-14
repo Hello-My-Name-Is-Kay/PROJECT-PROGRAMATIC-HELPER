@@ -8,6 +8,10 @@
 #            Manual  = you enter it (help window explains where to find it); fleet default: Inventory.Defaults
 #   Required $false = an empty value does not count as missing
 #   Services (agents only) service Name or DisplayName wildcards; first match wins
+#   Agent    (agents only) health check details: Products = names in Programs and Features (for the version),
+#            Drivers = kernel drivers that must be running, Ports = TCP ports the agent listens on,
+#            Log = a file the agent writes while it works (older than Agents.LogMaxAgeHours = WARN).
+#            Minimum versions are settings: Agents.MinVersion.<Key>
 #   Help     shown in the help window: what the field means and how to get it by hand
 @{
     Version = 1
@@ -39,15 +43,20 @@
         @{ Key = 'WindowsLicense'; Header = 'Windows License'; Source = 'Auto'; Required = $true
            Help = 'Windows activation state: Licensed, Grace period, Notification or Unlicensed. By hand on the host (as administrator): slmgr /dli   (License Status line).' }
         @{ Key = 'Qualys'; Header = 'QUALYS Cloud AGENT'; Source = 'Auto'; Required = $true; Services = @('QualysAgent', 'Qualys*')
-           Help = 'Qualys Cloud Agent service: Running, Installed (stopped) or Not installed. By hand on the host: Get-Service *Qualys*   or services.msc.' }
+           Agent = @{ Products = @('Qualys Cloud Security Agent*', 'Qualys*Agent*'); Log = 'C:\ProgramData\Qualys\QualysAgent\Log.txt' }
+           Help = 'Qualys Cloud Agent health: OK / WARN / FAIL, service state, version, and why (service stopped, start type not Automatic, log not written recently). By hand on the host: Get-Service *Qualys*   and Programs and Features for the version.' }
         @{ Key = 'CrowdStrike'; Header = 'CrowdStrike Agent'; Source = 'Auto'; Required = $true; Services = @('CSFalconService', 'CrowdStrike*')
-           Help = 'CrowdStrike Falcon sensor service (CSFalconService). By hand on the host: sc.exe query csagent   and   Get-Service CSFalconService' }
+           Agent = @{ Products = @('CrowdStrike Windows Sensor*', 'CrowdStrike*Sensor*'); Drivers = @('CSAgent') }
+           Help = 'CrowdStrike Falcon sensor health: OK / WARN / FAIL, service CSFalconService, kernel driver CSAgent running, sensor version. By hand on the host: sc.exe query csagent   and   Get-Service CSFalconService   and Programs and Features (CrowdStrike Windows Sensor) for the version.' }
         @{ Key = 'Zabbix'; Header = 'Zabbix'; Source = 'Auto'; Required = $true; Services = @('Zabbix Agent*', 'Zabbix*')
-           Help = 'Zabbix Agent or Zabbix Agent 2 service. By hand on the host: Get-Service *Zabbix*' }
+           Agent = @{ Products = @('Zabbix Agent*'); Ports = @(10050) }
+           Help = 'Zabbix Agent / Agent 2 health: OK / WARN / FAIL, service state, version, listening on TCP 10050. By hand on the host: Get-Service *Zabbix*   and   netstat -an | findstr 10050' }
         @{ Key = 'Ivanti'; Header = 'IVANTI'; Source = 'Auto'; Required = $true; Services = @('*Ivanti*', '*LANDesk*')
-           Help = 'Ivanti (formerly LANDesk) agent services. By hand on the host: Get-Service | Where-Object { $_.DisplayName -match ''Ivanti|LANDesk'' }   If your Ivanti agent uses other service names, open a help-text issue so they are added here.' }
+           Agent = @{ Products = @('*Ivanti*Agent*', '*LANDesk*Agent*') }
+           Help = 'Ivanti (formerly LANDesk) agent health: OK / WARN / FAIL, service state, version. By hand on the host: Get-Service | Where-Object { $_.DisplayName -match ''Ivanti|LANDesk'' }   If your Ivanti agent uses other service names, open a help-text issue so they are added here.' }
         @{ Key = 'LansweeperAgent'; Header = 'LANSWEEPER AGENT'; Source = 'Auto'; Required = $true; Services = @('LansweeperAgentService', 'Lansweeper*Agent*')
-           Help = 'Lansweeper agent service (LansweeperAgentService). Agentless scanning does not need it; this column says whether the agent is installed. By hand: Get-Service *Lansweeper*' }
+           Agent = @{ Products = @('LsAgent*', 'Lansweeper*Agent*') }
+           Help = 'Lansweeper agent (LsAgent) health: OK / WARN / FAIL, service LansweeperAgentService, version. Agentless scanning does not need it; this column says whether the agent is installed. By hand: Get-Service *Lansweeper*' }
         @{ Key = 'TlsLegacyDisabled'; Header = 'TLS 1.0-1.1 DISABLED'; Source = 'Auto'; Required = $true
            Help = 'Yes when TLS 1.0 and TLS 1.1 are both disabled for the server side in SCHANNEL (Enabled = 0). No lists what is still on. By hand: reg query "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Server" /v Enabled   (same for TLS 1.1). A missing key means the Windows default, which is enabled on Server 2019 and older.' }
         @{ Key = 'ActionsStatus'; Header = 'Actions Status'; Source = 'Derived'; Required = $true

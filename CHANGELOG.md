@@ -1,5 +1,18 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.8.0 - 2026-11-14:4-17 | 2.7.0 - 2026-11-14:18-35 | 2.6.0 - 2026-11-14:36-43 | 2.5.0 - 2026-11-14:44-56 | 2.4.0 - 2026-11-14:57-67 | 2.3.0 - 2026-11-14:68-82 | 2.2.1 - 2026-11-14:83-89 | 2.2.0 - 2026-11-14:90-97 | 2.1.0 - 2026-11-14:98-115 | 2.0.0 - 2026-11-14:116-121 | 1.0.0 - 2026-11-14:122-126 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.9.0 - 2026-11-14:4-16 | 2.8.0 - 2026-11-14:17-30 | 2.7.0 - 2026-11-14:31-48 | 2.6.0 - 2026-11-14:49-56 | 2.5.0 - 2026-11-14:57-69 | 2.4.0 - 2026-11-14:70-80 | 2.3.0 - 2026-11-14:81-95 | 2.2.1 - 2026-11-14:96-102 | 2.2.0 - 2026-11-14:103-110 | 2.1.0 - 2026-11-14:111-128 | 2.0.0 - 2026-11-14:129-134 | 1.0.0 - 2026-11-14:135-139 -->
 # Changelog
+
+## 2.9.0 - 2026-11-14
+
+- Agent health, not only "installed": for Qualys, CrowdStrike, Zabbix, Ivanti and the Lansweeper agent the
+  Extractor, the RDP collector and the fleet check now report OK / WARN / FAIL with the version and the reason.
+  FAIL: not installed, service not running, required kernel driver not running (CrowdStrike `CSAgent`).
+  WARN: start type not Automatic, port not listening (Zabbix 10050; from the laptop: not reachable), agent log
+  not written for `Agents.LogMaxAgeHours` (48; Qualys), version below `Agents.MinVersion.<Agent>`.
+- Version from Programs and Features, else from the service executable.
+- One set of rules (`Get-AgentVerdict` in the Extractor) used on the host and from the laptop. What is checked
+  per agent is in `Resources\InventoryFields.psd1` (`Agent = @{ Products; Drivers; Ports; Log }`).
+- Shown in the inventory columns (`OK - Running, v7.16...`), `vmm agents [-Problems]`, `A` on a host, the fleet
+  check table; a FAIL agent makes the host health Warn (`Agents.AffectHealth`).
 
 ## 2.8.0 - 2026-11-14
 
@@ -123,4 +136,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 12:38 UTC_
+_Last updated: 2026-11-14 13:07 UTC_

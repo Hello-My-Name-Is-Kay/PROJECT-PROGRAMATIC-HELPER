@@ -65,6 +65,13 @@ function Export-VmmHostAgent {
     $lines.Add('PublicKey=' + $pub)
     try { $svc = Get-VmmInventoryServiceMap; foreach ($k in $svc.Keys) { $lines.Add('Svc.' + $k + '=' + (@($svc[$k]) -join ';')) } }
     catch { Write-VmmLog 'Inventory field list not readable: the extractor uses its built-in agent service names.' -Level Warn }
+    try {
+        $agents = Get-VmmAgentCheckMap
+        foreach ($k in $agents.Keys) {
+            foreach ($fld in 'Services', 'Products', 'Drivers', 'Ports') { $lines.Add("Agt.$k.$fld=" + (@($agents[$k][$fld]) -join ';')) }
+            foreach ($fld in 'Log', 'LogMaxAgeHours', 'MinVersion') { $lines.Add("Agt.$k.$fld=" + (& $flat $agents[$k][$fld])) }
+        }
+    } catch { Write-VmmLog 'Agent health list not readable: the extractor uses its built-in agent checks.' -Level Warn }
 
     $store = $null; $rec = $null
     if (-not $Generic) {

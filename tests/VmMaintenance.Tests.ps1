@@ -363,6 +363,55 @@ Describe 'SQL Server update fetch' {
     }
 }
 
+Describe 'Agent health (Extractor and fleet check share the rules)' {
+    BeforeAll {
+        $agentPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'VmMaintenance\Resources\VmmHostAgent.ps1'
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($agentPath, [ref]$null, [ref]$null)
+        $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-AgentVerdict' }, $true) | Select-Object -First 1
+        . ([scriptblock]::Create($fn.Extent.Text))
+        $script:Spec = @{ LogMaxAgeHours = '48'; MinVersion = '7.0' }
+        $script:Run = [pscustomobject]@{ Name = 'CSFalconService'; State = 'Running'; StartMode = 'Auto' }
+    }
+    It 'is OK when running, automatic and new enough, and shows the version' {
+        $v = Get-AgentVerdict $script:Run '7.16.18605.0' @() @() 2 $script:Spec
+        $v.Status | Should -Be 'OK'
+        $v.Text | Should -Be 'OK - Running, v7.16.18605.0'
+    }
+    It 'is FAIL when not installed, stopped, or the driver is not running' {
+        (Get-AgentVerdict $null '' @() @() $null $script:Spec).Text | Should -Be 'FAIL - Not installed'
+        (Get-AgentVerdict ([pscustomobject]@{ Name = 'X'; State = 'Stopped'; StartMode = 'Auto' }) '7.1' @() @() $null $script:Spec).Status | Should -Be 'FAIL'
+        (Get-AgentVerdict $script:Run '7.1' @('CSAgent') @() $null $script:Spec).Issues | Should -Match 'driver CSAgent not running'
+    }
+    It 'is WARN for manual start, old version, closed port or a silent log' {
+        (Get-AgentVerdict ([pscustomobject]@{ Name = 'X'; State = 'Running'; StartMode = 'Manual' }) '7.1' @() @() $null $script:Spec).Status | Should -Be 'WARN'
+        (Get-AgentVerdict $script:Run '6.5.1' @() @() $null $script:Spec).Issues | Should -Match 'version below 7.0'
+        (Get-AgentVerdict $script:Run '7.1' @() @('10050 not listening') $null $script:Spec).Status | Should -Be 'WARN'
+        (Get-AgentVerdict $script:Run '7.1' @() @() 100 $script:Spec).Issues | Should -Match 'log not written for 100 h'
+    }
+    It 'gives every agent column a health spec, with minimum versions from the settings' {
+        $m = InModuleScope VmMaintenance {
+            $saved = $script:VmmConfig; $script:VmmConfig = @{ Log = @{ ToFile = $false }; Agents = @{ MinVersion = @{ CrowdStrike = '7.0' } } }
+            $x = Get-VmmAgentCheckMap; $script:VmmConfig = $saved; $x }
+        (@($m.Keys) -join ',') | Should -Be 'Qualys,CrowdStrike,Zabbix,Ivanti,LansweeperAgent'
+        $m.CrowdStrike.Drivers | Should -Contain 'CSAgent'
+        $m.CrowdStrike.MinVersion | Should -Be '7.0'
+        $m.Zabbix.Ports | Should -Contain '10050'
+    }
+    It 'puts the same rules into the fleet check script and the collector' {
+        $s = InModuleScope VmMaintenance { (Get-VmmHostCheckScript), (Get-VmmCollectorScript) }
+        $s[0] | Should -Match 'function Get-AgentVerdict'
+        $s[1] | Should -Match 'function Get-AgentVerdict'
+        foreach ($x in $s) { $e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($x, [ref]$null, [ref]$e); $e.Count | Should -Be 0 }
+    }
+    It 'a failed agent makes the host health Warn' {
+        InModuleScope VmMaintenance {
+            $saved = $script:VmmConfig; $script:VmmConfig = @{ Log = @{ ToFile = $false } }
+            $c = [pscustomobject]@{ Reachable = 'Yes'; CFreeGB = 80; PendingReboot = 'No'; Error = $null; Agents = [pscustomobject]@{ Qualys = [pscustomobject]@{ Status = 'FAIL' } } }
+            $h = Get-VmmHostHealth -Check $c; $script:VmmConfig = $saved; $h
+        } | Should -Be 'Warn'
+    }
+}
+
 Describe 'Logging and errors' {
     It 'Protect-VmmLogText masks secrets' {
         $o = InModuleScope VmMaintenance { Protect-VmmLogText 'pwd=abc123 token: xyz Bearer eyJhbGci.x.y' }

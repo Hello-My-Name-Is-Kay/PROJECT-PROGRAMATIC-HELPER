@@ -28,15 +28,24 @@ $file = Join-Path $desk ('VMM_' + $env:COMPUTERNAME + '_' + (Get-Date).ToString(
 Write-Host ('Saved on the desktop: ' + [IO.Path]::GetFileName($file) + ' - copy it to your laptop''s Desktop or Downloads (vmm imports it).') -ForegroundColor Green
 Write-Host 'Also on the clipboard: P on the host screen in vmm. Delete the .vmm file from this desktop afterwards.' -ForegroundColor Green
 '@
-    # Inventory columns: reuse the host agent's Get-InvProbe (one implementation, PowerShell 2.0 compatible)
+    # Inventory columns and agent health: reuse the host agent's Get-InvProbe + Get-AgentVerdict (one implementation, PowerShell 2.0 compatible)
     $probe = ''
     try {
         $agent = Join-Path $script:ModuleRoot 'Resources\VmmHostAgent.ps1'
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($agent, [ref]$null, [ref]$null)
         $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-InvProbe' }, $true) | Select-Object -First 1
+        $vd = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-AgentVerdict' }, $true) | Select-Object -First 1
         $svc = Get-VmmInventoryServiceMap
-        $map = (@(foreach ($k in $svc.Keys) { "'$k' = @(" + ((@($svc[$k]) | ForEach-Object { "'" + ($_ -replace "'", "''") + "'" }) -join ', ') + ')' }) -join '; ')
-        if ($fn) { $probe = $fn.Extent.Text + "`r`n`$InvServices = @{ $map }`r`ntry { `$f += @(Get-InvProbe `$InvServices) } catch { }" }
+        $q = { param($v) "'" + ("$v" -replace "'", "''") + "'" }
+        $list = { param($a) '@(' + ((@($a) | Where-Object { $_ } | ForEach-Object { & $q $_ }) -join ', ') + ')' }
+        $map = (@(foreach ($k in $svc.Keys) { "'$k' = " + (& $list $svc[$k]) }) -join '; ')
+        # Agent health specs as a literal (same checks as the Extractor)
+        $ag = Get-VmmAgentCheckMap
+        $amap = (@(foreach ($k in $ag.Keys) {
+            $s = $ag[$k]
+            "'$k' = @{ Services = $(& $list $s.Services); Products = $(& $list $s.Products); Drivers = $(& $list $s.Drivers); Ports = $(& $list $s.Ports); Log = $(& $q $s.Log); LogMaxAgeHours = $(& $q $s.LogMaxAgeHours); MinVersion = $(& $q $s.MinVersion) }"
+        }) -join '; ')
+        if ($fn -and $vd) { $probe = $vd.Extent.Text + "`r`n" + $fn.Extent.Text + "`r`n`$InvServices = @{ $map }`r`n`$InvAgents = @{ $amap }`r`ntry { `$f += @(Get-InvProbe `$InvServices `$InvAgents) } catch { }" }
     } catch { }
     $text.Replace('# VMM-INVPROBE', $probe)
 }

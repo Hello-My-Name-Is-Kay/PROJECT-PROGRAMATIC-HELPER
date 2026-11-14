@@ -25,11 +25,15 @@ function Show-VmmHostScreen {
             if (-not $pol.Workable) { $status = "POLICY: $($pol.Why)" }
             elseif ($pol.Warnings) { $status = "WARN MANAGEMENT: $($pol.Warnings -join ' | ') (vmm policy -Notice)" }
         }
+        if (-not $status -and $c -and $c.PSObject.Properties['Agents'] -and $c.Agents) {
+            $ab = @($c.Agents.PSObject.Properties | Where-Object { $_.Value.Status -ne 'OK' } | ForEach-Object { "$($_.Name) $($_.Value.Status)" })
+            if ($ab) { $status = "Agents: $($ab -join ', ') (A for detail)" }
+        }
         $open = @($rec.Blockers | Where-Object { -not $_.Resolved })
         if ($open) { $status = "Open blocker: $($open[-1].Step) - $($open[-1].Summary) (contact: $($open[-1].Contact))" }
         $r = Invoke-VmmListView -Title $facts -ColumnHeader ('   {0,-12} {1,-10} {2,-7} {3,-8} {4}' -f 'Step', 'Status', 'Mode', 'Allowed', 'Note') `
-             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X', 'I') `
-             -Help 'Enter run | G guide | X extractor | Y confirm | P import result | B blocker | R resolve | L mstsc | H hold | C check | I inventory | Esc'
+             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X', 'I', 'A') `
+             -Help 'Enter run | G guide | X extractor | Y confirm | P import result | B blocker | R resolve | L mstsc | H hold | C check | I inventory | A agents | Esc'
         $sel = $r.Index; $status = ''
         $step = $steps[$r.Index].Name
         switch ($r.Action) {
@@ -54,6 +58,7 @@ function Show-VmmHostScreen {
             'H'     { $rec.Hold = -not $rec.Hold; Save-VmmStore -Store $store; $status = "Hold = $($rec.Hold)" }
             'C'     { [void](Invoke-VmmTuiAction -Title "Check $HostName" -Action { Invoke-VmmFleetCheck -Name $HostName }) }
             'I'     { Show-VmmInventoryScreen -HostName $HostName }
+            'A'     { [void](Invoke-VmmTuiAction -Title "Agent health - $HostName" -Action { Get-VmmAgentHealth -HostName $HostName }) }
         }
     }
 }

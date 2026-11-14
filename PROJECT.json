@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "license": "private",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
@@ -86,6 +86,7 @@
     "Expand-VmmOsDisk",
     "Export-VmmDailyReport",
     "Export-VmmHostAgent",
+    "Get-VmmAgentHealth",
     "Get-VmmAzureVmDisk",
     "Get-VmmDailyProgress",
     "Get-VmmFleet",
@@ -151,6 +152,7 @@
     "Export-VmmCsv",
     "Find-VmmPlaceholder",
     "Get-VmmAccessRequirement",
+    "Get-VmmAgentCheckMap",
     "Get-VmmAgentKey",
     "Get-VmmCachedSqlUpdate",
     "Get-VmmCollectorScript",
@@ -318,5 +320,10 @@
     "cache": "each KB downloaded once into Downloads.CacheFolder (default <share>\\_Downloads\\SQL\\<KB>), Microsoft Authenticode signature required, .sha256 written; then copied into <share>\\<HOST>\\ unless a file with that KB is there",
     "never": "installs nothing; Windows Server ISO stays a manual download (licensed media, no API)",
     "needs": "dbatools (Install-Module dbatools -Scope CurrentUser), internet from the laptop"
+  },
+  "agent_health": {
+    "agents": "Qualys, CrowdStrike, Zabbix, Ivanti, LansweeperAgent (Resources/InventoryFields.psd1: Services + Agent = @{ Products; Drivers; Ports; Log })",
+    "verdict": "Get-AgentVerdict in Resources/VmmHostAgent.ps1 (PS 2.0), pasted by AST into the fleet check script and the RDP collector: FAIL = not installed / service not running / driver not running; WARN = start type not Auto, port, log older than Agents.LogMaxAgeHours, version below Agents.MinVersion.<Key>",
+    "where": "inventory columns ('OK - Running, v7.16...'), Check.Agents per host, vmm agents [-Problems], A on a host, fleet check table, host health Warn on FAIL (Agents.AffectHealth)"
   }
 }

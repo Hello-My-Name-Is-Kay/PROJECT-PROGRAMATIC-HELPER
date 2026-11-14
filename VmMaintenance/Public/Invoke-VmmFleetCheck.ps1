@@ -35,6 +35,7 @@ function Invoke-VmmFleetCheck {
         Ports      = @(Get-VmmSetting 'Fleet.Ports' -Default @(135, 445, 3389, 5985))
         Watch      = @(Get-VmmSetting 'Fleet.SoftwareWatch' -Default @('Microsoft SQL Server*'))
         Services   = $(try { Get-VmmInventoryServiceMap } catch { @{} })
+        Agents     = $(try { Get-VmmAgentCheckMap } catch { @{} })
         Credential = Get-VmmSessionCredential -Purpose Windows
     }
     $throttle = [int](Get-VmmSetting 'Fleet.Throttle' -Default 16)
@@ -54,7 +55,7 @@ function Invoke-VmmFleetCheck {
     if ($Azure) { Update-VmmFleetAzure -Store $store -Name $targets }
     Save-VmmStore -Store $store
 
-    $rows = @($results | Sort-Object Name | Select-Object Name, Reachable, Platform, OS, CFreeGB, Sql, PendingReboot, Error)
+    $rows = @($results | Sort-Object Name | Select-Object Name, Reachable, Platform, OS, CFreeGB, Sql, PendingReboot, @{ n = 'Agents'; e = { $_.AgentSummary } }, Error)
     if (-not $Quiet) {
         $rows | Format-Table -AutoSize | Out-Host
         $bad = @($results | Where-Object { $_.Reachable -ne 'Yes' })

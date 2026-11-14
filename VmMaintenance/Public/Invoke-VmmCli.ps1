@@ -41,6 +41,7 @@ function Invoke-VmmCli {
         'inbox'    = @{ F = 'Import-VmmResultInbox';      D = 'import all VMM_*.vmm result files from Desktop/Downloads [-Path dir]' }
         'extractor' = @{ F = 'Export-VmmHostAgent';       D = 'build the extractor     -Generic (any host) | -HostName x (with its plan)' }
         'stage'    = @{ F = 'Test-VmmStagingSource';      D = 'staging gate check (share + hashes)' }
+        'agents'   = @{ F = 'Get-VmmAgentHealth';         D = 'agent health + version per host (Qualys, CrowdStrike, Zabbix, Ivanti, Lansweeper) [-HostName a,b] [-Problems]' }
         'inventory' = @{ F = 'Get-VmmInventory';          D = 'server inventory (24 columns) [-HostName x] [-Missing] [-Export]' }
         'inventory-set' = @{ F = 'Set-VmmInventoryValue'; D = 'set a column by hand   -HostName x[,y] -Field "Server Owner" -Value ".." | -Clear' }
         'helptext' = @{ F = 'New-VmmHelpTextIssue';       D = 'ask for a help text change on GitHub -Field "<column>" | -Screen "<name>" [-Proposed ..]' }

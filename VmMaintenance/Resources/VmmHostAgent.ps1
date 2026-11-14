@@ -49,7 +49,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.5.0'
+$AgentVersion = '2.9.0'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
@@ -94,6 +94,14 @@ function Read-Card {
         # Inventory agent columns: service Name/DisplayName wildcards (the plan replaces these with the laptop's list)
         Services = @{ Qualys = @('QualysAgent', 'Qualys*'); CrowdStrike = @('CSFalconService', 'CrowdStrike*'); Zabbix = @('Zabbix Agent*', 'Zabbix*')
                       Ivanti = @('*Ivanti*', '*LANDesk*'); LansweeperAgent = @('LansweeperAgentService', 'Lansweeper*Agent*') }
+        # Agent health checks (the plan replaces these with the laptop's InventoryFields.psd1 + Agents settings)
+        Agents = @{
+            Qualys          = @{ Services = @('QualysAgent', 'Qualys*'); Products = @('Qualys Cloud Security Agent*', 'Qualys*Agent*'); Drivers = @(); Ports = @(); Log = 'C:\ProgramData\Qualys\QualysAgent\Log.txt'; LogMaxAgeHours = '48'; MinVersion = '' }
+            CrowdStrike     = @{ Services = @('CSFalconService', 'CrowdStrike*'); Products = @('CrowdStrike Windows Sensor*', 'CrowdStrike*Sensor*'); Drivers = @('CSAgent'); Ports = @(); Log = ''; LogMaxAgeHours = '48'; MinVersion = '' }
+            Zabbix          = @{ Services = @('Zabbix Agent*', 'Zabbix*'); Products = @('Zabbix Agent*'); Drivers = @(); Ports = @('10050'); Log = ''; LogMaxAgeHours = '48'; MinVersion = '' }
+            Ivanti          = @{ Services = @('*Ivanti*', '*LANDesk*'); Products = @('*Ivanti*Agent*', '*LANDesk*Agent*'); Drivers = @(); Ports = @(); Log = ''; LogMaxAgeHours = '48'; MinVersion = '' }
+            LansweeperAgent = @{ Services = @('LansweeperAgentService', 'Lansweeper*Agent*'); Products = @('LsAgent*', 'Lansweeper*Agent*'); Drivers = @(); Ports = @(); Log = ''; LogMaxAgeHours = '48'; MinVersion = '' }
+        }
     }
     if (-not $CardText) { return $c }
     try {
@@ -111,6 +119,14 @@ function Read-Card {
         elseif ($k -like 'Svc.*') {
             if (-not $svcSeen) { $c.Services = @{}; $svcSeen = $true }
             $c.Services[$k.Substring(4)] = @($v -split ';' | Where-Object { $_ })
+        }
+        elseif ($k -match '^Agt\.([A-Za-z0-9]+)\.([A-Za-z]+)$') {
+            # Agt.<Key>.<Field>=value (lists separated by ;)
+            if (-not $agtSeen) { $c.Agents = @{}; $agtSeen = $true }
+            $ak = $Matches[1]; $af = $Matches[2]
+            if (-not $c.Agents.ContainsKey($ak)) { $c.Agents[$ak] = @{ Services = @(); Products = @(); Drivers = @(); Ports = @(); Log = ''; LogMaxAgeHours = '48'; MinVersion = '' } }
+            if ($af -eq 'Services' -or $af -eq 'Products' -or $af -eq 'Drivers' -or $af -eq 'Ports') { $c.Agents[$ak][$af] = @($v -split ';' | Where-Object { $_ }) }
+            else { $c.Agents[$ak][$af] = $v }
         }
         else { $c[$k] = $v }
     }
@@ -173,9 +189,46 @@ function Get-PackageState {
     }
     $res
 }
-function Get-InvProbe($Services) {
-    # Inventory columns readable on this host (PowerShell 2.0+, read-only). Returns 'Inv.<Key>=<value>' lines.
-    # Also pasted into the RDP collector by the laptop, so it must stay self-contained.
+function Get-AgentVerdict($Svc, $Version, $DriversDown, $PortsClosed, $LogAgeH, $Spec) {
+    # OK / WARN / FAIL for one agent (Qualys, CrowdStrike...) from facts read on the host or over WMI.
+    # PowerShell 2.0+, no WMI here: the laptop's fleet check uses this same function.
+    #   FAIL: not installed, service not running, required driver not running
+    #   WARN: start type not Automatic, port not listening/reachable, log not written for LogMaxAgeHours,
+    #         version below MinVersion
+    $issues = @(); $status = 'OK'
+    if (-not $Svc) {
+        return @{ Status = 'FAIL'; State = 'Not installed'; StartMode = ''; Version = "$Version"; Issues = 'service not found'; Text = 'FAIL - Not installed' }
+    }
+    if ("$($Svc.State)" -ne 'Running') { $status = 'FAIL'; $issues += ('service ' + $Svc.Name + ' is ' + $Svc.State) }
+    if ($Svc.StartMode -and "$($Svc.StartMode)" -notmatch '^Auto') {
+        if ($status -eq 'OK') { $status = 'WARN' }
+        $issues += ('start type ' + $Svc.StartMode + ' (will not start after a reboot)')
+    }
+    foreach ($d in @($DriversDown)) { if ($d) { $status = 'FAIL'; $issues += ('driver ' + $d + ' not running') } }
+    foreach ($p in @($PortsClosed)) { if ($p) { if ($status -eq 'OK') { $status = 'WARN' }; $issues += ('port ' + $p) } }
+    $maxH = 48
+    if ($Spec -and $Spec.LogMaxAgeHours) { try { $maxH = [double]$Spec.LogMaxAgeHours } catch { } }
+    if ($null -ne $LogAgeH -and $LogAgeH -gt $maxH) {
+        if ($status -eq 'OK') { $status = 'WARN' }
+        $issues += ('log not written for ' + [int]$LogAgeH + ' h')
+    }
+    if ($Version -and $Spec -and $Spec.MinVersion) {
+        $a = $null; $b = $null
+        try { $a = New-Object Version (("$Version" -replace '[^\d\.].*$', '').Trim('.')); $b = New-Object Version ("$($Spec.MinVersion)") } catch { }
+        if ($a -and $b -and $a -lt $b) {
+            if ($status -eq 'OK') { $status = 'WARN' }
+            $issues += ('version below ' + $Spec.MinVersion)
+        }
+    }
+    $t = $status + ' - ' + $Svc.State
+    if ($Version) { $t += ', v' + $Version } else { $t += ', version unknown' }
+    if ($issues.Count) { $t += ': ' + ($issues -join '; ') }
+    @{ Status = $status; State = "$($Svc.State)"; StartMode = "$($Svc.StartMode)"; Version = "$Version"; Issues = ($issues -join '; '); Text = $t }
+}
+function Get-InvProbe($Services, $Agents) {
+    # Inventory columns readable on this host (PowerShell 2.0+, read-only). Returns 'Inv.<Key>=<value>' lines,
+    # plus 'Agent.<Key>=Status|State|StartMode|Version|Issues' per agent when $Agents (health specs) is given.
+    # Also pasted into the RDP collector by the laptop, so it must stay self-contained (with Get-AgentVerdict).
     $out = @()
     $cs = Get-WmiObject Win32_ComputerSystem
     $dom = "$($cs.Domain)"
@@ -197,12 +250,47 @@ function Get-InvProbe($Services) {
     } catch { }
     $out += 'Inv.WindowsLicense=' + $lic
     $svc = @(Get-WmiObject Win32_Service)
-    foreach ($k in $Services.Keys) {
-        $hit = $null
-        foreach ($pat in @($Services[$k])) { if (-not $hit) { $hit = $svc | Where-Object { $_.Name -like $pat -or $_.DisplayName -like $pat } | Select-Object -First 1 } }
-        $v = 'Not installed'
-        if ($hit) { if ($hit.State -eq 'Running') { $v = 'Running' } else { $v = 'Installed (' + $hit.State + ')' } }
-        $out += 'Inv.' + $k + '=' + $v
+    if ($Agents -and $Agents.Count) {
+        # Installed programs (name + version) from both Uninstall keys, read once
+        $apps = @()
+        foreach ($root in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall') {
+            foreach ($i in @(Get-ChildItem $root -ErrorAction SilentlyContinue)) {
+                $pp = Get-ItemProperty $i.PSPath -ErrorAction SilentlyContinue
+                if ($pp -and $pp.DisplayName) { $apps += New-Object PSObject -Property @{ Name = "$($pp.DisplayName)"; Version = "$($pp.DisplayVersion)" } }
+            }
+        }
+        $listen = ''
+        try { $listen = (& netstat.exe -an) -join "`n" } catch { }
+        foreach ($k in $Agents.Keys) {
+            $sp = $Agents[$k]
+            $pats = @($sp.Services); if ($Services -and $Services[$k]) { $pats = @($Services[$k]) }
+            $hit = $null
+            foreach ($pat in $pats) { if (-not $hit -and $pat) { $hit = $svc | Where-Object { $_.Name -like $pat -or $_.DisplayName -like $pat } | Select-Object -First 1 } }
+            $ver = ''; $dd = @(); $pc = @(); $age = $null
+            if ($hit) {
+                foreach ($pat in @($sp.Products)) { if (-not $ver -and $pat) { $a = $apps | Where-Object { $_.Name -like $pat -and $_.Version } | Select-Object -First 1; if ($a) { $ver = $a.Version } } }
+                if (-not $ver -and $hit.PathName) {
+                    $exe = ''
+                    if ("$($hit.PathName)" -match '^\s*"([^"]+)"') { $exe = $Matches[1] } elseif ("$($hit.PathName)" -match '^\s*(\S+\.exe)') { $exe = $Matches[1] }
+                    if ($exe -and (Test-Path -LiteralPath $exe)) { try { $ver = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion } catch { } }
+                }
+                foreach ($d in @($sp.Drivers)) { if ($d) { $dr = Get-WmiObject Win32_SystemDriver -Filter ("Name='" + $d + "'"); if (-not $dr -or $dr.State -ne 'Running') { $dd += $d } } }
+                # Listening on any address (language-neutral: the foreign address column is the any-address with port 0)
+                foreach ($p in @($sp.Ports)) { if ($p -and $listen -notmatch (':' + $p + '\s+(0\.0\.0\.0|\[::\]):0\s')) { $pc += ("$p not listening") } }
+                if ($sp.Log -and (Test-Path -LiteralPath $sp.Log)) { $age = ((Get-Date) - (Get-Item -LiteralPath $sp.Log).LastWriteTime).TotalHours }
+            }
+            $v = Get-AgentVerdict $hit $ver $dd $pc $age $sp
+            $out += 'Inv.' + $k + '=' + $v.Text
+            $out += 'Agent.' + $k + '=' + $v.Status + '|' + $v.State + '|' + $v.StartMode + '|' + $v.Version + '|' + $v.Issues
+        }
+    } else {
+        foreach ($k in $Services.Keys) {
+            $hit = $null
+            foreach ($pat in @($Services[$k])) { if (-not $hit) { $hit = $svc | Where-Object { $_.Name -like $pat -or $_.DisplayName -like $pat } | Select-Object -First 1 } }
+            $v = 'Not installed'
+            if ($hit) { if ($hit.State -eq 'Running') { $v = 'Running' } else { $v = 'Installed (' + $hit.State + ')' } }
+            $out += 'Inv.' + $k + '=' + $v
+        }
     }
     $on = @()
     foreach ($t in '1.0', '1.1') {
@@ -492,7 +580,7 @@ function Export-Result([switch]$Auto) {
         'PendingReboot=' + $(if ($f.PendingReboot) { 'Yes' } else { 'No' }), 'Sql=' + $f.Sql, 'LastBoot=' + $f.LastBoot,
         'TempExists=' + $f.TempExists, 'AgentVersion=' + $AgentVersion, 'ExportedAt=' + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     )
-    try { $lines += @(Get-InvProbe $Card.Services) } catch { Warn ' Inventory columns could not be read; fill them on the laptop (I on the host screen).' }
+    try { $lines += @(Get-InvProbe $Card.Services $Card.Agents) } catch { Warn ' Inventory columns could not be read; fill them on the laptop (I on the host screen).' }
     foreach ($p in (Get-PackageState)) { $lines += ('Package=' + $p.Name + '|' + $p.State) }
     foreach ($e in (Read-Events)) { $lines += ('Event=' + $e.At + '|' + $e.Step + '|' + $e.Status + '|' + $e.Note) }
     $text = $lines -join "`n"
@@ -581,9 +669,10 @@ function Show-Facts($f) {
 }
 function Show-Inventory {
     Info ' Inventory (sent to the laptop with Export)'
-    foreach ($l in @(Get-InvProbe $Card.Services)) {
+    foreach ($l in @(Get-InvProbe $Card.Services $Card.Agents)) {
+        if ($l -notlike 'Inv.*') { continue }
         $i = $l.IndexOf('='); $k = $l.Substring(4, $i - 4); $v = $l.Substring($i + 1)
-        $col = 'Gray'; if ($v -match '^(Not installed|No |Unlicensed|Unknown)') { $col = 'Yellow' }
+        $col = 'Gray'; if ($v -match '^(Not installed|No |Unlicensed|Unknown|WARN)') { $col = 'Yellow' } elseif ($v -match '^FAIL') { $col = 'Red' } elseif ($v -match '^OK') { $col = 'Green' }
         Say ('  {0,-18} {1}' -f $k, $v) $col
     }
 }

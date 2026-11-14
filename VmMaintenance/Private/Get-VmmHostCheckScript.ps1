@@ -2,15 +2,17 @@ function Get-VmmHostCheckScript {
     # Self-contained check run per host inside a runspace. Read-only: DNS, ping, TCP ports, then CIM over
     # DCOM (same transport as Get-WmiObject) for OS, model, C:, Azure agent, SQL instances, pending
     # reboot and watched software (registry Uninstall keys - never Win32_Product, which triggers MSI repairs).
+    # Agent health uses Get-AgentVerdict from the Extractor (Resources\VmmHostAgent.ps1): one set of rules.
     [CmdletBinding()]
     param()
-    @'
+    $text = @'
 param($Name, $A)
+# VMM-AGENTVERDICT
 $r = [ordered]@{
     Name = $Name; CheckedAt = (Get-Date).ToUniversalTime().ToString('o'); IPv4 = $null; Ping = 'No'; Ports = ''
     Reachable = 'No'; OS = $null; Lang = $null; Version = $null; Build = $null; SP = $null; LastBoot = $null
     Manufacturer = $null; Model = $null; Platform = $null; CTotalGB = $null; CFreeGB = $null
-    PendingReboot = $null; Sql = ''; SqlLang = ''; Software = ''; Inv = $null; Error = $null
+    PendingReboot = $null; Sql = ''; SqlLang = ''; Software = ''; Inv = $null; Agents = $null; AgentSummary = ''; Error = $null
 }
 # Live log: each step goes to the laptop's log as it happens (Invoke-VmmParallel drains the queue)
 $say = { param($m) if ($A.Trace) { $A.Trace.Enqueue("${Name}: $m") } }
@@ -107,8 +109,64 @@ try {
         $lp = @(Get-CimInstance -CimSession $s -ClassName SoftwareLicensingProduct -Filter "Name LIKE 'Windows%' AND PartialProductKey IS NOT NULL" -Property LicenseStatus -OperationTimeoutSec 90 -ErrorAction Stop)
         $inv.WindowsLicense = if ($lp.Count) { $names[[int]$lp[0].LicenseStatus] } else { 'No product key installed' }
     } catch { }
-    if ($A.Services -and $A.Services.Count) {
-        & $say 'inventory agent services'
+    # Installed programs (name + version) from both Uninstall keys, read once (agent versions, watch list)
+    $cache = @{}
+    $getApps = {
+        if (-not $cache.ContainsKey('apps')) {
+            $list = @()
+            foreach ($root in 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall') {
+                $keys = & $reg 'EnumKey' @{ hDefKey = $hk; sSubKeyName = $root }
+                if ($keys.ReturnValue -ne 0) { continue }
+                foreach ($k in $keys.sNames) {
+                    $dn = & $str "$root\$k" 'DisplayName'
+                    if ($dn) { $list += [pscustomobject]@{ Name = "$dn"; Version = "$(& $str "$root\$k" 'DisplayVersion')" } }
+                }
+            }
+            $cache.apps = $list
+        }
+        $cache.apps
+    }
+    if ($A.Agents -and $A.Agents.Count -and (Get-Command Get-AgentVerdict -ErrorAction SilentlyContinue)) {
+        & $say 'agent health: services, versions, drivers, ports, logs'
+        try {
+            $svc = @(Get-CimInstance -CimSession $s -ClassName Win32_Service -Property Name, DisplayName, State, StartMode, PathName -ErrorAction Stop)
+            $apps = @(& $getApps)
+            $file = { param($path) Get-CimInstance -CimSession $s -ClassName CIM_DataFile -Filter ("Name='" + ($path -replace '\\', '\\' -replace "'", "\'") + "'") -ErrorAction SilentlyContinue }
+            $agents = [ordered]@{}; $bad = @()
+            foreach ($k in @($A.Agents.Keys)) {
+                $spec = $A.Agents[$k]
+                $hit = $null
+                foreach ($pat in @($spec.Services)) { if (-not $hit -and $pat) { $hit = $svc | Where-Object { $_.Name -like $pat -or $_.DisplayName -like $pat } | Select-Object -First 1 } }
+                $ver = ''; $dd = @(); $pc = @(); $age = $null
+                if ($hit) {
+                    foreach ($pat in @($spec.Products)) { if (-not $ver -and $pat) { $a = $apps | Where-Object { $_.Name -like $pat -and $_.Version } | Select-Object -First 1; if ($a) { $ver = $a.Version } } }
+                    if (-not $ver -and $hit.PathName) {
+                        $exe = ''
+                        if ("$($hit.PathName)" -match '^\s*"([^"]+)"') { $exe = $Matches[1] } elseif ("$($hit.PathName)" -match '^\s*(\S+\.exe)') { $exe = $Matches[1] }
+                        if ($exe) { $fi = & $file $exe; if ($fi -and $fi.Version) { $ver = "$($fi.Version)" } }
+                    }
+                    foreach ($d in @($spec.Drivers)) {
+                        if (-not $d) { continue }
+                        $dr = Get-CimInstance -CimSession $s -ClassName Win32_SystemDriver -Filter "Name='$d'" -ErrorAction SilentlyContinue
+                        if (-not $dr -or $dr.State -ne 'Running') { $dd += $d }
+                    }
+                    foreach ($port in @($spec.Ports)) {
+                        if (-not $port) { continue }
+                        $tc = New-Object System.Net.Sockets.TcpClient
+                        try { $ar = $tc.BeginConnect($conn, [int]$port, $null, $null); if (-not ($ar.AsyncWaitHandle.WaitOne($A.TimeoutMs) -and $tc.Connected)) { $pc += "$port not reachable from this laptop (agent not listening, or a firewall)" } }
+                        catch { $pc += "$port not reachable from this laptop (agent not listening, or a firewall)" } finally { $tc.Close() }
+                    }
+                    if ($spec.Log) { $lf = & $file $spec.Log; if ($lf -and $lf.LastModified) { $age = ((Get-Date) - [datetime]$lf.LastModified).TotalHours } }
+                }
+                $v = Get-AgentVerdict $hit $ver $dd $pc $age $spec
+                $inv[$k] = $v.Text
+                $agents[$k] = [pscustomobject]@{ Status = $v.Status; State = $v.State; StartMode = $v.StartMode; Version = $v.Version; Issues = $v.Issues }
+                if ($v.Status -ne 'OK') { $bad += ($k + ' ' + $v.Status) }
+            }
+            $r.Agents = [pscustomobject]$agents
+            $r.AgentSummary = if ($bad) { $bad -join ', ' } else { 'all OK' }
+        } catch { & $say "agent health could not be read: $($_.Exception.Message)" }
+    } elseif ($A.Services -and $A.Services.Count) {
         try {
             $svc = @(Get-CimInstance -CimSession $s -ClassName Win32_Service -Property Name, DisplayName, State -ErrorAction Stop)
             foreach ($k in @($A.Services.Keys)) {
@@ -130,14 +188,8 @@ try {
     if ($A.Watch) {
         & $say 'installed software (watch list)'
         $found = @()
-        foreach ($root in 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall') {
-            $keys = & $reg 'EnumKey' @{ hDefKey = $hk; sSubKeyName = $root }
-            if ($keys.ReturnValue -ne 0) { continue }
-            foreach ($k in $keys.sNames) {
-                $dn = & $str "$root\$k" 'DisplayName'
-                if (-not $dn) { continue }
-                foreach ($w in $A.Watch) { if ($dn -like $w) { $found += "$dn $(& $str "$root\$k" 'DisplayVersion')".Trim(); break } }
-            }
+        foreach ($app in @(& $getApps)) {
+            foreach ($w in $A.Watch) { if ($app.Name -like $w) { $found += "$($app.Name) $($app.Version)".Trim(); break } }
         }
         $r.Software = (@($found | Sort-Object -Unique)) -join '; '
     }
@@ -148,4 +200,13 @@ try {
 } finally { if ($s) { Remove-CimSession -CimSession $s -ErrorAction SilentlyContinue } }
 [pscustomobject]$r
 '@
+    # Paste the Extractor's verdict function in (same OK / WARN / FAIL rules on the host and from the laptop)
+    $verdict = ''
+    try {
+        $agent = Join-Path $script:ModuleRoot 'Resources\VmmHostAgent.ps1'
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($agent, [ref]$null, [ref]$null)
+        $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-AgentVerdict' }, $true) | Select-Object -First 1
+        if ($fn) { $verdict = $fn.Extent.Text }
+    } catch { }
+    $text.Replace('# VMM-AGENTVERDICT', $verdict)
 }
