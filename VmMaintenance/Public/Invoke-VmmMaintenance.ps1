@@ -104,9 +104,9 @@ function Invoke-VmmMaintenance {
             $dest = Join-Path $bdir ('fleet_{0}.vmm' -f (Get-Date).ToString('yyyyMMdd_HHmmss'))
             if ($PSCmdlet.ShouldProcess($dest, 'Back up the encrypted fleet store')) {
                 Copy-Item -LiteralPath $store -Destination $dest -Force
-                $all = @(Get-ChildItem -LiteralPath $bdir -Filter 'fleet_*.vmm' -File | Sort-Object LastWriteTime -Descending)
-                $all | Select-Object -Skip $keep | Remove-Item -Force -ErrorAction SilentlyContinue
-                if (-not $Quiet) { Write-VmmLog "Backup: $dest (kept: $([math]::Min($all.Count, $keep)))" -Level Success } else { Write-VmmLog "Backup: $dest" -Level Muted -FileOnly }
+                $existing = @(Get-ChildItem -LiteralPath $bdir -Filter 'fleet_*.vmm' -File | Sort-Object LastWriteTime -Descending)
+                $existing | Select-Object -Skip $keep | Remove-Item -Force -ErrorAction SilentlyContinue
+                if (-not $Quiet) { Write-VmmLog "Backup: $dest (kept: $([math]::Min($existing.Count, $keep)))" -Level Success } else { Write-VmmLog "Backup: $dest" -Level Muted -FileOnly }
                 if ($PassThru) { $dest }
             }
         }
