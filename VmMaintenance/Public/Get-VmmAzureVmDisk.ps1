@@ -131,7 +131,7 @@ function Get-VmmAzureVmDisk {
     }
 
     $results = @($results | Sort-Object Subscription, ComputerName)
-    $results | Format-Table -AutoSize | Out-Host
+    $results | Format-Table -AutoSize | Out-VmmHost
     Export-VmmCsv -InputObject $results -Path (Resolve-VmmOutputPath -Path $OutCsv -BaseName 'AzureVmDisks')
 
     $missing = @($results | Where-Object { -not $_.AzureVMName })

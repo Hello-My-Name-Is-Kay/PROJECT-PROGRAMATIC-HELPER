@@ -51,7 +51,7 @@ function Get-VmmGitHubStatus {
 
     $s = [pscustomobject]$o
     if (-not $Quiet) {
-        $s | Format-List GhInstalled, SignedIn, Repo, Branch, Installed, Latest, UpdateAvailable, LatestCommit, Checks, Clone, CloneBehind | Out-Host
+        $s | Format-List GhInstalled, SignedIn, Repo, Branch, Installed, Latest, UpdateAvailable, LatestCommit, Checks, Clone, CloneBehind | Out-VmmHost
         foreach ($n in $s.Notes) { Write-VmmLog $n -Level Warn }
         if ($s.UpdateAvailable) { Write-VmmLog "Update available: $($s.Installed) -> $($s.Latest). Run: vmm update" -Level Info }
         return

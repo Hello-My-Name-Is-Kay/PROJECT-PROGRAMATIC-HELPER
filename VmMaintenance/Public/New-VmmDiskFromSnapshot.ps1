@@ -80,6 +80,6 @@ function New-VmmDiskFromSnapshot {
         }
     }
     $results = @($results)
-    if ($results) { $results | Format-Table -AutoSize | Out-Host }
+    if ($results) { $results | Format-Table -AutoSize | Out-VmmHost }
     if ($PassThru) { $results }
 }

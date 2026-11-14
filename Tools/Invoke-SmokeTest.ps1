@@ -395,9 +395,62 @@ if (-not $isWin) {
             $raw -notmatch '(?i)smoke-host'
         }
     } finally {
-        & $m { param($c) $script:VmmConfig = $c } $saved
+        & $m { param($c) Exit-VmmInstanceLock; $script:VmmConfig = $c } $saved
         Remove-Item -LiteralPath $tmpRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+
+# ---------------------------------------------------------------- 7. One vmm at a time, CLI log
+Write-Host '7. One vmm at a time and the CLI log (temporary data folder)' -ForegroundColor Cyan
+$tmpLock = Join-Path ([IO.Path]::GetTempPath()) ('vmm-smoke-lock-' + [guid]::NewGuid().ToString('N'))
+[void](New-Item -ItemType Directory -Path (Join-Path $tmpLock 'data'))
+$savedLock = & $m { $script:VmmConfig }
+try {
+    & $m { param($r) Exit-VmmInstanceLock; $script:VmmConfig = @{ Log = @{ ToFile = $false }; Paths = @{ DataDir = (Join-Path $r 'data'); ReportDir = (Join-Path $r 'reports') } } } $tmpLock
+    Test-Step 'Lock: taken once, owner note written, released' {
+        $a = & $m { Enter-VmmInstanceLock -Owner 'vmm ui' }; $b = & $m { Enter-VmmInstanceLock }
+        $note = [IO.File]::ReadAllText((Join-Path $tmpLock 'data\vmm.lock.txt'))
+        & $m { Exit-VmmInstanceLock }
+        if (-not $a -or $b) { throw "enter returned $a, $b" }
+        if ($note -notmatch ('^' + $PID + '\|.+\|vmm ui$')) { throw "owner note: $note" }
+        if (Test-Path -LiteralPath (Join-Path $tmpLock 'data\vmm.lock.txt')) { throw 'owner note left behind' }
+        $true
+    }
+    Test-Step 'Lock: a second vmm stops (VmmInstanceLocked), read-only commands still run' {
+        $fs = New-Object System.IO.FileStream((Join-Path $tmpLock 'data\vmm.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        try {
+            [IO.File]::WriteAllText((Join-Path $tmpLock 'data\vmm.lock.txt'), '4242|2026-11-14 19:00:00|vmm ui')
+            $id = ''; $msg = ''
+            try { Invoke-VmmCli -Command remove -Arguments @('-Name', 'x') | Out-Null } catch { $id = "$($_.FullyQualifiedErrorId)"; $msg = $_.Exception.Message }
+            if ($id -notlike 'VmmInstanceLocked*') { throw "error id '$id'" }
+            if ($msg -notmatch 'process 4242') { throw "message does not name the holder: $msg" }
+            $id = ''
+            try { & $m { Save-VmmStore -Store ([pscustomobject]@{ Updated = $null; Hosts = @() }) } } catch { $id = "$($_.FullyQualifiedErrorId)" }
+            if ($id -notlike 'VmmInstanceLocked*') { throw "Save-VmmStore: error id '$id'" }
+            if (-not (Invoke-VmmCli -Command time).ZoneLabel) { throw 'vmm time did not run beside the lock' }
+        } finally { $fs.Dispose() }
+        $true
+    }
+    Test-Step 'CLI log: command line, output, result and failure are logged' {
+        & $m { $script:VmmLogBuffer = $null }
+        Invoke-VmmCli -Command time | Out-Null
+        try { Invoke-VmmCli -Command guide -Arguments @('-HostName', 'x', '-Step', 'NoSuchStep') | Out-Null } catch { }
+        $t = (@(& $m { $script:VmmLogBuffer | ForEach-Object { "$($_.Level)|$($_.Text)" } }) -join "`n")
+        foreach ($want in 'Muted\|Command: vmm time', 'Output\|ZoneLabel', 'Muted\|vmm time done in', 'Error\|vmm guide -HostName -Step FAILED in') {
+            if ($t -notmatch $want) { throw "log has no line matching '$want'" }
+        }
+        $true
+    }
+    Test-Step 'Out-VmmHost logs the table it prints, secrets masked' {
+        & $m { $script:VmmLogBuffer = $null; [pscustomobject]@{ A = 1; B = 'password=Hunter2' } | Out-VmmHost 6>$null }
+        $t = (@(& $m { $script:VmmLogBuffer | ForEach-Object { "$($_.Level)|$($_.Text)" } }) -join "`n")
+        if ($t -notmatch 'Output\|1 password=\*\*\*') { throw "not logged: $t" }
+        if ($t -match 'Hunter2') { throw 'secret in the log' }
+        $true
+    }
+} finally {
+    & $m { param($c) Exit-VmmInstanceLock; $script:VmmConfig = $c } $savedLock
+    Remove-Item -LiteralPath $tmpLock -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ---------------------------------------------------------------- Result

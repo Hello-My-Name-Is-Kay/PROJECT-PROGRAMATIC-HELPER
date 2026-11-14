@@ -17,11 +17,11 @@ function Get-VmmUpgradeMediaState {
             [pscustomobject]@{ VMName = $n; AttachedDisk = '(VM read failed)'; Lun = $null }
         }
     }
-    $rows | Format-Table -AutoSize | Out-Host
+    $rows | Format-Table -AutoSize | Out-VmmHost
 
     try {
         $left = @(Get-AzDisk -ResourceGroupName $ResourceGroup -ErrorAction Stop | Where-Object Name -like "*$DiskSuffix*")
-        if ($left) { $left | Select-Object Name, DiskState, ManagedBy | Format-Table -AutoSize | Out-Host }
+        if ($left) { $left | Select-Object Name, DiskState, ManagedBy | Format-Table -AutoSize | Out-VmmHost }
         else { Write-VmmLog "No *$DiskSuffix* disks in $ResourceGroup" -Level Muted }
     } catch {
         Write-VmmLog (ConvertTo-VmmNote -Activity "Disk listing of $ResourceGroup" -ErrorRecord $_) -Level Warn

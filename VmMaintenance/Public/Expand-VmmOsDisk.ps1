@@ -101,7 +101,7 @@ function Expand-VmmOsDisk {
         $plan = @(New-VmmExpandPlan -Name $names -TierSizes $TierSizes -MaxCurrentGB $MaxCurrentGB -ExtendOnly:$ExtendOnly)
         $mode = if ($ExtendOnly) { 'EXTEND ONLY' } else { 'RESIZE + EXTEND' }
         Write-VmmLog "`nMode: $mode" -Level Info
-        $plan | Format-Table ComputerName, VMName, MatchedBy, InitialState, Sku, CurrentGB, NewGB, Action, Status, Notes -AutoSize | Out-Host
+        $plan | Format-Table ComputerName, VMName, MatchedBy, InitialState, Sku, CurrentGB, NewGB, Action, Status, Notes -AutoSize | Out-VmmHost
 
         if (-not $Apply) {
             Export-VmmCsv -InputObject @($plan | Select-Object * -ExcludeProperty Job, Started) -Path (Join-Path $LogDir "Plan_$stamp.csv")
@@ -192,7 +192,7 @@ function Expand-VmmOsDisk {
             $p.Notes += "Snapshot $($p.Snapshot) exists but resize did not complete; "
         }
 
-        $plan | Format-Table ComputerName, VMName, InitialState, CurrentGB, NewGB, Snapshot, CBeforeGB, CAfterGB, FinalState, Status, Notes -AutoSize | Out-Host
+        $plan | Format-Table ComputerName, VMName, InitialState, CurrentGB, NewGB, Snapshot, CBeforeGB, CAfterGB, FinalState, Status, Notes -AutoSize | Out-VmmHost
         Export-VmmCsv -InputObject @($plan | Select-Object * -ExcludeProperty Job, Started) -Path (Join-Path $LogDir "Results_$stamp.csv")
         Write-VmmLog 'Status key: Complete = done | ExtendCheck = disk grown, C: needs a manual look | Failed = see Notes | Skipped = not touched'
 

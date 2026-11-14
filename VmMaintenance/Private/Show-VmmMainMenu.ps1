@@ -67,7 +67,7 @@ function Show-VmmMainMenu {
                       } else { Import-VmmFleet -Name ($p -split '[,; ]+' | Where-Object { $_ }) }
                   }) }
             'V' { [void](Invoke-VmmTuiAction -Title 'VPN' -Action {
-                      $s = Get-VmmVpnStatus; $s | Format-List | Out-Host
+                      $s = Get-VmmVpnStatus; $s | Format-List | Out-VmmHost
                       if ($s.State -eq 'NotConfigured') { Write-VmmLog 'Configure it in the setup wizard (W), VPN page.' -Level Info; return }
                       $a = Read-VmmPrompt 'C = connect, D = disconnect, Enter = back'
                       if ($a -match '^[cC]') { Connect-VmmVpn | Out-Null } elseif ($a -match '^[dD]') { Disconnect-VmmVpn -Confirm:$false }

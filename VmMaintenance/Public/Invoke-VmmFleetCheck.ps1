@@ -77,9 +77,9 @@ function Invoke-VmmFleetCheck {
 
     if (-not $Quiet) {
         if ($AccessOnly) {
-            $results | Sort-Object Name | Select-Object Name, Route, Ports, @{ n = 'HandsOn'; e = { if ($_.Route -and $_.Route -ne 'None') { 'no' } else { 'YES' } } }, @{ n = 'Why'; e = { $_.Error } } | Format-Table -AutoSize -Wrap | Out-Host
+            $results | Sort-Object Name | Select-Object Name, Route, Ports, @{ n = 'HandsOn'; e = { if ($_.Route -and $_.Route -ne 'None') { 'no' } else { 'YES' } } }, @{ n = 'Why'; e = { $_.Error } } | Format-Table -AutoSize -Wrap | Out-VmmHost
         } else {
-            $results | Sort-Object Name | Select-Object Name, Route, Platform, OS, CFreeGB, Sql, PendingReboot, @{ n = 'Agents'; e = { $_.AgentSummary } }, Error | Format-Table -AutoSize | Out-Host
+            $results | Sort-Object Name | Select-Object Name, Route, Platform, OS, CFreeGB, Sql, PendingReboot, @{ n = 'Agents'; e = { $_.AgentSummary } }, Error | Format-Table -AutoSize | Out-VmmHost
         }
         $ok = @($results | Where-Object { $_.Route -and $_.Route -ne 'None' })
         $bad = @($results | Where-Object { -not $_.Route -or $_.Route -eq 'None' })

@@ -40,8 +40,8 @@ function Update-VmmFromGitHub {
         if ([version]$man.ModuleVersion -le $installed -and -not $Force) { return }
     } else {
         Write-VmmLog 'New commits:' -Level Info
-        Invoke-VmmGit -Path $clone -Arguments @('log', '--oneline', '--no-decorate', "HEAD..origin/$branch") | Out-Host
-        Invoke-VmmGit -Path $clone -Arguments @('diff', '--stat', "HEAD..origin/$branch") | Select-Object -Last 1 | Out-Host
+        Invoke-VmmGit -Path $clone -Arguments @('log', '--oneline', '--no-decorate', "HEAD..origin/$branch") | Out-VmmHost
+        Invoke-VmmGit -Path $clone -Arguments @('diff', '--stat', "HEAD..origin/$branch") | Select-Object -Last 1 | Out-VmmHost
     }
 
     # GitHub checks for the commit being installed

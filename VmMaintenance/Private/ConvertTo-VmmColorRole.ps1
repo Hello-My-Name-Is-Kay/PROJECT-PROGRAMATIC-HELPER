@@ -8,7 +8,7 @@ function ConvertTo-VmmColorRole {
         '^(Warn|WARN|Warning|Yellow|DarkYellow|AtRisk)$'         { return 'Warn' }
         '^(Fail|FAIL|Error|Red|DarkRed|Critical|Unreachable)$'   { return 'Fail' }
         '^(Muted|DarkGray|Trace|Output|DarkCyan)$'               { return 'Muted' }
-        '^(Accent|Title)$'                                       { return 'Accent' }
+        '^(Accent|Title|Header)$'                                       { return 'Accent' }
         '^(Strong|White)$'                                       { return 'Strong' }
         default                                                  { return 'Text' }   # Info, Plain, Gray, Cyan...
     }

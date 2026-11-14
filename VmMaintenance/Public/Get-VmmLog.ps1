@@ -34,7 +34,7 @@ function Get-VmmLog {
     if ($List) {
         $files = @(Get-ChildItem -LiteralPath $dir -Filter 'vmm_*.log' -File -ErrorAction SilentlyContinue | Sort-Object Name)
         if (-not $files) { Write-VmmLog "No log files yet in $dir" -Level Muted; return }
-        $files | Select-Object @{ n = 'Day'; e = { $_.BaseName -replace '^vmm_(\d{4})(\d\d)(\d\d)$', '$1-$2-$3' } }, @{ n = 'SizeKB'; e = { [math]::Round($_.Length / 1KB, 1) } }, @{ n = 'File'; e = { $_.FullName } } | Format-Table -AutoSize | Out-Host
+        $files | Select-Object @{ n = 'Day'; e = { $_.BaseName -replace '^vmm_(\d{4})(\d\d)(\d\d)$', '$1-$2-$3' } }, @{ n = 'SizeKB'; e = { [math]::Round($_.Length / 1KB, 1) } }, @{ n = 'File'; e = { $_.FullName } } | Format-Table -AutoSize | Out-VmmHost
         return
     }
     $file = Join-Path $dir ('vmm_{0}.log' -f $Date.ToString('yyyyMMdd'))

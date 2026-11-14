@@ -53,7 +53,7 @@ function Invoke-VmmListView {
                 $idx = $offset + $i
                 if ($idx -lt $Rows.Count) {
                     $r = $Rows[$idx]
-                    if ($r.Header) { Write-VmmTuiLine -Row ($listTop + $i) -Text (' ' + $r.Text) -Role Muted; continue }
+                    if ($r.Header) { Write-VmmTuiLine -Row ($listTop + $i) -Text (' ' + $r.Text) -Role Accent; continue }
                     $role = ConvertTo-VmmColorRole "$($r.Color)"
                     $mark = if ($role -in 'Ok', 'Warn', 'Fail') { $role } else { $null }
                     $text = if ($mark) { ' ' + $r.Text } else { '  ' + $r.Text }   # the mark takes the first cell
@@ -64,7 +64,7 @@ function Invoke-VmmListView {
             $more = if ($Rows.Count -gt $visible) { "  [$($Selected + 1)/$($Rows.Count)]" } else { '' }
             Write-VmmTuiLine -Row ([Console]::WindowHeight - 2) -Text (" $Status$more") -Role $(if ($Status -match '^(POLICY|WARN|No terminal route|Open blocker|Snapshot gaps|Agents:)') { 'Warn' } else { 'Text' })
             $logKey = if ($pane) { 'F2 hide log' } else { 'F2 show log' }
-            Write-VmmTuiLine -Row ([Console]::WindowHeight - 1) -Text " $Help | $logKey | F3 full log" -Role Muted -BgRole BarBg
+            Write-VmmTuiLine -Row ([Console]::WindowHeight - 1) -Text " $Help | $logKey | F3 full log" -Role Text -BgRole BarBg
             if (-not $pane) { Write-VmmTuiLine -Row ([Console]::WindowHeight - 3) -Text '' }
             $lastSeq = -1
             $dirty = $false

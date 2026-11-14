@@ -4,7 +4,7 @@ function Show-VmmLogPane {
     param([Parameter(Mandatory)][int]$Top, [int]$Lines = 6)
     $w = [Console]::WindowWidth - 1
     $title = ' Live log  (F2 hide | F3 full log) '
-    Write-VmmTuiLine -Row $Top -Text ($title + ('-' * [math]::Max(0, $w - $title.Length))) -Role Muted
+    Write-VmmTuiLine -Row $Top -Text ($title + ('-' * [math]::Max(0, $w - $title.Length))) -Role Accent
     $items = @()
     if ($script:VmmLogBuffer) { $items = @($script:VmmLogBuffer | Where-Object { $_.Level -ne 'Output' } | Select-Object -Last $Lines) }
     for ($i = 0; $i -lt $Lines; $i++) {

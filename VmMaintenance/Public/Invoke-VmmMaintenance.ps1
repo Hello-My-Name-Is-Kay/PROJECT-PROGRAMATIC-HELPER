@@ -118,7 +118,7 @@ function Invoke-VmmMaintenance {
                 [pscustomobject]@{ File = $f.Name; Saved = $f.LastWriteTime.ToString('yyyy-MM-dd HH:mm'); KB = [math]::Round($f.Length / 1KB, 1); Hosts = $n }
             }
             if ($PassThru) { return $rows }
-            $rows | Format-Table -AutoSize | Out-Host
+            $rows | Format-Table -AutoSize | Out-VmmHost
         }
         'Restore' {
             if (-not $BackupFile) {

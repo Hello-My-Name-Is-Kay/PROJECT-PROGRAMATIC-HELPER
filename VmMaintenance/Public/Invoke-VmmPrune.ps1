@@ -21,7 +21,7 @@ function Invoke-VmmPrune {
     $preview = foreach ($s in $subs) { Remove-VmmExpiredSnapshot -Subscription $s -AllResourceGroups -WhatIf -PassThru }
     $due = @($preview | Where-Object Action -eq 'WouldDelete')
     if (-not $due) { Write-VmmLog 'Nothing expired. Prune done.' -Level Success; return }
-    $due | Format-Table Snapshot, ResourceGroup, AgeDays, RetentionDays -AutoSize | Out-Host
+    $due | Format-Table Snapshot, ResourceGroup, AgeDays, RetentionDays -AutoSize | Out-VmmHost
     if (-not $Apply) { Write-VmmLog "$($due.Count) snapshot(s) would be deleted. Re-run with -Apply to delete them." -Level Warn; return }
     # Deleting snapshots removes rollback points: treated as a change (business hours = override only)
     Assert-VmmWindow -Class Change -Target "prune $($due.Count) snapshot(s)" -Override:$Override -OverrideReason $OverrideReason

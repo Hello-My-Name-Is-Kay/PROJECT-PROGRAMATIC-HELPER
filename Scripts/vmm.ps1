@@ -9,7 +9,7 @@
       --config PATH  use another config file (this run)
       --debug-errors also print the script location of unexpected errors
       --version      print the module version
-    Exit codes: 0 ok | 1 error | 2 usage error | 3 blocked by the time window | 4 VPN down | 5 security check failed
+    Exit codes: 0 ok | 1 error | 2 usage error | 3 blocked by the time window | 4 VPN down | 5 security check failed | 6 another vmm is running
 .EXAMPLE
     vmm                      # terminal UI (first run starts the setup wizard)
 .EXAMPLE
@@ -62,12 +62,16 @@ try {
     & $mod { param($e, $c) Write-VmmErrorLog -ErrorRecord $e -Command $c } $_ $Command
     if ($id -notlike 'Vmm*' -and $flags.DebugErrors) { Write-Host "  At     : $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor DarkGray }
     elseif ($id -notlike 'Vmm*') { Write-Host '  Details: logged to %LOCALAPPDATA%\VmMaintenance\logs\errors.log (run with --debug-errors to show the location).' -ForegroundColor DarkGray }
-    switch -Wildcard ($id) {
-        'VmmCli*'          { exit 2 }
-        'VmmWindowBlocked*' { exit 3 }
-        'VmmVpnDown*'      { exit 4 }
-        'VmmStoreIntegrity*' { exit 5 }
-        'VmmAgentResult*'  { exit 5 }
-        default            { exit 1 }
+    $code = switch -Wildcard ($id) {
+        'VmmCli*'          { 2 }
+        'VmmWindowBlocked*' { 3 }
+        'VmmVpnDown*'      { 4 }
+        'VmmStoreIntegrity*' { 5 }
+        'VmmAgentResult*'  { 5 }
+        'VmmInstanceLocked*' { 6 }
+        default            { 1 }
     }
+    # The day log gets the exit code (and the error itself when it was raised before the command started)
+    & $mod { param($c, $n, $m) Add-VmmLogEntry -Text "vmm $c exit code $n$(if ($m) { ': ' + $m })" -Level Error } $Command $code $(if ($id -like 'VmmCli*' -or $id -like 'VmmInstanceLocked*') { $msg } else { '' })
+    exit $code
 }

@@ -2,6 +2,13 @@ function Invoke-VmmCli {
     <#
     .SYNOPSIS
         Command-line front end with the same actions as the console UI: vmm <command> [-Option value].
+    .DESCRIPTION
+        Every command is logged to the encrypted day log (vmm log): the command line (option names, not
+        values), every message, the tables it printed, live progress lines, then the result with its
+        duration, or the error. Only one vmm that can change things runs at a time (a second one stops with
+        VmmInstanceLocked, exit code 6); read-only commands such as log, status and plan always run.
+        Long work prints time-stamped progress lines in the terminal (--no-log
+        turns those off; the file is still written). A one-line footer shows the duration.
     .EXAMPLE
         Invoke-VmmCli -Command check -Arguments @('-Name', 'srv01')
     #>
@@ -83,8 +90,41 @@ function Invoke-VmmCli {
         throw (New-VmmErrorRecord -Activity "Unknown command '$Command'." -Fix 'Run: vmm help' -Category InvalidArgument -ErrorId 'VmmCliUnknown')
     }
     $fn = $map[$Command].F
+    # One vmm at a time: every command that can change something takes the lock first, so a second window
+    # stops here instead of overwriting the first one's work. Read-only commands run beside a busy vmm.
+    $readOnly = 'log', 'status', 'plan', 'time', 'progress', 'vpn', 'guide', 'agents', 'media', 'github', 'policy', 'inventory', 'config', 'stage'
+    $locked = $false
+    if ($Command -notin $readOnly) { $locked = Enter-VmmInstanceLock -Owner "vmm $Command" }
+    if ($Command -eq 'ui') { try { & $fn @p } finally { if ($locked) { Exit-VmmInstanceLock } }; return }
+    if ($Command -eq 'log') { & $fn @p; return }   # reading the log does not write to it
     # Option names only: values can be host names (they are in the encrypted log anyway, but keep it short)
-    if ($Command -ne 'ui') { Write-VmmLog ("Command: vmm {0} {1}" -f $Command, (@($p.Keys | ForEach-Object { "-$_" }) -join ' ')) -Level Muted -FileOnly }
-    if ($Command -eq 'config' -and -not $p.Count) { Import-VmmConfig; return }
-    & $fn @p
+    $shown = ("vmm {0} {1}" -f $Command, (@($p.Keys | ForEach-Object { "-$_" }) -join ' ')).Trim()
+    Write-VmmLog "Command: $shown" -Level Muted -FileOnly
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $failed = $null
+    $out = $null
+    try {
+        if ($Command -eq 'config' -and -not $p.Count) { Import-VmmConfig }
+        else { & $fn @p | Tee-Object -Variable out }
+    } catch {
+        $failed = $_
+        throw
+    } finally {
+        $sw.Stop()
+        if ($locked) { Exit-VmmInstanceLock }
+        # Objects the command returned (the console formats them itself): keep a copy in the log
+        if ($out) {
+            try {
+                $n = 0
+                foreach ($l in @(($out | Out-String -Width 200 -Stream) | Where-Object { $_.Trim() } | Select-Object -First 200)) { Add-VmmLogEntry -Text (Protect-VmmLogText $l.TrimEnd()) -Level Output; $n++ }
+            } catch { }
+        }
+        $secs = '{0:N1}' -f $sw.Elapsed.TotalSeconds
+        if ($failed) {
+            Add-VmmLogEntry -Text (Protect-VmmLogText ("$shown FAILED in $secs s: " + (("$($failed.Exception.Message)" -replace '\s+', ' ').Trim()) + " [$($failed.FullyQualifiedErrorId)]")) -Level Error
+        } else {
+            Add-VmmLogEntry -Text "$shown done in $secs s" -Level Muted
+            if ((Test-VmmLogLive) -and $sw.Elapsed.TotalSeconds -ge 1) { Write-VmmColor "-- $Command done in $secs s | full log: vmm log --" -Role Muted }
+        }
+    }
 }

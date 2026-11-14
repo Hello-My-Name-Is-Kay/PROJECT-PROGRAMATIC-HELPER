@@ -25,7 +25,7 @@ function Get-VmmMediaReport {
     Write-VmmLog "Media repository: $($inv.Share)" -Level Info
     Write-VmmLog "OS images ($($inv.Isos.Count)); upgrade target $ver" -Level Info
     $inv.Isos | Sort-Object Version, Lang | Format-Table @{ n = 'Target'; e = { if ($_.Version -eq $ver) { '*' } else { '' } } }, Version, Lang, SizeMB,
-        @{ n = 'Sha256'; e = { if ($_.Sha256) { 'sidecar' } else { '-' } } }, Name -AutoSize | Out-Host
+        @{ n = 'Sha256'; e = { if ($_.Sha256) { 'sidecar' } else { '-' } } }, Name -AutoSize | Out-VmmHost
     if (-not @($inv.Isos | Where-Object { $_.Version -eq $ver })) { Write-VmmLog "No Windows Server $ver image on the share yet (expected name: Win_Server_$($ver)_EN_US.iso and one per host language)." -Level Warn }
 
     $fold = foreach ($f in $inv.Folders) {
@@ -34,7 +34,7 @@ function Get-VmmMediaReport {
                            InFleet = $(if ($h) { 'Yes' } else { 'No' }); List = (@($f.Files | ForEach-Object Name) -join ', ') }
     }
     Write-VmmLog "Host folders ($(@($fold).Count))" -Level Info
-    if ($fold) { $fold | Format-Table Folder, InFleet, Files, SizeMB, List -AutoSize -Wrap | Out-Host }
+    if ($fold) { $fold | Format-Table Folder, InFleet, Files, SizeMB, List -AutoSize -Wrap | Out-VmmHost }
     foreach ($f in @($fold | Where-Object { $_.InFleet -eq 'No' })) { Write-VmmLog "Folder '$($f.Folder)' matches no host in your fleet (typo, not imported yet, or set an alias in Staging.HostFolders)." -Level Warn }
     foreach ($o in $inv.Other) { Write-VmmLog "Not recognised at the root: '$o' (OS images must be named like Win_Server_2019_EN_US.iso - Staging.OsMediaPattern)." -Level Warn }
 

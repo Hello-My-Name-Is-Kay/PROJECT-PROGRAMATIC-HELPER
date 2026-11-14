@@ -16,4 +16,7 @@ foreach ($file in @($private + $public)) {
     }
 }
 
+# Unloading the module (also Import-Module -Force) releases the single-instance lock
+$ExecutionContext.SessionState.Module.OnRemove = { try { Exit-VmmInstanceLock } catch { } }
+
 Export-ModuleMember -Function $public.BaseName

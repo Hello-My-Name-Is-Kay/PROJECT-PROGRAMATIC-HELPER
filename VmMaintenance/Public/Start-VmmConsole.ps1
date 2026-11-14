@@ -44,8 +44,9 @@ function Start-VmmConsole {
     $oldFg = [Console]::ForegroundColor; $oldBg = [Console]::BackgroundColor
     $script:VmmTuiRunning = $true
     Initialize-VmmConsoleInput
-    # Theme: black background for the whole console while vmm runs (restored on exit)
+    # Theme: deep iceberg background for the whole console while vmm runs (restored on exit)
     [void](Get-VmmTheme -Refresh)
+    Set-VmmConsoleBackground
     try { [Console]::BackgroundColor = [ConsoleColor]::Black; [Console]::ForegroundColor = [ConsoleColor]::Gray } catch { }
     try {
         Clear-Host
@@ -54,6 +55,7 @@ function Start-VmmConsole {
         $script:VmmTuiRunning = $false
         Suspend-VmmConsoleInput
         Clear-VmmSessionCredentialStore
+        Set-VmmConsoleBackground -Restore
         [Console]::ForegroundColor = $oldFg; [Console]::BackgroundColor = $oldBg
         [Console]::CursorVisible = $true
         Clear-Host

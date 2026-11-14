@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-30 | Overview:31-49 | At a glance:50-66 | Quick start:67-90 | Adding machines external dat:91-113 | Media repository:114-142 | Server inventory:143-176 | Snapshot terminal first hand:177-192 | Extractor the program on the:193-225 | Console UI:226-267 | CLI:268-318 | GitHub integration:319-335 | OS policy:336-350 | Workflow per host:351-364 | Directory tree:365-395 | Where your data lives never:396-412 | Testing:413-425 | Errors:426-439 | Future your work AI model wi:440-449 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-31 | Overview:32-50 | At a glance:51-67 | Quick start:68-91 | Adding machines external dat:92-114 | Media repository:115-143 | Server inventory:144-177 | Snapshot terminal first hand:178-193 | Extractor the program on the:194-226 | Console UI:227-268 | CLI:269-328 | GitHub integration:329-345 | OS policy:346-360 | Workflow per host:361-374 | Directory tree:375-405 | Where your data lives never:406-422 | Testing:423-435 | Errors:436-449 | Future your work AI model wi:450-459 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.11.0 &nbsp;|&nbsp; **This file:** 2026-11-14
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.12.0 &nbsp;|&nbsp; **This file:** 2026-11-14
 
 ## TL;DR
 
@@ -14,7 +14,8 @@
 - **New machines:** a CSV with three columns, *hostname or FQDN, domain, IP* (`,` or `;`, header optional). `0` in the menu (drag the file, or Enter to browse; preview, then confirm) or `vmm import -Path hosts.csv`. The check then connects by FQDN, or by IP when the name does not resolve.
 - **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
 - **Snapshot, terminal first:** `vmm snapshot` reads every host from the laptop (DCOM, then WinRM, then WinRM-SSL), read-only. Only hosts where every route fails need hands-on: vmm then builds the Extractor, which is snapshot-only and writes one encrypted file on the host desktop, nothing else. `vmm access` shows the route per host.
-- **Look:** black, deep iceberg blue for the top bar, titles and the selected row; green, orange and red only for statuses (a small block in front of each row, the text stays neutral). 24-bit colour where the console takes it, 16 colours otherwise (`UI.TrueColor`), `--no-color` for none.
+- **Look:** deep iceberg blue: blue-black background, ice-tinted text, deep iceberg top bar, key bar and selected row, iceberg titles; green, orange and red only for statuses (a small block in front of each row, the text stays neutral). 24-bit colour where the console takes it, 16 colours otherwise (`UI.TrueColor`), `--no-color` for none, `UI.DeepBackground = $false` for a black background.
+- **One vmm at a time:** a second vmm that could change something stops and says which process is running; read-only commands (`vmm log -Follow`, `vmm status`, `vmm plan`) still work beside it.
 - **Agent health:** Qualys, CrowdStrike, Zabbix, Ivanti and Lansweeper agents are reported as OK / WARN / FAIL with version and reason (stopped, start type, driver, port, silent log, old version), by the fleet check and by the Extractor. `vmm agents -Problems`, `A` on a host, and the inventory columns.
 - **SQL Server updates:** `vmm fetch -Preview` shows the SP/CU each SQL instance needs; `vmm fetch` (or `F` on the staging screen) downloads each one once into `<share>\_Downloads`, checks Microsoft's signature, and copies it into the host folders, so staging and RDP users find it there. Needs `Install-Module dbatools -Scope CurrentUser` once. The Windows Server ISO stays a manual download.
 - **Server inventory:** the 24-column team sheet per host. Read automatically where possible (check, Extractor), worked out from the workflow, else typed by you with a help window per column. `N` in the menu, `I` on a host, `vmm inventory -Export`. Help text unclear? `T` opens a GitHub issue.
@@ -310,7 +311,16 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm maint -Action Diagnose` | Maintenance: `Diagnose`, `CheckStore`, `Backup`, `ListBackups`, `Restore -BackupFile x`, `CleanLogs [-All]`, `CleanTemp`, `ResetUi` |
 
 Global flags: `--no-mouse`, `--no-color`, `--no-log`, `--config <file>`, `--debug-errors`, `--version`.
-Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the time window, 4 VPN down, 5 security check failed.
+Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the time window, 4 VPN down, 5 security check failed, 6 another vmm is running.
+
+**Logging.** Every command is written to the encrypted day log: the command line (option names, not values),
+each message, the tables it printed, progress lines, then the result with its duration or `FAILED` with the
+error, and the exit code. Read it with `vmm log`; `vmm log -Follow` in a second window shows it live.
+
+**One vmm at a time.** The console and every command that can change something hold a lock on the data
+folder. A second one stops (exit code 6) and names the process that holds it. Read-only commands run anyway:
+`log`, `status`, `plan`, `time`, `progress`, `vpn`, `guide`, `agents`, `media`, `github`, `policy`,
+`inventory`, `config`, `stage`.
 Feature flags in the config (`Features.HostAgent`, `Features.Vpn`, `Features.Ai`) switch whole areas on or off.
 
 The classic one-task scripts (`Scripts\Expand-AzOsDisk.ps1`, `CreateSnapshots.ps1`, ...) still
@@ -419,7 +429,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1                                         # before every commit/push
 ```
 
-Status (2.11.0): the offline smoke test (247 checks) and Pester (89 tests) pass on GitHub's Windows runners in
+Status (2.12.0): the offline smoke test (247 checks) and Pester (89 tests) pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -446,4 +456,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 16:52 UTC_
+_Last updated: 2026-11-14 19:26 UTC_

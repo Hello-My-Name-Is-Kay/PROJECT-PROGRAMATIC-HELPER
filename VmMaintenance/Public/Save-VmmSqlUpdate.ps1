@@ -65,7 +65,7 @@ function Save-VmmSqlUpdate {
         }
     }
     if (-not $rows.Count) { Write-VmmLog 'No SQL Server instance found in the last checks (run Check first: 3 in the menu).' -Level Muted; return }
-    $rows | Sort-Object Host, Instance | Format-Table Host, Instance, Current, Target, Kb, Lang, Status -AutoSize | Out-Host
+    $rows | Sort-Object Host, Instance | Format-Table Host, Instance, Current, Target, Kb, Lang, Status -AutoSize | Out-VmmHost
     $todo = @($rows | Where-Object { $_.Kb -and $_.Status -ne 'in host folder' })
     $dl = @($todo | Where-Object { $_.Status -like 'download*' } | ForEach-Object { "$($_.Kb)|$($_.Lang)" } | Sort-Object -Unique)
     Write-VmmLog ("{0} update file(s) to put in host folders, {1} download(s) (each KB once, cached in {2})" -f $todo.Count, $dl.Count, $cache) -Level Info

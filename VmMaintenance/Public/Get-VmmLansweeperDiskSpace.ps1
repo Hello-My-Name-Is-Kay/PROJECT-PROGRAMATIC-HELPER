@@ -103,7 +103,9 @@ WHERE d.Caption = 'C:'
                 $cmd   = $conn.CreateCommand()
                 $cmd.CommandText = $template.Replace('__NAMES__', ((0..($batch.Count - 1) | ForEach-Object { "@p$_" }) -join ', '))
                 for ($i = 0; $i -lt $batch.Count; $i++) { [void]$cmd.Parameters.AddWithValue("@p$i", [string]$batch[$i]) }
+                Write-VmmLog 'Lansweeper: query sent, waiting for rows' -Level Trace
                 $table.Load($cmd.ExecuteReader())
+                Write-VmmLog "Lansweeper: $($table.Rows.Count) row(s) received" -Level Trace
             }
         } catch {
             throw (New-VmmErrorRecord -Activity 'Lansweeper query failed.' -Target "$SqlInstance / $Database" -Exception $_.Exception `
@@ -151,7 +153,7 @@ WHERE d.Caption = 'C:'
                                         @{ Expression = { $_.FreeGB } },
                                         ComputerName)
 
-    $results | Format-Table -AutoSize | Out-Host
+    $results | Format-Table -AutoSize | Out-VmmHost
     Export-VmmCsv -InputObject $results -Path (Resolve-VmmOutputPath -Path $OutCsv -BaseName 'LansweeperDiskSpace')
 
     $crit = @($results | Where-Object Status -eq 'CRITICAL').Count

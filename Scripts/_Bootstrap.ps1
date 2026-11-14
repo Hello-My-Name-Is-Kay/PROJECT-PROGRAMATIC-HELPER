@@ -16,3 +16,5 @@ if ($ConfigPath) {
     try { Import-VmmConfig -Path $ConfigPath }
     catch { Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
 }
+# Day log: which script ran (its messages follow; an error is logged by the script's catch block)
+try { & (Get-Module VmMaintenance) { param($n) Write-VmmLog "Script: $n" -Level Muted -FileOnly } ([IO.Path]::GetFileName("$($MyInvocation.ScriptName)")) } catch { }

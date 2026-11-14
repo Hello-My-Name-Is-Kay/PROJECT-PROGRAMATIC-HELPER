@@ -2,6 +2,9 @@ function Save-VmmStore {
     # Encrypts and writes the fleet store atomically (temp file + replace), keeping one .bak.
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Store)
+    # One writer: takes the single-instance lock if this process does not hold it yet (throws when another
+    # vmm has it), and keeps it until the command or the PowerShell session ends.
+    [void](Enter-VmmInstanceLock -Owner 'module')
     $dir  = Get-VmmPath -Name Data
     $file = Join-Path $dir 'fleet.vmm'
     $Store.Updated = (Get-Date).ToUniversalTime().ToString('o')

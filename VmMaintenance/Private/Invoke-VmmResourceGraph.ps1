@@ -5,6 +5,7 @@ function Invoke-VmmResourceGraph {
         [Parameter(Mandatory)][string]$Query,
         [string]$Activity = 'Resource Graph query'
     )
+    Write-VmmLog 'Azure Resource Graph: query sent' -Level Trace
     try { $r = Search-AzGraph -Query $Query -First 1000 -UseTenantScope -ErrorAction Stop }
     catch {
         throw (New-VmmErrorRecord -Activity "$Activity failed." -Exception $_.Exception `

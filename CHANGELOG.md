@@ -1,5 +1,28 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.11.0 - 2026-11-14:4-22 | 2.10.0 - 2026-11-14:23-41 | 2.9.0 - 2026-11-14:42-54 | 2.8.0 - 2026-11-14:55-68 | 2.7.0 - 2026-11-14:69-86 | 2.6.0 - 2026-11-14:87-94 | 2.5.0 - 2026-11-14:95-107 | 2.4.0 - 2026-11-14:108-118 | 2.3.0 - 2026-11-14:119-133 | 2.2.1 - 2026-11-14:134-140 | 2.2.0 - 2026-11-14:141-148 | 2.1.0 - 2026-11-14:149-166 | 2.0.0 - 2026-11-14:167-172 | 1.0.0 - 2026-11-14:173-177 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.12.0 - 2026-11-14:4-26 | 2.11.0 - 2026-11-14:27-45 | 2.10.0 - 2026-11-14:46-64 | 2.9.0 - 2026-11-14:65-77 | 2.8.0 - 2026-11-14:78-91 | 2.7.0 - 2026-11-14:92-109 | 2.6.0 - 2026-11-14:110-117 | 2.5.0 - 2026-11-14:118-130 | 2.4.0 - 2026-11-14:131-141 | 2.3.0 - 2026-11-14:142-156 | 2.2.1 - 2026-11-14:157-163 | 2.2.0 - 2026-11-14:164-171 | 2.1.0 - 2026-11-14:172-189 | 2.0.0 - 2026-11-14:190-195 | 1.0.0 - 2026-11-14:196-200 -->
 # Changelog
+
+## 2.12.0 - 2026-11-14
+
+- One vmm at a time. The console and every command that can change something take a lock on the data folder
+  (`vmm.lock`, an exclusive open file; the system drops it when the process ends, so a crash leaves nothing
+  stale). A second vmm stops with `VmmInstanceLocked` (exit code 6) and names the process, start time and
+  command that hold it. Read-only commands still run beside a busy vmm: `log`, `status`, `plan`, `time`,
+  `progress`, `vpn`, `guide`, `agents`, `media`, `github`, `policy`, `inventory`, `config`, `stage`. Saving
+  the fleet store takes the same lock, so module functions called by hand are covered too.
+- The CLI logs every command to the encrypted day log: the command line (option names only), the tables and
+  objects it printed (level `Output`, masked), the result with its duration, or `FAILED` with the message
+  and error id, and the exit code. Before, `vmm status`, `vmm plan`, `vmm agents` and other table commands
+  left nothing in the log, and a failed command only reached `errors.log`.
+- `Out-VmmHost` replaces `Out-Host` everywhere: what a screen or command shows as a table is also in the log.
+- The one-task scripts in `Scripts\` log their name and their error to the day log.
+- Trace lines for work that was silent: media inventory scan, staging hash check, Lansweeper query, Resource
+  Graph query.
+- A one-line footer after CLI commands that take a second or more: duration and where the log is.
+- Theme: deeper iceberg blue. The background is a blue-black (4,16,27) instead of black, text and hints are
+  ice-tinted, the top bar and selected row are a stronger deep iceberg (24,92,138), the key bar is deep blue,
+  section titles and the log pane rule are iceberg. Green, orange and red are unchanged and still only mark
+  statuses. The console's black is redefined while the UI runs and put back on exit; `UI.DeepBackground =
+  $false` keeps a black background.
 
 ## 2.11.0 - 2026-11-14
 
@@ -174,4 +197,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 16:48 UTC_
+_Last updated: 2026-11-14 19:26 UTC_

@@ -45,7 +45,7 @@ function Import-VmmFleet {
         [pscustomobject]@{ Action = $act; Name = $r.Name; Fqdn = $r.Fqdn; Domain = $r.Domain; IP = $r.IP; Row = $r; Record = $rec }
     }
     $plan = @($plan | Group-Object Name | ForEach-Object { $_.Group[-1] })   # same host twice: last line wins
-    if ($Preview -or -not $Name) { $plan | Format-Table Action, Name, Fqdn, Domain, IP -AutoSize | Out-Host }
+    if ($Preview -or -not $Name) { $plan | Format-Table Action, Name, Fqdn, Domain, IP -AutoSize | Out-VmmHost }
     if ($Preview) { Write-VmmLog "Preview only: $(@($plan | Where-Object Action -eq 'Add').Count) to add, $(@($plan | Where-Object Action -like 'Update*').Count) to update. Run again without -Preview to save." -Level Info; return }
 
     $added = 0; $updated = 0

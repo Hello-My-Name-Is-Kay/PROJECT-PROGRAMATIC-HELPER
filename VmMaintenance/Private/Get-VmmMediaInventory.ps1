@@ -25,6 +25,7 @@ function Get-VmmMediaInventory {
         if ($t -match '\b([A-Fa-f0-9]{64})\b') { $Matches[1].ToUpper() } else { '' }
     }
     $isos = @(); $folders = @(); $other = @()
+    Write-VmmLog 'reading the media repository (share listing)' -Level Trace
     foreach ($i in @(Get-ChildItem -LiteralPath $Share -ErrorAction Stop)) {
         if ($i.PSIsContainer -and $i.Name.StartsWith('_')) { continue }
         if ($i.PSIsContainer) {

@@ -113,7 +113,7 @@ function New-VmmSnapshot {
         $(foreach ($n in $names) {
             $allSnaps | Where-Object { $_.Name -like "${n}_*" } |
                 Select-Object Name, ResourceGroupName, DiskSizeGB, ProvisioningState, TimeCreated
-        }) | Format-Table -AutoSize | Out-Host
+        }) | Format-Table -AutoSize | Out-VmmHost
     } catch { Write-VmmLog (ConvertTo-VmmNote -Activity 'Snapshot listing' -ErrorRecord $_) -Level Warn }
 
     if ($created.Count) { Export-VmmCsv -InputObject $created.ToArray() -Path (Resolve-VmmOutputPath -Path $OutCsv -BaseName 'SnapshotManifest') }

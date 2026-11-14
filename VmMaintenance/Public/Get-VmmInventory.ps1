@@ -37,7 +37,7 @@ function Get-VmmInventory {
         return
     }
     if ($HostName -and $all.Count -eq 1 -and -not $Missing) {
-        $all[0].Fields | Format-Table @{ n = 'Column'; e = { $_.Header } }, Value, @{ n = 'From'; e = { if ($_.Missing) { 'MISSING' } else { $_.Origin } } } -AutoSize -Wrap | Out-Host
+        $all[0].Fields | Format-Table @{ n = 'Column'; e = { $_.Header } }, Value, @{ n = 'From'; e = { if ($_.Missing) { 'MISSING' } else { $_.Origin } } } -AutoSize -Wrap | Out-VmmHost
         $m = @($all[0].Fields | Where-Object Missing)
         if ($m) { Write-VmmLog "$($m.Count) column(s) missing. Fill them: open the host, press I (help window per column), or vmm inventory-set -HostName $($all[0].Host) -Field '<column>' -Value '...'" -Level Warn }
         if ($PassThru) { return $all[0].Fields }
@@ -48,6 +48,6 @@ function Get-VmmInventory {
         [pscustomobject]@{ Host = $a.Host; Filled = "$(@($a.Fields | Where-Object { $_.Value }).Count)/$($a.Fields.Count)"; Missing = (@($m | ForEach-Object Header) -join ', ') }
     }
     if ($Missing) { $sum = @($sum | Where-Object Missing) }
-    if ($sum) { $sum | Format-Table Host, Filled, Missing -AutoSize -Wrap | Out-Host } else { Write-VmmLog 'No missing inventory columns.' -Level Success }
+    if ($sum) { $sum | Format-Table Host, Filled, Missing -AutoSize -Wrap | Out-VmmHost } else { Write-VmmLog 'No missing inventory columns.' -Level Success }
     if ($PassThru) { $all }
 }

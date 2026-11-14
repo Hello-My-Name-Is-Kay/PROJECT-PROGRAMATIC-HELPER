@@ -302,7 +302,7 @@ Describe 'Manager and extractor' {
     }
 }
 
-Describe 'Theme: black, deep iceberg blue, colour only for statuses' {
+Describe 'Theme: deep iceberg blue, colour only for statuses' {
     It 'only statuses map to a colour role; information stays neutral' {
         $r = InModuleScope VmMaintenance { 'Success', 'Green', 'Warn', 'Yellow', 'Error', 'Critical', 'Unreachable', 'Info', 'Cyan', 'Plain', 'Gray', 'Trace', 'DarkGray', '' | ForEach-Object { ConvertTo-VmmColorRole $_ } }
         ($r -join ',') | Should -Be 'Ok,Ok,Warn,Warn,Fail,Fail,Fail,Text,Text,Text,Text,Muted,Muted,Text'
@@ -310,7 +310,9 @@ Describe 'Theme: black, deep iceberg blue, colour only for statuses' {
     It 'has one palette with a 16-colour fallback for old consoles' {
         $t = InModuleScope VmMaintenance { $saved = $script:VmmConfig; $script:VmmConfig = @{ Log = @{ ToFile = $false } }; $x = Get-VmmTheme -Refresh; $script:VmmConfig = $saved; $script:VmmThemeCache = $null; $x }
         (@($t.Roles.Keys | Sort-Object) -join ',') | Should -Be 'Accent,AccentBg,BarBg,Bg,Fail,Muted,Ok,Strong,Text,Warn'
-        "$($t.Roles.Bg.R),$($t.Roles.Bg.G),$($t.Roles.Bg.B)" | Should -Be '0,0,0'
+        foreach ($k in 'Bg', 'BarBg', 'AccentBg', 'Accent', 'Text', 'Muted') { $t.Roles[$k].B | Should -BeGreaterThan $t.Roles[$k].R -Because "$k is blue" }
+        ($t.Roles.Bg.R + $t.Roles.Bg.G + $t.Roles.Bg.B) | Should -BeLessThan 60   # still a dark background
+        "$($t.Roles.Bg.Console)" | Should -Be 'Black'
         $t.Roles.AccentBg.B | Should -BeGreaterThan $t.Roles.AccentBg.R      # blue
         "$($t.Roles.AccentBg.Console)" | Should -Be 'DarkBlue'
         "$($t.Roles.Warn.Console)" | Should -Be 'DarkYellow'                  # orange
@@ -329,13 +331,76 @@ Describe 'Theme: black, deep iceberg blue, colour only for statuses' {
         }
         $e = [char]27
         $o[0] | Should -Be "${e}[38;2;227;136;45mx${e}[0m"
-        $o[1] | Should -Be "${e}[38;2;240;246;252m${e}[48;2;20;66;95mx${e}[0m"
+        $o[1] | Should -Be "${e}[38;2;238;247;255m${e}[48;2;24;92;138mx${e}[0m"
         $o[2] | Should -Be 'x'
     }
     It 'no screen sets a colour by hand any more (all go through the theme)' {
         $hits = foreach ($f in (Get-ChildItem (Join-Path $repo 'VmMaintenance\Private'), (Join-Path $repo 'VmMaintenance\Public') -Filter *.ps1)) {
             if ($f.Name -in 'Write-VmmColor.ps1', 'Get-VmmCollectorScript.ps1') { continue }
             if ((Get-Content $f.FullName -Raw) -match '-ForegroundColor|-BackgroundColor') { $f.Name }
+        }
+        $hits | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'One vmm at a time' {
+    BeforeAll {
+        InModuleScope VmMaintenance -Parameters @{ Root = "$TestDrive" } {
+            $script:SavedCfgLock = $script:VmmConfig
+            New-Item -ItemType Directory -Path (Join-Path $Root 'lockdata') -Force | Out-Null
+            $script:VmmConfig = @{ Log = @{ ToFile = $false }; Paths = @{ DataDir = (Join-Path $Root 'lockdata'); ReportDir = (Join-Path $Root 'lockrep') } }
+            Exit-VmmInstanceLock
+        }
+    }
+    AfterAll { InModuleScope VmMaintenance { Exit-VmmInstanceLock; $script:VmmConfig = $script:SavedCfgLock } }
+    It 'takes the lock once, releases it, and leaves no owner note behind' {
+        $r = InModuleScope VmMaintenance {
+            $a = Enter-VmmInstanceLock -Owner 'vmm ui'; $b = Enter-VmmInstanceLock
+            $note = Get-Content -LiteralPath (Join-Path (Get-VmmPath -Name Data) 'vmm.lock.txt') -Raw
+            Exit-VmmInstanceLock
+            "$a,$b,$($note -match ('^' + $PID + '\|[\d\- :]+\|vmm ui$')),$(Test-Path -LiteralPath (Join-Path (Get-VmmPath -Name Data) 'vmm.lock.txt'))"
+        }
+        $r | Should -Be 'True,False,True,False'
+    }
+    It 'a second vmm stops with VmmInstanceLocked and names the holder; read-only commands still run' {
+        $dir = InModuleScope VmMaintenance { Get-VmmPath -Name Data }
+        $fs = New-Object System.IO.FileStream((Join-Path $dir 'vmm.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        try {
+            [IO.File]::WriteAllText((Join-Path $dir 'vmm.lock.txt'), '4242|2026-11-14 19:00:00|vmm ui')
+            $err = $null
+            try { Invoke-VmmCli -Command remove -Arguments @('-Name', 'x') } catch { $err = $_ }
+            "$($err.FullyQualifiedErrorId)" | Should -Match '^VmmInstanceLocked'
+            $err.Exception.Message | Should -Match 'process 4242'
+            { InModuleScope VmMaintenance { Save-VmmStore -Store ([pscustomobject]@{ Updated = $null; Hosts = @() }) } } | Should -Throw -ErrorId 'VmmInstanceLocked*'
+            (Invoke-VmmCli -Command time).ZoneLabel | Should -Not -BeNullOrEmpty
+        } finally { $fs.Dispose() }
+        InModuleScope VmMaintenance { $x = Enter-VmmInstanceLock; Exit-VmmInstanceLock; $x } | Should -BeTrue
+    }
+}
+
+Describe 'The CLI logs every command' {
+    It 'logs the command line, what it printed, the result, and a failure with its error id' {
+        $b = InModuleScope VmMaintenance {
+            $saved = $script:VmmConfig; $script:VmmConfig = @{ Log = @{ ToFile = $false } }
+            $script:VmmLogBuffer = $null
+            Invoke-VmmCli -Command time | Out-Null
+            try { Invoke-VmmCli -Command guide -Arguments @('-HostName', 'x', '-Step', 'NoSuchStep') | Out-Null } catch { }
+            [pscustomobject]@{ A = 1; B = 'password=Hunter2' } | Out-VmmHost 6>$null
+            $script:VmmConfig = $saved
+            @($script:VmmLogBuffer | ForEach-Object { "$($_.Level)|$($_.Text)" })
+        }
+        ($b -join "`n") | Should -Match 'Muted\|Command: vmm time'
+        ($b -join "`n") | Should -Match 'Output\|ZoneLabel'
+        ($b -join "`n") | Should -Match 'Muted\|vmm time done in [\d\.,]+ s'
+        ($b -join "`n") | Should -Match 'Command: vmm guide -HostName -Step'
+        ($b -join "`n") | Should -Match 'Error\|vmm guide -HostName -Step FAILED in [\d\.,]+ s: .+\[.+\]'
+        ($b -join "`n") | Should -Match 'Output\|1 password=\*\*\*'
+        ($b -join "`n") | Should -Not -Match 'Hunter2'
+    }
+    It 'no file prints a table without logging it (Out-VmmHost, not Out-Host)' {
+        $hits = foreach ($f in (Get-ChildItem (Join-Path $repo 'VmMaintenance\Private'), (Join-Path $repo 'VmMaintenance\Public') -Filter *.ps1)) {
+            if ($f.Name -eq 'Out-VmmHost.ps1') { continue }
+            if ((Get-Content $f.FullName -Raw) -match '\|\s*Out-Host') { $f.Name }
         }
         $hits | Should -BeNullOrEmpty
     }
@@ -579,7 +644,7 @@ Describe 'Encrypted store' -Skip:(-not (($PSVersionTable.PSEdition -eq 'Desktop'
         }
     }
     AfterAll {
-        InModuleScope VmMaintenance { $script:VmmConfig = $script:SavedCfg }
+        InModuleScope VmMaintenance { Exit-VmmInstanceLock; $script:VmmConfig = $script:SavedCfg }
     }
     It 'round-trips bytes' {
         InModuleScope VmMaintenance {

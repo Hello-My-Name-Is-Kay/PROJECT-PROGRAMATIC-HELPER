@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "license": "private",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
@@ -152,6 +152,8 @@
     "ConvertTo-VmmSqlLanguage",
     "ConvertTo-VmmUtcDate",
     "Copy-VmmFileWithProgress",
+    "Enter-VmmInstanceLock",
+    "Exit-VmmInstanceLock",
     "Export-VmmCsv",
     "Find-VmmPlaceholder",
     "Get-VmmAccessRequirement",
@@ -213,6 +215,7 @@
     "New-VmmErrorRecord",
     "New-VmmExpandPlan",
     "New-VmmHostRecord",
+    "Out-VmmHost",
     "Protect-VmmBytes",
     "Protect-VmmDpapi",
     "Protect-VmmLogText",
@@ -231,6 +234,7 @@
     "Restore-VmmPowerState",
     "Resume-VmmConsoleInput",
     "Save-VmmStore",
+    "Set-VmmConsoleBackground",
     "Set-VmmStepState",
     "Set-VmmSubscription",
     "Show-VmmAzureScreen",
@@ -310,10 +314,11 @@
   },
   "host_import": "CSV: hostname or FQDN, domain, IP (Read-VmmHostCsv: , ; tab, optional header); record.Fqdn used to connect, IPv4 fallback",
   "logging": {
-    "live_pane": "bottom of every list screen, newest Log.PaneLines rows; F2 toggles on any screen (saved as Log.Live), F3 full log; --no-log for one run",
-    "progress": "Invoke-VmmParallel logs each host step (Trace queue), each finished host with duration and a heartbeat every Log.HeartbeatSeconds naming the longest-running hosts; Wait-VmmJob and staging copies (Copy-VmmFileWithProgress) do the same",
-    "file": "logs\\vmm_yyyyMMdd.log next to the data folder, every line (also action output), masked by Protect-VmmLogText and encrypted per line (E1: + base64 VMM1 blob) when Log.Encrypt; kept Log.KeepDays",
-    "read": "vmm log [-Follow] [-Level] [-Find] [-Date] [-List] [-Export plaintext copy]"
+    "day_log": "<data>/../logs/vmm_yyyyMMdd.log, masked then encrypted per line, Log.KeepDays 30",
+    "cli": "Invoke-VmmCli logs Command:, returned objects (Output), done/FAILED with duration; vmm.ps1 logs the exit code",
+    "tables": "Out-VmmHost prints and logs (Output, max 400 lines); never use Out-Host",
+    "errors": "errors.log (sanitized, 1 MB) plus an Error line in the day log",
+    "read": "vmm log [-Follow] [-Tail] [-Level] [-Find] [-Date] [-List] [-Export]; F2 pane, F3 full log"
   },
   "maintenance": {
     "command": "vmm maint -Action Diagnose|CheckStore|Backup|ListBackups|Restore|CleanLogs|CleanTemp|ResetUi",
@@ -342,8 +347,14 @@
   },
   "theme": {
     "where": "Private/Get-VmmTheme.ps1 (only place colours are defined), Write-VmmColor, ConvertTo-VmmColorRole, Write-VmmTuiLine",
-    "palette": "black background; deep iceberg blue (20,66,95) for the top bar and the selected row; iceberg (113,166,210) for titles; grey text; green/orange/red only for statuses",
+    "palette": "blue-black background (4,16,27); deep iceberg blue (24,92,138) for the top bar and the selected row; deep blue key bar (10,38,58); iceberg (124,188,232) for titles and section headers; ice-tinted text (196,214,229) and blue-grey hints (98,128,153); green/orange/red only for statuses",
     "rule": "colour marks a status, it does not paint a row: list rows carry a one-cell status block and neutral text",
-    "fallback": "UI.TrueColor Auto|true|false: 24-bit escape sequences when the console takes them, else 16 console colours (DarkBlue, DarkCyan, DarkYellow); --no-color = plain"
+    "fallback": "UI.TrueColor Auto|true|false: 24-bit escape sequences when the console takes them, else 16 console colours (DarkBlue, DarkCyan, DarkYellow); --no-color = plain",
+    "background": "Set-VmmConsoleBackground redefines console palette entry 0 (OSC 4) while the UI runs and restores it (OSC 104) on exit; UI.DeepBackground=false keeps black; only with 24-bit colour"
+  },
+  "single_instance": {
+    "where": "Private/Enter-VmmInstanceLock.ps1, Exit-VmmInstanceLock.ps1; called by Invoke-VmmCli and Save-VmmStore; released on module removal",
+    "how": "exclusive open handle on <data>/vmm.lock; vmm.lock.txt holds pid|start|command; error id VmmInstanceLocked, exit code 6",
+    "read_only_commands": "log,status,plan,time,progress,vpn,guide,agents,media,github,policy,inventory,config,stage"
   }
 }

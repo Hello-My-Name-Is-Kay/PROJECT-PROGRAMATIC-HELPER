@@ -49,7 +49,7 @@ function New-VmmGitHubPullRequest {
     if (-not $log.Trim()) { Write-VmmLog "No commits on '$branch' that are not on '$base'." -Level Warn; return }
     Write-VmmLog "Commits on $branch :" -Level Info
     Write-Host $log
-    Invoke-VmmGit -Path $clone -Arguments @('diff', '--stat', "origin/$base...HEAD") | Out-Host
+    Invoke-VmmGit -Path $clone -Arguments @('diff', '--stat', "origin/$base...HEAD") | Out-VmmHost
     if (-not $Title) { $Title = Read-VmmPrompt 'Pull request title' }
     if (-not $Title) { return }
     $safeTitle = ($Title -replace '"', "'" -replace '[\r\n]+', ' ').Trim()

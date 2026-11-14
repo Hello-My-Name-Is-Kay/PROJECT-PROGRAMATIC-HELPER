@@ -23,7 +23,7 @@ function Get-VmmPolicyReport {
     }
     $rows = @($rows)
     if (-not $Notice) {
-        $rows | Format-Table Host, Platform, Scope, Notified, Warnings -AutoSize -Wrap | Out-Host
+        $rows | Format-Table Host, Platform, Scope, Notified, Warnings -AutoSize -Wrap | Out-VmmHost
         $c = $rows | Group-Object Scope | ForEach-Object { "$($_.Name)=$($_.Count)" }
         Write-VmmLog ("Scope: " + ($c -join ', ')) -Level Info
         $w = @($rows | Where-Object Warnings)

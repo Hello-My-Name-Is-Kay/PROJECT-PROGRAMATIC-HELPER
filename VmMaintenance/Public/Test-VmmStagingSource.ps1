@@ -56,7 +56,9 @@ function Test-VmmStagingSource {
                 $key = "$full|$($fi.Length)|$($fi.LastWriteTimeUtc.Ticks)"
                 if (-not $script:VmmHashCache.ContainsKey($key)) {
                     if (-not $Quiet) { Write-VmmLog "Hashing $($p.Name) ($($row.SizeMB) MB)..." -Level Muted }
+                    $hsw = [Diagnostics.Stopwatch]::StartNew()
                     $script:VmmHashCache[$key] = (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash
+                    Write-VmmLog ("hashed {0} in {1:N0} s" -f $p.Name, $hsw.Elapsed.TotalSeconds) -Level Trace
                 }
                 $row.HashOk = ($script:VmmHashCache[$key] -eq $p.Sha256)
                 if (-not $row.HashOk) { $row.Gate = "HASH MISMATCH: $full is not the expected file (corrupt or wrong version). Re-download from $($p.Source) and replace it." }
@@ -69,7 +71,7 @@ function Test-VmmStagingSource {
     $rows = @($rows)
     $gates = @($rows | Where-Object { $_.Gate })
     if (-not $Quiet) {
-        $rows | Format-Table Kind, Name, Present, HashOk, SizeMB, Hosts -AutoSize | Out-Host
+        $rows | Format-Table Kind, Name, Present, HashOk, SizeMB, Hosts -AutoSize | Out-VmmHost
         foreach ($n in @($rows | Where-Object { $_.Note })) { Write-VmmLog "$($n.Name): $($n.Note)" -Level Warn }
         if (-not $rows) { Write-VmmLog 'Nothing to stage: no workable hosts in the fleet and no extra packages (Staging.Packages).' -Level Warn }
         elseif ($gates) { foreach ($g in $gates) { Write-VmmLog "$($g.Gate)$(if ($g.Hosts) { " [hosts: $($g.Hosts)]" })" -Level Error }; Write-VmmLog 'Staging gate CLOSED: fix the files above, then re-check (R in the console, or: vmm stage).' -Level Warn }
