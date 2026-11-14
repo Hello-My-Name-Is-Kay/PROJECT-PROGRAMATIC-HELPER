@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "license": "private",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
@@ -198,6 +198,7 @@
     "Protect-VmmBytes",
     "Protect-VmmDpapi",
     "Protect-VmmLogText",
+    "Read-VmmHostCsv",
     "Read-VmmInput",
     "Read-VmmPrompt",
     "Read-VmmServerList",
@@ -280,5 +281,6 @@
     "manual": "record.Inventory via Set-VmmInventoryValue / I screen; Inventory.Defaults",
     "export": "Reports/Inventory/Inventory_<date>.csv",
     "help_change": "vmm helptext / T -> GitHub issue (.github/ISSUE_TEMPLATE/help-text.yml)"
-  }
+  },
+  "host_import": "CSV: hostname or FQDN, domain, IP (Read-VmmHostCsv: , ; tab, optional header); record.Fqdn used to connect, IPv4 fallback"
 }

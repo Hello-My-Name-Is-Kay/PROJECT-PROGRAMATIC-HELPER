@@ -23,7 +23,8 @@ function Copy-VmmStagingPackage {
     }
     $target = Get-VmmSetting 'Staging.TargetFolder' -Default 'C:\Temp'
     if ($target -notmatch '^([A-Za-z]):\\(.*)$') { throw (New-VmmErrorRecord -Activity "Staging.TargetFolder '$target' is not a local path like C:\Temp." -Category InvalidArgument) }
-    $uncRoot = "\\$($rec.Name)\$($Matches[1])`$"
+    $hostAddr = if ($rec.PSObject.Properties['Fqdn'] -and $rec.Fqdn) { $rec.Fqdn } else { $rec.Name }
+    $uncRoot = "\\$hostAddr\$($Matches[1])`$"
     $sub = $Matches[2]
     Assert-VmmVpn -Activity 'staging copy'
     $cred = Get-VmmSessionCredential -Purpose Windows

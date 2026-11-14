@@ -23,7 +23,14 @@ function Invoke-VmmFleetCheck {
     $targets = if ($Name) { @($Name | ForEach-Object { (Get-VmmHostRecord -Store $store -Name $_).Name }) }
                else { @($store.Hosts | Where-Object { -not $_.Hold } | ForEach-Object { $_.Name }) }
 
+    $addr = @{}; $ipMap = @{}
+    foreach ($h in @($store.Hosts | Where-Object { $targets -contains $_.Name })) {
+        if ($h.PSObject.Properties['Fqdn'] -and $h.Fqdn) { $addr[$h.Name] = $h.Fqdn }
+        if ($h.IPv4) { $ipMap[$h.Name] = $h.IPv4 }
+    }
     $checkArgs = @{
+        Addr       = $addr
+        IpMap      = $ipMap
         TimeoutMs  = [int](Get-VmmSetting 'Fleet.TimeoutMs' -Default 1500)
         Ports      = @(Get-VmmSetting 'Fleet.Ports' -Default @(135, 445, 3389, 5985))
         Watch      = @(Get-VmmSetting 'Fleet.SoftwareWatch' -Default @('Microsoft SQL Server*'))

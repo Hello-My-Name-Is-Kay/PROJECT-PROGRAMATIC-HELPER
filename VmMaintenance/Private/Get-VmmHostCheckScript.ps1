@@ -12,17 +12,23 @@ $r = [ordered]@{
     Manufacturer = $null; Model = $null; Platform = $null; CTotalGB = $null; CFreeGB = $null
     PendingReboot = $null; Sql = ''; Software = ''; Inv = $null; Error = $null
 }
+# Connect by the FQDN from the import file when there is one; if the name does not resolve, use the imported IP.
+$conn = if ($A.Addr -and $A.Addr[$Name]) { $A.Addr[$Name] } else { $Name }
 try {
-    $ip = [System.Net.Dns]::GetHostAddresses($Name) | Where-Object { $_.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1
+    $ip = [System.Net.Dns]::GetHostAddresses($conn) | Where-Object { $_.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1
+    if (-not $ip) { throw 'no IPv4 address' }
     $r.IPv4 = "$ip"
-} catch { $r.Error = "DNS: name does not resolve from this laptop ($($_.Exception.InnerException.Message))"; return [pscustomobject]$r }
+} catch {
+    if ($A.IpMap -and $A.IpMap[$Name]) { $conn = $A.IpMap[$Name]; $r.IPv4 = $conn }
+    else { $r.Error = "DNS: $conn does not resolve from this laptop ($($_.Exception.InnerException.Message)). Import the host with its FQDN or IP (vmm import -Path hosts.csv)."; return [pscustomobject]$r }
+}
 
-try { $png = New-Object System.Net.NetworkInformation.Ping; if ($png.Send($Name, $A.TimeoutMs).Status -eq 'Success') { $r.Ping = 'Yes' } } catch { } finally { if ($png) { $png.Dispose() } }
+try { $png = New-Object System.Net.NetworkInformation.Ping; if ($png.Send($conn, $A.TimeoutMs).Status -eq 'Success') { $r.Ping = 'Yes' } } catch { } finally { if ($png) { $png.Dispose() } }
 
 $open = @()
 foreach ($port in $A.Ports) {
     $c = New-Object System.Net.Sockets.TcpClient
-    try { $ar = $c.BeginConnect($Name, [int]$port, $null, $null); if ($ar.AsyncWaitHandle.WaitOne($A.TimeoutMs) -and $c.Connected) { $open += $port } } catch { } finally { $c.Close() }
+    try { $ar = $c.BeginConnect($conn, [int]$port, $null, $null); if ($ar.AsyncWaitHandle.WaitOne($A.TimeoutMs) -and $c.Connected) { $open += $port } } catch { } finally { $c.Close() }
 }
 $r.Ports = $open -join ','
 if ($open -notcontains 135) {
@@ -33,7 +39,7 @@ if ($open -notcontains 135) {
 
 $s = $null
 try {
-    $sp = @{ ComputerName = $Name; SessionOption = (New-CimSessionOption -Protocol Dcom); ErrorAction = 'Stop'; OperationTimeoutSec = 30 }
+    $sp = @{ ComputerName = $conn; SessionOption = (New-CimSessionOption -Protocol Dcom); ErrorAction = 'Stop'; OperationTimeoutSec = 30 }
     if ($A.Credential) { $sp.Credential = $A.Credential }
     $s = New-CimSession @sp
     $os = Get-CimInstance -CimSession $s -ClassName Win32_OperatingSystem -ErrorAction Stop

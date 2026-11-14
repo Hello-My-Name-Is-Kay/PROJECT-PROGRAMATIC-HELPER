@@ -8,6 +8,7 @@ function New-VmmHostRecord {
         Source   = $Source
         Platform = $null
         IPv4     = $null
+        Fqdn     = $null          # from an import file; the fleet check connects by it when set
         Azure    = $null          # SubscriptionId, ResourceGroup, VMName, PowerState
         Check    = $null          # last fleet check result
         Baseline = $null          # OS/build/SQL captured at the first successful Precheck

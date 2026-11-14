@@ -30,7 +30,7 @@ function Invoke-VmmCli {
         'ui'       = @{ F = 'Start-VmmConsole';           D = 'open the terminal UI (default)' }
         'status'   = @{ F = 'Get-VmmFleet';               D = 'fleet table            [-Filter srv*]' }
         'check'    = @{ F = 'Invoke-VmmFleetCheck';       D = 'parallel read-only check [-Name a,b] [-Azure]' }
-        'import'   = @{ F = 'Import-VmmFleet';            D = 'add hosts              -Path list.txt [-RemoveSource] | -Name a,b' }
+        'import'   = @{ F = 'Import-VmmFleet';            D = 'add hosts              -Path hosts.csv (hostname/FQDN, domain, IP) | list.txt [-Preview] [-Update] [-RemoveSource] | -Name a,b' }
         'remove'   = @{ F = 'Remove-VmmFleetHost';        D = 'remove hosts           -Name a,b' }
         'plan'     = @{ F = 'Get-VmmQueue';               D = 'work queue: next step per host, allowed now?' }
         'next'     = @{ F = 'Invoke-VmmNextStep';         D = 'run next auto step     [-HostName x | -All]' }

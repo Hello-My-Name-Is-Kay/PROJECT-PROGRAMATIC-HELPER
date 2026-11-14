@@ -1,5 +1,13 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.5.0 - 2026-11-14:4-16 | 2.4.0 - 2026-11-14:17-27 | 2.3.0 - 2026-11-14:28-42 | 2.2.1 - 2026-11-14:43-49 | 2.2.0 - 2026-11-14:50-57 | 2.1.0 - 2026-11-14:58-75 | 2.0.0 - 2026-11-14:76-81 | 1.0.0 - 2026-11-14:82-86 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.6.0 - 2026-11-14:4-12 | 2.5.0 - 2026-11-14:13-25 | 2.4.0 - 2026-11-14:26-36 | 2.3.0 - 2026-11-14:37-51 | 2.2.1 - 2026-11-14:52-58 | 2.2.0 - 2026-11-14:59-66 | 2.1.0 - 2026-11-14:67-84 | 2.0.0 - 2026-11-14:85-90 | 1.0.0 - 2026-11-14:91-95 -->
 # Changelog
+
+## 2.6.0 - 2026-11-14
+
+- New machines from external data: CSV with hostname or FQDN, domain, IP (`,` `;` or tab, header optional, any
+  column order with a header). Preview, add new hosts, fill empty values of existing ones (`-Update` replaces).
+- Menu `0`: drag the file or Enter for a file dialog, preview, confirm, optionally delete the plaintext file.
+- Fleet check connects by the imported FQDN and falls back to the imported IP when the name does not resolve;
+  staging and `L` (mstsc) use the FQDN too. Domain and IP feed the inventory.
 
 ## 2.5.0 - 2026-11-14
 
@@ -83,4 +91,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 04:53 UTC_
+_Last updated: 2026-11-14 04:56 UTC_

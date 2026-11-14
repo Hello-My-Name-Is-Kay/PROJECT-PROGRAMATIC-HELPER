@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; TL;DR at the top. SECTIONS: TLDR:6-23 | Overview:24-42 | At a glance:43-59 | Quick start:60-83 | Media repository:84-112 | Server inventory:113-146 | Extractor the program on the:147-172 | Console UI:173-205 | CLI:206-250 | GitHub integration:251-267 | OS policy:268-282 | Workflow per host:283-296 | Directory tree:297-327 | Where your data lives never:328-342 | Testing:343-355 | Errors:356-369 | Future your work AI model wi:370-379 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; TL;DR at the top. SECTIONS: TLDR:6-24 | Overview:25-43 | At a glance:44-60 | Quick start:61-84 | Adding machines external dat:85-107 | Media repository:108-136 | Server inventory:137-170 | Extractor the program on the:171-196 | Console UI:197-229 | CLI:230-274 | GitHub integration:275-291 | OS policy:292-306 | Workflow per host:307-320 | Directory tree:321-351 | Where your data lives never:352-366 | Testing:367-379 | Errors:380-393 | Future your work AI model wi:394-403 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.5.0 &nbsp;|&nbsp; **This file:** 2026-11-14
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.6.0 &nbsp;|&nbsp; **This file:** 2026-11-14
 
 ## TL;DR
 
@@ -11,6 +11,7 @@
 - **Disk expansion** (Azure) is after hours only, no override: the VM is shut down, the disk resized, the VM started.
 - **Install:** `Get-ChildItem -Recurse . | Unblock-File` then `powershell -ExecutionPolicy Bypass -File .\Install.ps1`, then `vmm` or the **VM Maintenance** desktop shortcut. Runs from any folder; the installed copy does not depend on it.
 - **Test first:** `.\Tools\Invoke-SmokeTest.ps1`. GitHub checks pass on Windows PowerShell 5.1 and 7 (211 smoke checks, 60 Pester tests); real hosts, Azure, VPN and the UI are not tested yet.
+- **New machines:** a CSV with three columns, *hostname or FQDN, domain, IP* (`,` or `;`, header optional). `0` in the menu (drag the file, or Enter to browse; preview, then confirm) or `vmm import -Path hosts.csv`. The check then connects by FQDN, or by IP when the name does not resolve.
 - **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
 - **Server inventory:** the 24-column team sheet per host. Read automatically where possible (check, Extractor), worked out from the workflow, else typed by you with a help window per column. `N` in the menu, `I` on a host, `vmm inventory -Export`. Help text unclear? `T` opens a GitHub issue.
 - **Day:** `V` VPN, `6` credentials, `3` check fleet, `4` staging gate, `1` plan. Target 10 machines per day, shown in the header.
@@ -80,6 +81,29 @@ in the Start menu that point at that installed copy. The source folder can be mo
 only `vmm update` uses a git clone (`GitHub.SourcePath`).
 
 To remove: `.\Uninstall.ps1` (removes the shortcuts; asks separately before deleting config, encrypted data and reports).
+
+## Adding machines (external data)
+
+New machines usually arrive as a CSV with three columns:
+
+```
+Hostname,Domain,IP                <- header optional; any column order when there is one
+srv01.corp.example,corp.example,<IP>
+SRV02,corp.example,<IP>
+```
+
+| Rule | Detail |
+|---|---|
+| Column 1 | Hostname or FQDN. The short name (first label) is the host's name in vmm |
+| Column 2 | Domain. Empty: taken from the FQDN |
+| Column 3 | IPv4. Invalid values are dropped with a warning; the host is still imported |
+| Separator | `,` `;` or tab, detected. Blank lines and `#` comments skipped |
+| New host | Added with its FQDN, domain and IP (encrypted store). The fleet check connects by FQDN and falls back to the IP when the name does not resolve from your laptop; domain and IP fill the inventory |
+| Host already there | Empty values are filled in; nothing measured is overwritten (`-Update` replaces FQDN/domain/IP from the file) |
+
+How: `0` in the menu (type or drag the path, or Enter for a file dialog; a preview table, then confirm, then
+optionally delete the plaintext file), or `vmm import -Path hosts.csv -Preview` and then without `-Preview`.
+A `.txt` with one name per line, or names on the command line, still work.
 
 ## Media repository
 
@@ -211,7 +235,7 @@ Every UI action has a command. `vmm help` prints this list.
 |---|---|
 | `vmm status [-Filter srv*]` | Fleet table |
 | `vmm check [-Name a,b] [-Azure]` | Parallel read-only check |
-| `vmm import -Path list.txt [-RemoveSource]` | Add hosts (names only) |
+| `vmm import -Path hosts.csv [-Preview] [-Update] [-RemoveSource]` | Add/update hosts from a CSV (hostname or FQDN, domain, IP), a .txt list, or `-Name a,b` |
 | `vmm remove -Name a,b` | Remove hosts |
 | `vmm plan` | Work queue: next step per host and whether it is allowed now |
 | `vmm next [-HostName x] [-All]` | Run the next automatic step |
@@ -376,4 +400,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 04:53 UTC_
+_Last updated: 2026-11-14 04:56 UTC_

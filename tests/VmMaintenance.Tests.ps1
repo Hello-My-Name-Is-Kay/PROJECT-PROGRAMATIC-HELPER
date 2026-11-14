@@ -295,6 +295,29 @@ Describe 'Manager and extractor' {
     }
 }
 
+Describe 'External host list (CSV: hostname or FQDN, domain, IP)' {
+    BeforeAll {
+        $script:ip1 = ('192.0.2', '11') -join '.'; $script:ip2 = ('192.0.2', '12') -join '.'; $script:ip3 = ('198.51.100', '7') -join '.'
+        $script:badIp = ('999.1.1', '1') -join '.'
+    }
+    It 'reads a plain 3-column file without header, FQDN or short names' {
+        $f = Join-Path $TestDrive 'a.csv'
+        Set-Content -LiteralPath $f -Value @("srv01.corp.example,corp.example,$ip1", "SRV02,,$ip2", '# comment', '', "bad name!,x,$ip1", "srv04,corp.example,$badIp")
+        $r = @(InModuleScope VmMaintenance -Parameters @{ F = $f } { Read-VmmHostCsv -Path $F } 3>$null)
+        $r.Count | Should -Be 3
+        $r[0].Name | Should -Be 'SRV01'; $r[0].Fqdn | Should -Be 'srv01.corp.example'; $r[0].Domain | Should -Be 'corp.example'; $r[0].IP | Should -Be $ip1
+        $r[1].Name | Should -Be 'SRV02'; $r[1].Fqdn | Should -BeNullOrEmpty; $r[1].IP | Should -Be $ip2
+        $r[2].Name | Should -Be 'SRV04'; $r[2].IP | Should -BeNullOrEmpty; $r[2].Fqdn | Should -Be 'srv04.corp.example'
+    }
+    It 'reads a header row in any column order, separator ;' {
+        $f = Join-Path $TestDrive 'b.csv'
+        Set-Content -LiteralPath $f -Value @('IP;Hostname;Domain', "$ip3;srv03;Corp.Example")
+        $r = @(InModuleScope VmMaintenance -Parameters @{ F = $f } { Read-VmmHostCsv -Path $F })
+        $r.Count | Should -Be 1
+        $r[0].Name | Should -Be 'SRV03'; $r[0].IP | Should -Be $ip3; $r[0].Domain | Should -Be 'corp.example'; $r[0].Fqdn | Should -Be 'srv03.corp.example'
+    }
+}
+
 Describe 'Logging and errors' {
     It 'Protect-VmmLogText masks secrets' {
         $o = InModuleScope VmMaintenance { Protect-VmmLogText 'pwd=abc123 token: xyz Bearer eyJhbGci.x.y' }

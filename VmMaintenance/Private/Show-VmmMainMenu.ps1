@@ -12,7 +12,7 @@ function Show-VmmMainMenu {
         @{ K = '7'; T = 'Reports           daily CSV + HTML for your manager, blocker reports' }
         @{ K = '8'; T = 'Snapshots, prune  preview and delete expired snapshots' }
         @{ K = '9'; T = 'Settings          share, targets, hours, snapshot policy, upgrade command...' }
-        @{ K = '0'; T = 'Import hosts      add machines from a list file or names' }
+        @{ K = '0'; T = 'Import hosts      new machines: CSV (hostname/FQDN, domain, IP), .txt list or names' }
         @{ K = 'E'; T = 'Extractor         import result files (VMM_*.vmm) from Desktop/Downloads; build the extractor' }
         @{ K = 'N'; T = 'Inventory         24 columns per host: what is missing, export CSV (I on a host to fill)' }
         @{ K = 'V'; T = 'VPN               status, connect, disconnect (you sign in in the VPN client)' }
@@ -40,12 +40,25 @@ function Show-VmmMainMenu {
             '7' { Show-VmmReportsScreen }
             '8' { Show-VmmPruneScreen }
             '9' { Show-VmmSettingsScreen }
-            '0' { [void](Invoke-VmmTuiAction -Title 'Import hosts' -Action {
-                      $p = Read-VmmPrompt 'Path to a .txt/.csv list, or names separated by commas'
-                      if ($p -and (Test-Path -LiteralPath $p)) {
-                          $rm = (Read-VmmPrompt 'Delete the plaintext list after import so names live only in the encrypted store? (y/N)') -match '^[yY]'
+            '0' { [void](Invoke-VmmTuiAction -Title 'Import hosts (new machines from external data)' -Action {
+                      Write-VmmLog 'CSV with 3 columns: hostname or FQDN, domain, IP (separator , or ;, header optional). Or a .txt with one name per line.' -Level Muted
+                      $p = Read-VmmPrompt 'File path (drag the file here), names separated by commas, or Enter to browse'
+                      if (-not $p) {
+                          try {
+                              Add-Type -AssemblyName System.Windows.Forms
+                              $dlg = New-Object System.Windows.Forms.OpenFileDialog
+                              $dlg.Filter = 'Host lists (*.csv;*.txt)|*.csv;*.txt|All files (*.*)|*.*'; $dlg.Title = 'vmm - host list to import'
+                              if ($dlg.ShowDialog() -eq 'OK') { $p = $dlg.FileName }
+                          } catch { Write-VmmLog 'File dialog not available here: type or drag the path instead.' -Level Warn }
+                      }
+                      if (-not $p) { return }
+                      $p = $p.Trim().Trim('"')
+                      if (Test-Path -LiteralPath $p -PathType Leaf) {
+                          Import-VmmFleet -Path $p -Preview
+                          if ((Read-VmmPrompt 'Import these? (y/N)') -notmatch '^[yY]') { Write-VmmLog 'Nothing imported.' -Level Muted; return }
+                          $rm = (Read-VmmPrompt 'Delete the plaintext file afterwards, so the hosts live only in the encrypted store? (y/N)') -match '^[yY]'
                           Import-VmmFleet -Path $p -RemoveSource:$rm
-                      } elseif ($p) { Import-VmmFleet -Name ($p -split '[,; ]+' | Where-Object { $_ }) }
+                      } else { Import-VmmFleet -Name ($p -split '[,; ]+' | Where-Object { $_ }) }
                   }) }
             'V' { [void](Invoke-VmmTuiAction -Title 'VPN' -Action {
                       $s = Get-VmmVpnStatus; $s | Format-List | Out-Host

@@ -50,7 +50,7 @@ function Show-VmmHostScreen {
                           $m = Read-VmmPrompt 'Exact error or what is missing (paste it)'
                           if ($m) { New-VmmBlockerReport -HostName $HostName -Step $step -Message $m | Out-Null } }); return }
             'R'     { [void](Invoke-VmmTuiAction -Title 'Resolve blockers' -Action { Resolve-VmmBlocker -HostName $HostName }) }
-            'L'     { Start-Process mstsc.exe -ArgumentList "/v:$HostName"; $status = "mstsc started for $HostName (or open it in RDM)" }
+            'L'     { $t = if ($rec.PSObject.Properties['Fqdn'] -and $rec.Fqdn) { $rec.Fqdn } else { $HostName }; Start-Process mstsc.exe -ArgumentList "/v:$t"; $status = "mstsc started for $t (or open it in RDM)" }
             'H'     { $rec.Hold = -not $rec.Hold; Save-VmmStore -Store $store; $status = "Hold = $($rec.Hold)" }
             'C'     { [void](Invoke-VmmTuiAction -Title "Check $HostName" -Action { Invoke-VmmFleetCheck -Name $HostName }) }
             'I'     { Show-VmmInventoryScreen -HostName $HostName }

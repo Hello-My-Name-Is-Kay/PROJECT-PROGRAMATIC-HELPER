@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | Every morning business hours:14-29 | Evening weekend all steps:30-37 | Problems:38-47 | End of day:48-52 | Updates and GitHub:53-57 | Tests:58-66 -->
+<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | Every morning business hours:19-34 | Evening weekend all steps:35-42 | Problems:43-52 | End of day:53-57 | Updates and GitHub:58-62 | Tests:63-71 -->
 # Usage - daily runbook
 
 ## Once
@@ -10,6 +10,11 @@ powershell -ExecutionPolicy Bypass -File .\Install.ps1     # wizard: warnings, o
 
 Then in a new terminal: `vmm`. Import hosts with `0` (or `vmm import -Path list.txt -RemoveSource`;
 the plaintext list is deleted after import, names then live only in the encrypted store).
+
+## New machines
+
+You get a CSV with hostname or FQDN, domain, IP: `0` in the menu, drag the file in (or Enter to browse),
+check the preview, confirm, let it delete the plaintext file. Then `3` Check fleet.
 
 ## Every morning (business hours: checks + staging only)
 
@@ -63,4 +68,4 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1      # before any commit or push
 ```
 
-_Last updated: 2026-11-14 04:53 UTC_
+_Last updated: 2026-11-14 04:56 UTC_
