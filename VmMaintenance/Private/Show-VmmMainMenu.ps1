@@ -3,32 +3,36 @@ function Show-VmmMainMenu {
     [CmdletBinding()]
     param()
     $items = @(
+        @{ H = 'Daily work' }
         @{ K = '1'; T = 'Plan today        what is allowed right now and the next host for each step' }
         @{ K = '2'; T = 'Fleet             all hosts: health, stage, OS, SQL, C: free - open a host' }
         @{ K = '3'; T = 'Snapshot fleet    read every host from this terminal (read-only); hands-on only where it fails' }
         @{ K = '4'; T = 'Staging gate      OS images + host files on the media repository?' }
-        @{ K = '5'; T = 'Azure             sign in / pick tenant + subscription (no stuck picker)' }
-        @{ K = '6'; T = 'Credentials       set or clear this session''s Windows / SQL credentials' }
+        @{ K = 'N'; T = 'Inventory         24 columns per host: what is missing, export CSV (I on a host to fill)' }
         @{ K = '7'; T = 'Reports           daily CSV + HTML for your manager, blocker reports' }
-        @{ K = '8'; T = 'Snapshots, prune  preview and delete expired snapshots' }
-        @{ K = '9'; T = 'Settings          share, targets, hours, snapshot policy, upgrade command...' }
+        @{ H = 'Hosts in and out' }
         @{ K = '0'; T = 'Import hosts      new machines: CSV (hostname/FQDN, domain, IP), .txt list or names' }
         @{ K = 'E'; T = 'Extractor         hands-on fallback: import result files (VMM_*.vmm), build the extractor' }
-        @{ K = 'N'; T = 'Inventory         24 columns per host: what is missing, export CSV (I on a host to fill)' }
+        @{ K = '8'; T = 'Snapshots, prune  preview and delete expired snapshots' }
+        @{ H = 'Access (asked every session, never stored)' }
+        @{ K = '6'; T = 'Credentials       set or clear this session''s Windows / SQL credentials' }
+        @{ K = '5'; T = 'Azure             sign in / pick tenant + subscription (no stuck picker)' }
         @{ K = 'V'; T = 'VPN               status, connect, disconnect (you sign in in the VPN client)' }
-        @{ K = 'A'; T = 'Assistant         optional AI help: explain an error, next step (off by default)' }
+        @{ H = 'This program' }
+        @{ K = '9'; T = 'Settings          share, targets, hours, snapshot policy, upgrade command...' }
         @{ K = 'W'; T = 'Setup wizard      all options page by page, with explanations' }
-        @{ K = 'U'; T = 'GitHub / updates  update vmm, sign in, report an issue, pull request' }
         @{ K = 'L'; T = 'Log               everything vmm did today, live (F2 shows/hides the log pane on any screen)' }
         @{ K = 'M'; T = 'Maintenance       diagnose vmm, check/back up/restore the fleet store, clean logs and temp files' }
+        @{ K = 'U'; T = 'GitHub / updates  update vmm, sign in, report an issue, pull request' }
+        @{ K = 'A'; T = 'Assistant         optional AI help: explain an error, next step (off by default)' }
         @{ K = 'H'; T = 'Help              keys, rules, where files live' }
         @{ K = 'Q'; T = 'Quit              clears session credentials from memory' }
     )
-    $sel = 0; $status = (@("$script:VmmInboxNotice", "$script:VmmUpdateNotice") | Where-Object { $_ }) -join ' | '
+    $sel = 1; $status = (@("$script:VmmInboxNotice", "$script:VmmUpdateNotice") | Where-Object { $_ }) -join ' | '
     while ($true) {
-        $rows = @($items | ForEach-Object { @{ Text = "[$($_.K)] $($_.T)"; Color = 'Gray' } })
+        $rows = @($items | ForEach-Object { if ($_.H) { @{ Text = $_.H.ToUpper(); Header = $true } } else { @{ Text = "  $($_.K)  $($_.T)"; Color = 'Gray' } } })
         $r = Invoke-VmmListView -Title 'Main menu' -Rows $rows -Selected $sel -Status $status `
-             -Help 'Number/letter or Up/Down + Enter or click | Esc/Q quit' -Hotkeys @($items | ForEach-Object { $_.K })
+             -Help 'Number/letter or Up/Down + Enter or click | Esc/Q quit' -Hotkeys @($items | Where-Object { $_.K } | ForEach-Object { $_.K })
         $sel = $r.Index
         $key = if ($r.Action -eq 'Enter') { $items[$r.Index].K } elseif ($r.Action -eq 'Esc') { 'Q' } else { $r.Action }
         $status = ''

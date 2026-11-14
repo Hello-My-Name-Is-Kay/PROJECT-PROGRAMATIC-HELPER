@@ -44,6 +44,9 @@ function Start-VmmConsole {
     $oldFg = [Console]::ForegroundColor; $oldBg = [Console]::BackgroundColor
     $script:VmmTuiRunning = $true
     Initialize-VmmConsoleInput
+    # Theme: black background for the whole console while vmm runs (restored on exit)
+    [void](Get-VmmTheme -Refresh)
+    try { [Console]::BackgroundColor = [ConsoleColor]::Black; [Console]::ForegroundColor = [ConsoleColor]::Gray } catch { }
     try {
         Clear-Host
         Show-VmmMainMenu

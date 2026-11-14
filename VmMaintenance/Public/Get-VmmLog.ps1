@@ -60,9 +60,8 @@ function Get-VmmLog {
     $show = {
         param($e)
         $t = if ($e.At) { $e.At.ToString('HH:mm:ss') } else { '--:--:--' }
-        $c = switch ($e.Level) { 'Info' { 'Cyan' } 'Success' { 'Green' } 'Warn' { 'Yellow' } 'Error' { 'Red' } 'Muted' { 'DarkGray' } 'Trace' { 'DarkCyan' } 'Output' { 'DarkGray' } default { 'Gray' } }
         $line = '{0} {1,-7} {2}' -f $t, $e.Level, $e.Text
-        if ($script:VmmFlags -and $script:VmmFlags.NoColor) { Write-Host $line } else { Write-Host $line -ForegroundColor $c }
+        Write-VmmColor $line -Role (ConvertTo-VmmColorRole $e.Level)
     }
     if (-not $Quiet) {
         if (-not $entries -and -not $Follow) { Write-VmmLog "Nothing logged for $($Date.ToString('yyyy-MM-dd'))$(if ($Level -ne 'All' -or $Find) { ' with this filter' })." -Level Muted }
@@ -70,11 +69,11 @@ function Get-VmmLog {
     }
     if (-not $Follow) { return }
 
-    Write-Host "-- following $file (Esc or Q stops) --" -ForegroundColor DarkGray
+    Write-VmmColor "-- following $file (Esc or Q stops) --" -Role Muted
     $pos = $read.Position
     while ($true) {
         $today = Join-Path $dir ('vmm_{0}.log' -f (Get-Date).ToString('yyyyMMdd'))
-        if ($today -ne $file) { $file = $today; $pos = 0; Write-Host "-- new day: $file --" -ForegroundColor DarkGray }
+        if ($today -ne $file) { $file = $today; $pos = 0; Write-VmmColor "-- new day: $file --" -Role Muted }
         $r = Read-VmmLogFile -Path $file -From $pos
         $pos = $r.Position
         foreach ($e in $r.Entries) { if (& $match $e) { & $show $e } }

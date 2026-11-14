@@ -35,7 +35,7 @@ function New-VmmGitHubIssue {
 
     Write-VmmLog "This will be posted to $repo (private repo; visible to its collaborators):" -Level Info
     Write-Host "Title: $safeTitle"
-    Write-Host $b.Text -ForegroundColor Gray
+    Write-VmmColor $b.Text -Role Text
     if ((Read-VmmPrompt 'Create the issue? (y/N)') -notmatch '^[yY]') { Write-VmmLog 'Not sent.' -Level Muted; return }
     $tmp = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'vmm-issue-' + [guid]::NewGuid().ToString('N') + '.md')
     try {

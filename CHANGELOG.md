@@ -1,5 +1,24 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.10.0 - 2026-11-14:4-22 | 2.9.0 - 2026-11-14:23-35 | 2.8.0 - 2026-11-14:36-49 | 2.7.0 - 2026-11-14:50-67 | 2.6.0 - 2026-11-14:68-75 | 2.5.0 - 2026-11-14:76-88 | 2.4.0 - 2026-11-14:89-99 | 2.3.0 - 2026-11-14:100-114 | 2.2.1 - 2026-11-14:115-121 | 2.2.0 - 2026-11-14:122-129 | 2.1.0 - 2026-11-14:130-147 | 2.0.0 - 2026-11-14:148-153 | 1.0.0 - 2026-11-14:154-158 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.11.0 - 2026-11-14:4-22 | 2.10.0 - 2026-11-14:23-41 | 2.9.0 - 2026-11-14:42-54 | 2.8.0 - 2026-11-14:55-68 | 2.7.0 - 2026-11-14:69-86 | 2.6.0 - 2026-11-14:87-94 | 2.5.0 - 2026-11-14:95-107 | 2.4.0 - 2026-11-14:108-118 | 2.3.0 - 2026-11-14:119-133 | 2.2.1 - 2026-11-14:134-140 | 2.2.0 - 2026-11-14:141-148 | 2.1.0 - 2026-11-14:149-166 | 2.0.0 - 2026-11-14:167-172 | 1.0.0 - 2026-11-14:173-177 -->
 # Changelog
+
+## 2.11.0 - 2026-11-14
+
+- Theme: black, deep iceberg blue, and green / orange / red for statuses only. All colours are defined in one
+  place (`Get-VmmTheme`); no screen sets a colour by hand. List rows show a one-cell status block and neutral
+  text instead of a fully coloured row; the selected row and the top bar are deep iceberg blue; titles are
+  iceberg; hints, headers and the key bar are grey. Info lines are plain text, warnings are orange.
+- 24-bit colour when the console takes it (Windows Terminal, Windows 10+ console), else the 16 console
+  colours; `UI.TrueColor` = `Auto` | `$true` | `$false`. `--no-color` still prints plain text.
+- The Extractor uses the same palette in the 16 console colours (old servers).
+- Main menu grouped in four sections (daily work, hosts in and out, access, this program); the cursor steps
+  over section titles. Keys are unchanged.
+- Security: a result from a host can no longer mark a change step (Stage, PreSnapshot, ExpandDisk, Upgrade) as
+  done or record an override unless `Extractor.AllowSteps` is on. The result is encrypted to a public key that
+  is inside every extractor file, so it is confidential but not proof of who wrote it. Such events are kept
+  as `Ignored` history notes.
+- The fleet check loads the store again after the parallel run, so a result imported meanwhile (or another
+  vmm window) is not overwritten.
+- Test: one version in the manifest, the Extractor, the README, PROJECT.json and the changelog.
 
 ## 2.10.0 - 2026-11-14
 
@@ -155,4 +174,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 13:18 UTC_
+_Last updated: 2026-11-14 16:48 UTC_

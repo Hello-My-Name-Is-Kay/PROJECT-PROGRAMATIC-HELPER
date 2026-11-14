@@ -184,6 +184,9 @@
 
     UI = @{
         Mouse = $true            # mouse clicks/wheel in the console UI (Windows Terminal / conhost)
+        # Theme: black, deep iceberg blue for the top bar, titles and the selected row; green / orange / red
+        # only for statuses. 'Auto' uses 24-bit colour when the console takes it, else the 16 console colours.
+        TrueColor = 'Auto'       # 'Auto' | $true | $false ($false = always the 16 console colours)
     }
 
     # Fleet OS policy

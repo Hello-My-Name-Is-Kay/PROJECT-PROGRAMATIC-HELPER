@@ -54,7 +54,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.10.0'
+$AgentVersion = '2.11.0'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
@@ -66,9 +66,9 @@ $Script:Problems = @()   # reads that failed during the snapshot (sent to the la
 function Say([string]$Text, [string]$Color) {
     if ($NoColor -or -not $Color) { Write-Host $Text } else { Write-Host $Text -ForegroundColor $Color }
 }
-function Info([string]$t) { Say $t 'Cyan' }
+function Info([string]$t) { Say $t 'DarkCyan' }   # the one accent (titles); green/orange/red are for statuses
 function Good([string]$t) { Say $t 'Green' }
-function Warn([string]$t) { Say $t 'Yellow' }
+function Warn([string]$t) { Say $t 'DarkYellow' }
 function Bad([string]$t)  { Say $t 'Red' }
 function Mute([string]$t) { Say $t 'DarkGray' }
 
@@ -603,7 +603,7 @@ function Show-History {
     if (-not $ev.Count) { Mute ' Nothing logged on this host yet.'; return }
     Info (' {0,-21} {1,-12} {2,-10} {3}' -f 'UTC', 'Step', 'Status', 'Note')
     foreach ($e in $ev) {
-        $c = 'Gray'; if ($e.Status -match 'Success|NotNeeded') { $c = 'Green' } elseif ($e.Status -match 'Failed') { $c = 'Red' } elseif ($e.Status -match 'Override') { $c = 'Yellow' }
+        $c = 'Gray'; if ($e.Status -match 'Success|NotNeeded') { $c = 'Green' } elseif ($e.Status -match 'Failed') { $c = 'Red' } elseif ($e.Status -match 'Override') { $c = 'DarkYellow' }
         Say (' {0,-21} {1,-12} {2,-10} {3}' -f $e.At, $e.Step, $e.Status, $e.Note) $c
     }
     if ($Card.Steps.Count) {
@@ -824,7 +824,7 @@ function Show-Facts($f) {
     Write-Host ("  Platform      {0} ({1} / {2})" -f $f.Platform, $f.Manufacturer, $f.Model)
     if ($null -eq $f.CFreeGB) { Warn '  C:            not read' }
     else {
-        $col = 'Green'; if ($f.CFreeGB -lt [double]::Parse($Card.OkGB, $Script:Inv)) { $col = 'Yellow' }; if ($f.CFreeGB -lt [double]::Parse($Card.CriticalGB, $Script:Inv)) { $col = 'Red' }
+        $col = 'Green'; if ($f.CFreeGB -lt [double]::Parse($Card.OkGB, $Script:Inv)) { $col = 'DarkYellow' }; if ($f.CFreeGB -lt [double]::Parse($Card.CriticalGB, $Script:Inv)) { $col = 'Red' }
         Say ("  C:            {0} GB free of {1} GB" -f $f.CFreeGB, $f.CTotalGB) $col
     }
     if ($f.PendingReboot) { Warn '  Reboot        PENDING' } else { Write-Host '  Reboot        not pending' }
@@ -841,7 +841,7 @@ function Show-Inventory {
     foreach ($l in $src) {
         if ($l -notlike 'Inv.*') { continue }
         $i = $l.IndexOf('='); $k = $l.Substring(4, $i - 4); $v = $l.Substring($i + 1)
-        $col = 'Gray'; if ($v -match '^(Not installed|No |Unlicensed|Unknown|WARN)') { $col = 'Yellow' } elseif ($v -match '^FAIL') { $col = 'Red' } elseif ($v -match '^OK') { $col = 'Green' }
+        $col = 'Gray'; if ($v -match '^(Not installed|No |Unlicensed|Unknown|WARN)') { $col = 'DarkYellow' } elseif ($v -match '^FAIL') { $col = 'Red' } elseif ($v -match '^OK') { $col = 'Green' }
         Say ('  {0,-18} {1}' -f $k, $v) $col
     }
 }

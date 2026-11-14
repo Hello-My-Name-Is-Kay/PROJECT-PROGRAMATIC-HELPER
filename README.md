@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-29 | Overview:30-48 | At a glance:49-65 | Quick start:66-89 | Adding machines external dat:90-112 | Media repository:113-141 | Server inventory:142-175 | Snapshot terminal first hand:176-191 | Extractor the program on the:192-224 | Console UI:225-266 | CLI:267-317 | GitHub integration:318-334 | OS policy:335-349 | Workflow per host:350-363 | Directory tree:364-394 | Where your data lives never:395-411 | Testing:412-424 | Errors:425-438 | Future your work AI model wi:439-448 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-30 | Overview:31-49 | At a glance:50-66 | Quick start:67-90 | Adding machines external dat:91-113 | Media repository:114-142 | Server inventory:143-176 | Snapshot terminal first hand:177-192 | Extractor the program on the:193-225 | Console UI:226-267 | CLI:268-318 | GitHub integration:319-335 | OS policy:336-350 | Workflow per host:351-364 | Directory tree:365-395 | Where your data lives never:396-412 | Testing:413-425 | Errors:426-439 | Future your work AI model wi:440-449 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.10.0 &nbsp;|&nbsp; **This file:** 2026-11-14
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.11.0 &nbsp;|&nbsp; **This file:** 2026-11-14
 
 ## TL;DR
 
@@ -14,6 +14,7 @@
 - **New machines:** a CSV with three columns, *hostname or FQDN, domain, IP* (`,` or `;`, header optional). `0` in the menu (drag the file, or Enter to browse; preview, then confirm) or `vmm import -Path hosts.csv`. The check then connects by FQDN, or by IP when the name does not resolve.
 - **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
 - **Snapshot, terminal first:** `vmm snapshot` reads every host from the laptop (DCOM, then WinRM, then WinRM-SSL), read-only. Only hosts where every route fails need hands-on: vmm then builds the Extractor, which is snapshot-only and writes one encrypted file on the host desktop, nothing else. `vmm access` shows the route per host.
+- **Look:** black, deep iceberg blue for the top bar, titles and the selected row; green, orange and red only for statuses (a small block in front of each row, the text stays neutral). 24-bit colour where the console takes it, 16 colours otherwise (`UI.TrueColor`), `--no-color` for none.
 - **Agent health:** Qualys, CrowdStrike, Zabbix, Ivanti and Lansweeper agents are reported as OK / WARN / FAIL with version and reason (stopped, start type, driver, port, silent log, old version), by the fleet check and by the Extractor. `vmm agents -Problems`, `A` on a host, and the inventory columns.
 - **SQL Server updates:** `vmm fetch -Preview` shows the SP/CU each SQL instance needs; `vmm fetch` (or `F` on the staging screen) downloads each one once into `<share>\_Downloads`, checks Microsoft's signature, and copies it into the host folders, so staging and RDP users find it there. Needs `Install-Module dbatools -Scope CurrentUser` once. The Windows Server ISO stays a manual download.
 - **Server inventory:** the 24-column team sheet per host. Read automatically where possible (check, Extractor), worked out from the workflow, else typed by you with a help window per column. `N` in the menu, `I` on a host, `vmm inventory -Export`. Help text unclear? `T` opens a GitHub issue.
@@ -445,4 +446,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 13:22 UTC_
+_Last updated: 2026-11-14 16:48 UTC_

@@ -16,6 +16,13 @@ Describe 'Module surface' {
         $files = (Get-ChildItem (Join-Path $repo 'VmMaintenance\Public') -Filter *.ps1).BaseName | Sort-Object
         ($mod.ExportedFunctions.Keys | Sort-Object) | Should -Be $files
     }
+    It 'one version everywhere: manifest, Extractor, README, PROJECT.json, top of the changelog' {
+        $v = "$($mod.Version)"
+        [IO.File]::ReadAllText((Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1')) | Should -Match ("\`$AgentVersion = '" + [regex]::Escape($v) + "'")
+        [IO.File]::ReadAllText((Join-Path $repo 'README.md')) | Should -Match ('\*\*Version:\*\* ' + [regex]::Escape($v) + ' ')
+        (Get-Content (Join-Path $repo 'PROJECT.json') -Raw | ConvertFrom-Json).version | Should -Be $v
+        ([regex]::Match([IO.File]::ReadAllText((Join-Path $repo 'CHANGELOG.md')), '(?m)^## (\d+\.\d+\.\d+)')).Groups[1].Value | Should -Be $v
+    }
     It 'every source file parses without errors' {
         $bad = foreach ($f in (Get-ChildItem -LiteralPath $repo -Recurse -File | Where-Object { $_.Extension -in '.ps1', '.psm1', '.psd1' -and $_.FullName -notmatch '\\\.git\\' })) {
             $t = $null; $e = $null
@@ -292,6 +299,53 @@ Describe 'Manager and extractor' {
         $text | Should -Match "VMM_' \+ \`$env:COMPUTERNAME"
         $main = $text.Substring($text.IndexOf('# ============================================================== main'))
         $main.IndexOf('Export-Result -Auto') | Should -BeLessThan $main.IndexOf('while ($true)')
+    }
+}
+
+Describe 'Theme: black, deep iceberg blue, colour only for statuses' {
+    It 'only statuses map to a colour role; information stays neutral' {
+        $r = InModuleScope VmMaintenance { 'Success', 'Green', 'Warn', 'Yellow', 'Error', 'Critical', 'Unreachable', 'Info', 'Cyan', 'Plain', 'Gray', 'Trace', 'DarkGray', '' | ForEach-Object { ConvertTo-VmmColorRole $_ } }
+        ($r -join ',') | Should -Be 'Ok,Ok,Warn,Warn,Fail,Fail,Fail,Text,Text,Text,Text,Muted,Muted,Text'
+    }
+    It 'has one palette with a 16-colour fallback for old consoles' {
+        $t = InModuleScope VmMaintenance { $saved = $script:VmmConfig; $script:VmmConfig = @{ Log = @{ ToFile = $false } }; $x = Get-VmmTheme -Refresh; $script:VmmConfig = $saved; $script:VmmThemeCache = $null; $x }
+        (@($t.Roles.Keys | Sort-Object) -join ',') | Should -Be 'Accent,AccentBg,BarBg,Bg,Fail,Muted,Ok,Strong,Text,Warn'
+        "$($t.Roles.Bg.R),$($t.Roles.Bg.G),$($t.Roles.Bg.B)" | Should -Be '0,0,0'
+        $t.Roles.AccentBg.B | Should -BeGreaterThan $t.Roles.AccentBg.R      # blue
+        "$($t.Roles.AccentBg.Console)" | Should -Be 'DarkBlue'
+        "$($t.Roles.Warn.Console)" | Should -Be 'DarkYellow'                  # orange
+        "$($t.Roles.Ok.Console),$($t.Roles.Fail.Console)" | Should -Be 'Green,Red'
+    }
+    It 'writes 24-bit colour when the console takes it, and plain text with --no-color' {
+        $o = InModuleScope VmMaintenance {
+            $roles = (Get-VmmTheme -Refresh).Roles
+            $script:VmmThemeCache = @{ Roles = $roles; TrueColor = $true; Plain = $false }
+            $a = "$((Write-VmmColor 'x' -Role Warn 6>&1).MessageData.Message)"
+            $b = "$((Write-VmmColor 'x' -Role Strong -BgRole AccentBg 6>&1).MessageData.Message)"
+            $script:VmmThemeCache = @{ Roles = $roles; TrueColor = $true; Plain = $true }
+            $c = "$((Write-VmmColor 'x' -Role Warn 6>&1).MessageData.Message)"
+            $script:VmmThemeCache = $null
+            $a, $b, $c
+        }
+        $e = [char]27
+        $o[0] | Should -Be "${e}[38;2;227;136;45mx${e}[0m"
+        $o[1] | Should -Be "${e}[38;2;240;246;252m${e}[48;2;20;66;95mx${e}[0m"
+        $o[2] | Should -Be 'x'
+    }
+    It 'no screen sets a colour by hand any more (all go through the theme)' {
+        $hits = foreach ($f in (Get-ChildItem (Join-Path $repo 'VmMaintenance\Private'), (Join-Path $repo 'VmMaintenance\Public') -Filter *.ps1)) {
+            if ($f.Name -in 'Write-VmmColor.ps1', 'Get-VmmCollectorScript.ps1') { continue }
+            if ((Get-Content $f.FullName -Raw) -match '-ForegroundColor|-BackgroundColor') { $f.Name }
+        }
+        $hits | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Results from a host are untrusted' {
+    It 'a host result cannot mark a change step done or record an override while steps are off' {
+        $t = [IO.File]::ReadAllText((Join-Path $repo 'VmMaintenance\Public\Import-VmmCollectorResult.ps1'))
+        $t | Should -Match "Get-VmmSetting 'Extractor.AllowSteps' -Default \`$false"
+        $t | Should -Match "-not \`$hostSteps -and \(\`$res -eq 'Override' -or \(\`$st -in \`$known -and \`$st -notin 'Precheck', 'Verify'\)\)"
     }
 }
 

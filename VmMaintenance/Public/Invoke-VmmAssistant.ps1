@@ -49,8 +49,8 @@ function Invoke-VmmAssistant {
 
     if ((Get-VmmSetting 'Ai.ConfirmEachSend' -Default $true) -and -not $Force) {
         Write-VmmLog "This text goes to the AI provider '$((Get-VmmSetting 'Ai.Provider' -Default 'None'))':" -Level Info
-        Write-Host ($safeQ.Text) -ForegroundColor Gray
-        if ($safeC.Text) { Write-Host $safeC.Text -ForegroundColor DarkGray }
+        Write-VmmColor ($safeQ.Text) -Role Text
+        if ($safeC.Text) { Write-VmmColor $safeC.Text -Role Muted }
         if ((Read-VmmPrompt 'Send it? (y/N)') -notmatch '^[yY]') { Write-VmmLog 'Not sent.' -Level Muted; return }
     }
     $answer = Invoke-VmmAiChat -Messages $msgs

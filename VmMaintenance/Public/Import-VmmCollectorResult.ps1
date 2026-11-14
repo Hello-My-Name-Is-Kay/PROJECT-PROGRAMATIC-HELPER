@@ -7,6 +7,10 @@ function Import-VmmCollectorResult {
         [SEC] The line is untrusted input: size-limited, MAC-checked (VMM2), every field validated and
         length-capped, the host must already be in the fleet, and only known step names and statuses
         are accepted. Agent events (steps run on the host, overrides) are added to the host history.
+        [SEC] A result is encrypted to this laptop's public key, which is inside every extractor file: that
+        keeps it confidential, it does not prove who wrote it. So a result can never mark a change step
+        (Stage, PreSnapshot, ExpandDisk, Upgrade) as done, or record an override, unless Extractor.AllowSteps
+        is on; with it off those events are kept as history notes only.
     .EXAMPLE
         Import-VmmCollectorResult -Line (Get-Clipboard)
     .EXAMPLE
@@ -97,6 +101,7 @@ function Import-VmmCollectorResult {
         $Step = if ($u -and $u.Value.Status -in 'Success', 'Launched' -and -not ($v -and $v.Value.Status -eq 'Success')) { 'Verify' } else { 'Precheck' }
     }
     $okStatus = 'Success', 'Failed', 'NotNeeded', 'Launched', 'Override', 'Error'
+    $hostSteps = [bool](Get-VmmSetting 'Extractor.AllowSteps' -Default $false)
     $seen = @{}; foreach ($h in $rec.History) { $seen["$($h.At)|$($h.Step)|$($h.Result)"] = $true }
     $added = 0
     foreach ($e in $events) {
@@ -104,6 +109,10 @@ function Import-VmmCollectorResult {
         $at = & $clean $e[0] 25; $st = $e[1]; $res = $e[2]; $note = if ($e.Count -ge 4) { & $clean $e[3] 200 } else { '' }
         if ($res -notin $okStatus -or $at -notmatch '^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$') { continue }
         if ($seen.ContainsKey("$at|$st|$res")) { continue }
+        if (-not $hostSteps -and ($res -eq 'Override' -or ($st -in $known -and $st -notin 'Precheck', 'Verify'))) {
+            $rec.History = @($rec.History) + [pscustomobject]@{ At = $at; Step = $st; Result = 'Ignored'; Note = "reported by a host result as $res, not applied (Extractor.AllowSteps is off): $note" }
+            $added++; continue
+        }
         if ($res -eq 'Override') {
             $store.Overrides = @($store.Overrides) + [pscustomobject]@{ At = $at; Target = "$($rec.Name)/$st (on host)"; Reason = $note; Mode = 'agent' }
         }

@@ -34,6 +34,7 @@ function Show-VmmSettingsScreen {
         @('Log.Encrypt', 'Encrypt log lines on disk (read with vmm log)')
         @('Reports.ManagerName', 'Greeting name in blocker reports (optional)')
         @('UI.Mouse', 'Mouse support in this console')
+        @('UI.TrueColor', 'Auto | true | false: 24-bit theme colours (false = the 16 console colours)')
         @('GitHub.Repo', 'owner/name of the private repository (updates, issues, PRs)')
         @('GitHub.SourcePath', 'Local git clone used by update and pull requests')
         @('GitHub.CheckOnStart', 'Check for updates when vmm starts')

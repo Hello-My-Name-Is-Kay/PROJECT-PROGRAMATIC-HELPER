@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "license": "private",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
@@ -144,6 +144,7 @@
     "Connect-VmmAzure",
     "ConvertFrom-VmmDbNull",
     "ConvertTo-VmmAiSafeText",
+    "ConvertTo-VmmColorRole",
     "ConvertTo-VmmMediaLanguage",
     "ConvertTo-VmmNote",
     "ConvertTo-VmmPsd1",
@@ -190,6 +191,7 @@
     "Get-VmmSqlUpdatePlan",
     "Get-VmmStagingPackage",
     "Get-VmmTagValue",
+    "Get-VmmTheme",
     "Get-VmmUniqueSnapshotName",
     "Get-VmmUpgradeImage",
     "Get-VmmUpgradeMediaState",
@@ -260,6 +262,7 @@
     "Update-VmmFleetAzure",
     "Update-VmmInventoryAuto",
     "Wait-VmmJob",
+    "Write-VmmColor",
     "Write-VmmErrorLog",
     "Write-VmmLog",
     "Write-VmmTuiLine"
@@ -336,5 +339,11 @@
     "hands_on": "only when every route fails: Export-VmmHostAgent -Generic is built, steps printed; a failed terminal read never erases Extractor facts",
     "extractor": "snapshot-only by default: steps code between VMM-STEPS-BEGIN/END is cut out at build; writes one encrypted result file on the host desktop; Problem= line per failed read; Extractor.AllowSteps=true adds steps to the per-host file only",
     "laptop": "no TrustedHosts or firewall change; Fleet.WindowsLicence=false skips the licence query"
+  },
+  "theme": {
+    "where": "Private/Get-VmmTheme.ps1 (only place colours are defined), Write-VmmColor, ConvertTo-VmmColorRole, Write-VmmTuiLine",
+    "palette": "black background; deep iceberg blue (20,66,95) for the top bar and the selected row; iceberg (113,166,210) for titles; grey text; green/orange/red only for statuses",
+    "rule": "colour marks a status, it does not paint a row: list rows carry a one-cell status block and neutral text",
+    "fallback": "UI.TrueColor Auto|true|false: 24-bit escape sequences when the console takes them, else 16 console colours (DarkBlue, DarkCyan, DarkYellow); --no-color = plain"
   }
 }

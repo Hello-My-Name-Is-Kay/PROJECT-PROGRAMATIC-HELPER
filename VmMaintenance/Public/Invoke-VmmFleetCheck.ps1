@@ -52,6 +52,9 @@ function Invoke-VmmFleetCheck {
 
     $results = @(Invoke-VmmParallel -InputObject $targets -ScriptText (Get-VmmHostCheckScript) -Arguments $checkArgs -Throttle $throttle -Activity $(if ($AccessOnly) { 'Access test' } else { 'Fleet check' }))
 
+    # The run can take minutes: load the store again so results land on its current state
+    # (an Extractor result imported meanwhile, or another vmm window, is not overwritten)
+    $store = Read-VmmStore
     foreach ($res in $results) {
         $rec = $store.Hosts | Where-Object { $_.Name -eq "$($res.Name)".ToUpper() } | Select-Object -First 1
         if (-not $rec) { continue }

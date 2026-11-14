@@ -10,7 +10,9 @@ function Invoke-VmmTuiAction {
     [Console]::CursorVisible = $true
     Show-VmmTuiHeader
     [Console]::SetCursorPosition(0, 4 + [Console]::WindowTop)
-    Write-VmmLog "== $Title ==" -Level Info
+    Add-VmmLogEntry -Text "== $Title ==" -Level Info
+    Write-VmmColor " $Title" -Role Accent
+    Write-VmmColor (' ' + ('-' * [math]::Min(100, [math]::Max(10, [Console]::WindowWidth - 3)))) -Role Muted
     if (Test-VmmLogLive) { Write-VmmLog 'Live log on: progress lines are time-stamped (F2 on a menu turns them off).' -Level Muted -FileOnly }
     $ok = $true
     $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -36,7 +38,7 @@ function Invoke-VmmTuiAction {
     $script:VmmProgCache = $null
     if (-not $NoPause) {
         Write-Host ''
-        Write-Host (' Press any key (or click) to return...  ({0:N1} s)' -f $sw.Elapsed.TotalSeconds) -ForegroundColor DarkGray -NoNewline
+        Write-VmmColor (' Press any key (or click) to return...  ({0:N1} s)' -f $sw.Elapsed.TotalSeconds) -Role Muted -NoNewline
         do { $e = Read-VmmInput -TimeoutMs 500 } until ($e.Type -in 'Key', 'Click', 'DoubleClick')
     }
     Clear-Host

@@ -41,8 +41,7 @@ function Get-VmmAgentHealth {
         $line = '{0,-18} {1,-20} {2,-5} {3,-14} {4,-9} {5,-16} {6}' -f $r.Host, $r.Agent, $r.Status, $r.State, $r.Start, $r.Version, $r.Issues
         # Status colour without the WARNING:/ERROR: prefix of log lines
         Add-VmmLogEntry -Text $line -Level $lvl
-        $fg = switch ($r.Status) { 'OK' { 'Green' } 'WARN' { 'Yellow' } 'FAIL' { 'Red' } default { 'DarkGray' } }
-        if ($script:VmmFlags -and $script:VmmFlags.NoColor) { Write-Host $line } else { Write-Host $line -ForegroundColor $fg }
+        Write-VmmColor $line -Role $(switch ($r.Status) { 'OK' { 'Ok' } 'WARN' { 'Warn' } 'FAIL' { 'Fail' } default { 'Muted' } })
     }
     $bad = @($rows | Where-Object { $_.Status -in 'WARN', 'FAIL' })
     Write-VmmLog ("{0} agent row(s): {1} FAIL, {2} WARN." -f $rows.Count, @($bad | Where-Object Status -eq 'FAIL').Count, @($bad | Where-Object Status -eq 'WARN').Count) -Level Info

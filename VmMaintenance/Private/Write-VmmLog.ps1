@@ -1,7 +1,7 @@
 function Write-VmmLog {
     # One coloured console line, also kept in the live log pane and the day's log file (Add-VmmLogEntry).
-    # Info = cyan, Success = green, Warn = yellow, Error = red, Muted = dark grey (skipped/no-op),
-    # Plain = default colour, Trace = live progress (time-stamped, dark cyan; shown only while the
+    # Success = green, Warn = orange, Error = red, Muted = grey (skipped/no-op), Info and Plain = body text,
+    # Trace = live progress (time-stamped, grey; shown only while the
     # live log is on - F2 - but always written to the file). -FileOnly: file and pane, no console.
     [CmdletBinding()]
     param(
@@ -17,17 +17,12 @@ function Write-VmmLog {
         if ($script:VmmTuiListActive -or -not (Test-VmmLogLive)) { return }   # a list screen shows it in its pane
         $Message = '[' + (Get-Date).ToString('HH:mm:ss') + '] ' + $Message
     }
-    if ($script:VmmFlags -and $script:VmmFlags.NoColor) {   # --no-color
-        switch ($Level) { 'Warn' { Write-Host "WARNING: $Message" } 'Error' { Write-Host "ERROR: $Message" } default { Write-Host $Message } }
-        return
-    }
+    # Colour only where it carries a status: success green, warning orange, error red. Info is plain text,
+    # Muted and Trace are grey. --no-color: Write-VmmColor prints plain text.
+    $role = ConvertTo-VmmColorRole $Level
     switch ($Level) {
-        'Info'    { Write-Host $Message -ForegroundColor Cyan }
-        'Success' { Write-Host $Message -ForegroundColor Green }
-        'Warn'    { Write-Host "WARNING: $Message" -ForegroundColor Yellow }
-        'Error'   { Write-Host "ERROR: $Message" -ForegroundColor Red }
-        'Muted'   { Write-Host $Message -ForegroundColor DarkGray }
-        'Trace'   { Write-Host $Message -ForegroundColor DarkCyan }
-        default   { Write-Host $Message }
+        'Warn'  { Write-VmmColor "WARNING: $Message" -Role $role }
+        'Error' { Write-VmmColor "ERROR: $Message" -Role $role }
+        default { Write-VmmColor $Message -Role $role }
     }
 }

@@ -322,6 +322,24 @@ if (-not $isWin) {
             if ($null -ne $h.Check.CFreeGB) { throw 'empty C: value became a number' }
             $true
         }
+        Test-Step 'Host result claiming PreSnapshot done and an override: not applied while steps are off' {
+            $agentPath = Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($agentPath, [ref]$null, [ref]$null)
+            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Protect-Result' }, $true) | Select-Object -First 1
+            . ([scriptblock]::Create($fn.Extent.Text))
+            $rsa = & $m { Get-VmmAgentKey }
+            try { $Card = @{ PublicKey = $rsa.ToXmlString($false) } } finally { $rsa.Clear() }
+            $before = @(& $m { (Read-VmmStore).Overrides }).Count
+            $line = Protect-Result ("Name=SMOKE-HOST`nOS=Microsoft Windows Server 2016 Standard`nBuild=14393`nCFreeGB=50`nEvent=2026-11-14T11:00:00Z|PreSnapshot|Success|forged`nEvent=2026-11-14T11:00:01Z|Upgrade|Override|forged reason text")
+            & $m { param($l) Import-VmmCollectorResult -Line $l } $line
+            $st = & $m { Read-VmmStore }
+            $h = $st.Hosts | Where-Object { $_.Name -eq 'SMOKE-HOST' }
+            $ps = $h.Steps.PSObject.Properties['PreSnapshot']
+            if ($ps -and $ps.Value.Status -eq 'Success') { throw 'a host result marked PreSnapshot as done' }
+            Assert-Equal @($st.Overrides).Count $before 'overrides recorded'
+            if (-not @($h.History | Where-Object { $_.Result -eq 'Ignored' -and $_.Step -eq 'PreSnapshot' }).Count) { throw 'the ignored event is not in the history' }
+            $true
+        }
         Test-Step 'Fleet check: a host with no terminal route keeps its extractor facts and is marked hands-on' {
             & $m {
                 $saved = @{ P = ${function:Invoke-VmmParallel}; V = ${function:Assert-VmmVpn}; C = ${function:Get-VmmSessionCredential} }

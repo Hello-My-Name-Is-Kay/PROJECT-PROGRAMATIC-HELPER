@@ -11,7 +11,7 @@ function Show-VmmLogScreen {
             $all = @(Get-VmmLog -Date $date -Tail 3000 -PassThru -Quiet)
             if ($filter) { $all = @($all | Where-Object { $_.Text -like "*$filter*" -or $_.Level -eq $filter }) }
             $rows = foreach ($e in $all) {
-                $c = switch ($e.Level) { 'Info' { 'Cyan' } 'Success' { 'Green' } 'Warn' { 'Yellow' } 'Error' { 'Red' } 'Muted' { 'DarkGray' } 'Trace' { 'DarkCyan' } 'Output' { 'DarkGray' } default { 'Gray' } }
+                $c = switch ($e.Level) { 'Success' { 'Green' } 'Warn' { 'Yellow' } 'Error' { 'Red' } 'Muted' { 'DarkGray' } 'Trace' { 'DarkGray' } 'Output' { 'DarkGray' } default { 'Gray' } }
                 $t = if ($e.At) { $e.At.ToString('HH:mm:ss') } else { '--:--:--' }
                 @{ Text = ('{0} {1,-7} {2}' -f $t, $e.Level, $e.Text); Color = $c }
             }

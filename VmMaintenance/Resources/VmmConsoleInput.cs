@@ -61,6 +61,16 @@ public static class VmmConsoleInput
         return active;
     }
 
+    // Turns on escape-sequence colours (24-bit) on the output handle. False = old console: use the 16 colours.
+    public static bool EnableVt()
+    {
+        IntPtr h = GetStdHandle(-11);
+        uint mode;
+        if (!GetConsoleMode(h, out mode)) return false;
+        if ((mode & 0x0004) != 0) return true;
+        return SetConsoleMode(h, mode | 0x0004);
+    }
+
     public static void Restore()
     {
         if (!active) return;

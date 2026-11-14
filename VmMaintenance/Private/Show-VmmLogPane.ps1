@@ -4,15 +4,15 @@ function Show-VmmLogPane {
     param([Parameter(Mandatory)][int]$Top, [int]$Lines = 6)
     $w = [Console]::WindowWidth - 1
     $title = ' Live log  (F2 hide | F3 full log) '
-    Write-VmmTuiLine -Row $Top -Text ($title + ('-' * [math]::Max(0, $w - $title.Length))) -Fg DarkGray
+    Write-VmmTuiLine -Row $Top -Text ($title + ('-' * [math]::Max(0, $w - $title.Length))) -Role Muted
     $items = @()
     if ($script:VmmLogBuffer) { $items = @($script:VmmLogBuffer | Where-Object { $_.Level -ne 'Output' } | Select-Object -Last $Lines) }
     for ($i = 0; $i -lt $Lines; $i++) {
         if ($i -lt $items.Count) {
             $e = $items[$i]
-            $fg = switch ($e.Level) { 'Info' { 'Cyan' } 'Success' { 'Green' } 'Warn' { 'Yellow' } 'Error' { 'Red' } 'Muted' { 'DarkGray' } 'Trace' { 'DarkCyan' } default { 'Gray' } }
+            $fg = ConvertTo-VmmColorRole $e.Level
             $tag = switch ($e.Level) { 'Warn' { 'WARNING: ' } 'Error' { 'ERROR: ' } default { '' } }
-            Write-VmmTuiLine -Row ($Top + 1 + $i) -Text (' ' + $e.At.ToString('HH:mm:ss') + ' ' + $tag + $e.Text) -Fg $fg
+            Write-VmmTuiLine -Row ($Top + 1 + $i) -Text (' ' + $e.At.ToString('HH:mm:ss') + ' ' + $tag + $e.Text) -Role $fg
         } else { Write-VmmTuiLine -Row ($Top + 1 + $i) -Text '' }
     }
 }

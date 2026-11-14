@@ -76,7 +76,7 @@ function Invoke-VmmParallel {
             }
             # F2 works here too (the menu keys are paused while an action runs)
             try {
-                if ([Console]::KeyAvailable) { $k = [Console]::ReadKey($true); if ($k.Key -eq 'F2') { $on = Switch-VmmLogLive; Write-Host ("Live log {0}." -f $(if ($on) { 'on' } else { 'off (still written to the file)' })) -ForegroundColor DarkGray } }
+                if ([Console]::KeyAvailable) { $k = [Console]::ReadKey($true); if ($k.Key -eq 'F2') { $on = Switch-VmmLogLive; Write-VmmColor ("Live log {0}." -f $(if ($on) { 'on' } else { 'off (still written to the file)' })) -Role Muted } }
             } catch { }
             Start-Sleep -Milliseconds 150
         }
