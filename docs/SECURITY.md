@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-41 | Honest limits:42-61 | Untested:62-70 -->
+<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-41 | Honest limits:42-61 | Untested:62-71 -->
 # Security
 
 Rules this project follows, how each is implemented, and the honest limits.
@@ -61,10 +61,11 @@ or server lists appears in a tracked file.
 
 ## Untested
 
-Nothing has been executed in a real PowerShell session yet. Run `Tools\Invoke-SmokeTest.ps1` first.
-Specifically unverified: the C# console helper compile and mouse in Windows Terminal; DPAPI type loading
-in PowerShell 7; `Update-AzConfig -LoginExperienceV2`; `Invoke-AzVMRunCommand -ScriptString`;
+Verified by GitHub checks (Windows PowerShell 5.1 and PowerShell 7): syntax of every script, module
+import and exports, C# console helper compile, time rules, OS policy, PSD1 round trip, DPAPI + AES/HMAC
+store, tamper detection, host agent encryption to the laptop key, Pester tests.
+Not verified: mouse input in Windows Terminal and the interactive UI; `Update-AzConfig -LoginExperienceV2`; `Invoke-AzVMRunCommand -ScriptString`;
 `Set-Clipboard -Path`; `vpncli.exe` output parsing on your Cisco Secure Client version; Foundry Local's
 port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the `icacls` ACL; Pester 5 tests.
 
-_Last updated: 2026-11-14 03:48 UTC_
+_Last updated: 2026-11-14 03:53 UTC_
