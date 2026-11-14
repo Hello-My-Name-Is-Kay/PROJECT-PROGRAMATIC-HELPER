@@ -1,6 +1,6 @@
 @{
     RootModule           = 'VmMaintenance.psm1'
-    ModuleVersion        = '2.1.0'
+    ModuleVersion        = '2.2.0'
     GUID                 = '63eba97e-c6ef-4ccb-b686-dd907935872a'
     Author               = 'Kay'
     Description          = 'Fleet maintenance console for Windows servers and Azure VMs: parallel checks, time-window rules, staging gate, guided RDP steps, checkpoint snapshots, blocker reports, daily CSV/HTML export. Encrypted local store; no stored credentials.'
@@ -18,6 +18,7 @@
         'Get-VmmAzureVmDisk'
         'Get-VmmDailyProgress'
         'Get-VmmFleet'
+        'Get-VmmGitHubStatus'
         'Get-VmmLansweeperDiskSpace'
         'Get-VmmPolicyReport'
         'Get-VmmRdpGuide'
@@ -28,6 +29,7 @@
         'Import-VmmConfig'
         'Import-VmmFleet'
         'Initialize-VmmConfig'
+        'Install-VmmSourceClone'
         'Invoke-VmmAssistant'
         'Invoke-VmmCli'
         'Invoke-VmmFleetCheck'
@@ -37,6 +39,8 @@
         'Mount-VmmUpgradeMedia'
         'New-VmmBlockerReport'
         'New-VmmDiskFromSnapshot'
+        'New-VmmGitHubIssue'
+        'New-VmmGitHubPullRequest'
         'New-VmmSnapshot'
         'Remove-VmmExpiredSnapshot'
         'Remove-VmmFleetHost'
@@ -47,6 +51,7 @@
         'Start-VmmConsole'
         'Start-VmmSetupWizard'
         'Test-VmmStagingSource'
+        'Update-VmmFromGitHub'
     )
     CmdletsToExport      = @()
     VariablesToExport    = @()

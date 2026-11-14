@@ -118,4 +118,4 @@ Change steps need the window or an override (typed `OVERRIDE` + reason), and the
 confirmation. The export carries every logged event; the laptop adds them to the host history and
 records host-side overrides in the daily report.
 
-_Last updated: 2026-11-14 03:34 UTC_
+_Last updated: 2026-11-14 03:48 UTC_

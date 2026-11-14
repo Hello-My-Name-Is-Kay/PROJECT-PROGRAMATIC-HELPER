@@ -1,5 +1,13 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 210 - 2026-11-14:4-21 | 200 - 2026-11-14:22-27 | 100 - 2026-11-14:28-32 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 220 - 2026-11-14:4-11 | 210 - 2026-11-14:12-29 | 200 - 2026-11-14:30-35 | 100 - 2026-11-14:36-40 -->
 # Changelog
+
+## 2.2.0 - 2026-11-14
+
+- GitHub integration through the GitHub CLI (no token stored): `vmm github`, `vmm update` (checks + smoke test
+  before install, rollback of the clone on failure), `vmm clone`, `vmm issue` (sanitized), `vmm pr` (leak scan first).
+- Console: `U` GitHub / updates menu; update notice at start (`GitHub.CheckOnStart`).
+- Installer: GitHub page in the setup wizard (sign-in offer, clone folder defaults to the install source), `-Update` mode.
+- GitHub Actions: leak scan, smoke test, Pester on Windows PowerShell 5.1 and PowerShell 7; script analyzer report.
 
 ## 2.1.0 - 2026-11-14
 
@@ -29,4 +37,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 03:34 UTC_
+_Last updated: 2026-11-14 03:48 UTC_

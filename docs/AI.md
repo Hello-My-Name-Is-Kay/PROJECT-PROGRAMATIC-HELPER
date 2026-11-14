@@ -84,4 +84,4 @@ Not built yet. The plan:
 - Client: a Copilot Studio or Azure AI Foundry agent your organisation approves, or a local client,
   signed in with your work account.
 
-_Last updated: 2026-11-14 03:34 UTC_
+_Last updated: 2026-11-14 03:48 UTC_

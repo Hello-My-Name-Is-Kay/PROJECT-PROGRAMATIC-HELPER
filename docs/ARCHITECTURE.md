@@ -74,4 +74,4 @@ extension point. Feature flags live in the config (`Features.*`), run flags on t
 - Steps: `Get-VmmWorkflowDefinition` + a branch in `Invoke-VmmWorkflowStep` + agent `Get-Plan`.
 - MCP (future): see [AI.md](AI.md).
 
-_Last updated: 2026-11-14 03:34 UTC_
+_Last updated: 2026-11-14 03:48 UTC_

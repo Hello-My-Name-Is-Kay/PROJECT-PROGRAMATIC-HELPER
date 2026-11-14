@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | Every morning business hours:14-25 | Evening / weekend all steps:26-32 | Problems:33-42 | End of day:43-47 | Tests:48-56 -->
+<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | Every morning business hours:14-25 | Evening / weekend all steps:26-32 | Problems:33-42 | End of day:43-47 | Updates and GitHub:48-52 | Tests:53-61 -->
 # Usage - daily runbook
 
 ## Once
@@ -45,6 +45,11 @@ the plaintext list is deleted after import, names then live only in the encrypte
 `7` Reports: `Fleet_<date>.csv/.html/.json` for your manager (also via the scheduled task).
 `8` Prune: preview expired snapshots; type `DELETE` to remove them (off-hours, or override).
 
+## Updates and GitHub
+
+`U` in the console: `S` status, `U` update (smoke test before install), `I` report an issue from the
+error log, `P` pull request from a branch of your clone (leak scan first). CLI: `vmm update`, `vmm issue`, `vmm pr`.
+
 ## Tests
 
 ```powershell
@@ -53,4 +58,4 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1      # before any commit or push
 ```
 
-_Last updated: 2026-11-14 03:34 UTC_
+_Last updated: 2026-11-14 03:48 UTC_

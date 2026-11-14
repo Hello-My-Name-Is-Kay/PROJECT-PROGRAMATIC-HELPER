@@ -8,7 +8,7 @@ function Start-VmmSetupWizard {
         'vmm setup' (or W in the console). Enter keeps the value in brackets. Nothing is saved until
         the summary page is confirmed. Never asks for, or stores, usernames or passwords.
     .PARAMETER Page
-        Open one page only: Rules, Staging, Workflow, Access, Vpn, Ai, Display.
+        Open one page only: Rules, Staging, Workflow, Access, Vpn, Ai, GitHub, Display.
     .PARAMETER AcceptDefaults
         No questions: keep current/default values (warnings are still printed).
     .EXAMPLE
@@ -17,7 +17,7 @@ function Start-VmmSetupWizard {
         vmm setup -Page Vpn
     #>
     [CmdletBinding()]
-    param([ValidateSet('All', 'Rules', 'Staging', 'Workflow', 'Access', 'Vpn', 'Ai', 'Display')][string]$Page = 'All', [switch]$AcceptDefaults)
+    param([ValidateSet('All', 'Rules', 'Staging', 'Workflow', 'Access', 'Vpn', 'Ai', 'GitHub', 'Display')][string]$Page = 'All', [switch]$AcceptDefaults)
 
     if (-not (Resolve-VmmConfigPath)) { Initialize-VmmConfig | Out-Null }
     if (-not $script:VmmConfig) { Import-VmmConfig | Out-Null }
@@ -129,6 +129,23 @@ function Start-VmmSetupWizard {
                     [void](& $ask 'Ai.Deployment' 'Deployment name' '')
                 }
                 [void](& $ask 'Ai.ConfirmEachSend' 'Show and confirm every text before it is sent' 'True' 'bool')
+            }
+        }
+        if (& $want 'GitHub') {
+            & $title 'GitHub (updates, issues, pull requests)' @('Uses the GitHub CLI (gh) and ITS sign-in; vmm never stores a token. Keep the repository private.',
+                'The local clone is where updates are pulled and pull requests are pushed from.')
+            $hasGh = [bool](Get-Command gh -ErrorAction SilentlyContinue)
+            if (-not $hasGh) { Write-VmmLog '  GitHub CLI not found: winget install GitHub.cli, then reopen the terminal. You can fill this page now anyway.' -Level Warn }
+            [void](& $ask 'GitHub.Repo' 'Repository (owner/name, empty = no GitHub integration)' '')
+            [void](& $ask 'GitHub.Branch' 'Branch to update from' 'main')
+            $defClone = if ($script:VmmInstallSource -and (Test-Path -LiteralPath (Join-Path $script:VmmInstallSource '.git'))) { $script:VmmInstallSource } else { '' }
+            [void](& $ask 'GitHub.SourcePath' 'Local clone folder (empty = clone later with U > C)' $defClone)
+            [void](& $ask 'GitHub.CheckOnStart' 'Check for updates when vmm starts' 'True' 'bool')
+            if ($hasGh -and -not $AcceptDefaults) {
+                $null = & gh auth status --hostname github.com 2>&1
+                if ($LASTEXITCODE -ne 0 -and (Read-Host '  Not signed in to GitHub. Sign in now with gh auth login? (Y/n)') -notmatch '^[nN]') {
+                    & gh auth login --hostname github.com --git-protocol https --web
+                }
             }
         }
         if (& $want 'Display') {

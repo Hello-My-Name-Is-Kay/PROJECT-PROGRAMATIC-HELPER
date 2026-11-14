@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-40 | Honest limits:41-60 | Untested:61-69 -->
+<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-41 | Honest limits:42-61 | Untested:62-70 -->
 # Security
 
 Rules this project follows, how each is implemented, and the honest limits.
@@ -17,6 +17,7 @@ Rules this project follows, how each is implemented, and the honest limits.
 |---|---|---|
 | Host credentials, SQL login | Process memory | `PSCredential` (SecureString), asked once per session, disposed on quit. Never logged, exported or written. `Set-VmmSetting` refuses credential-like keys |
 | VPN credentials | VPN client only | Typed into Cisco Secure Client / Windows dialog; never pass through vmm |
+| GitHub sign-in | GitHub CLI (Windows Credential Manager) | vmm never reads the token (`gh auth token` is never called); issue/PR text is masked and previewed; PRs only after the leak scan |
 | Azure sign-in | Az.Accounts token cache | Microsoft's own cache; vmm stores no tokens. AI tokens are fetched per request and dropped |
 | Fleet store `fleet.vmm` | `%LOCALAPPDATA%\VmMaintenance\data` | AES-256-CBC + HMAC-SHA256 (encrypt-then-MAC, constant-time check), atomic write + `.bak` |
 | Store key `store.key` | same | 64 random bytes, DPAPI CurrentUser + entropy |
@@ -66,4 +67,4 @@ in PowerShell 7; `Update-AzConfig -LoginExperienceV2`; `Invoke-AzVMRunCommand -S
 `Set-Clipboard -Path`; `vpncli.exe` output parsing on your Cisco Secure Client version; Foundry Local's
 port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the `icacls` ACL; Pester 5 tests.
 
-_Last updated: 2026-11-14 03:34 UTC_
+_Last updated: 2026-11-14 03:48 UTC_

@@ -129,6 +129,14 @@
         ExpandDiskOverride = $false                             # disk expand deallocates the VM: no business-hours override
     }
 
+    # GitHub integration (GitHub CLI 'gh' and its own sign-in; vmm stores no token)
+    GitHub = @{
+        Repo         = ''        # owner/name of your PRIVATE repository; empty = integration off
+        Branch       = 'main'    # branch 'vmm update' installs from
+        SourcePath   = ''        # local git clone (vmm clone) used by update and pull requests
+        CheckOnStart = $true     # one quick call at start: shows 'Update available' in the menu
+    }
+
     # Feature flags: turn whole areas on or off without touching code
     Features = @{
         HostAgent = $true        # X on a host: export the agent .ps1 that runs on the remote host

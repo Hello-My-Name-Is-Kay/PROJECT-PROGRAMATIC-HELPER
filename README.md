@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host agent for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic; TL;DR at the top. SECTIONS: TLDR:6-20 | Overview:21-36 | At a glance:37-53 | Quick start:54-72 | Host agent the program on th:73-91 | Console UI:92-121 | CLI:122-159 | OS policy:160-174 | Workflow per host:175-188 | Directory tree:189-218 | Where your data lives never :219-232 | Testing:233-245 | Errors:246-259 | Future your work AI model wi:260-269 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host agent for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; TL;DR at the top. SECTIONS: TLDR:6-21 | Overview:22-37 | At a glance:38-54 | Quick start:55-73 | Host agent the program on th:74-92 | Console UI:93-123 | CLI:124-163 | GitHub integration:164-180 | OS policy:181-195 | Workflow per host:196-209 | Directory tree:210-240 | Where your data lives never :241-254 | Testing:255-267 | Errors:268-281 | Future your work AI model wi:282-291 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.1.0 &nbsp;|&nbsp; **This file:** 2026-11-14
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.2.0 &nbsp;|&nbsp; **This file:** 2026-11-14
 
 ## TL;DR
 
@@ -16,6 +16,7 @@
 - **Blocked by access:** `B` writes the manager report (clipboard); answer Sent / Later / Bypass; the queue moves on.
 - **Never stored:** usernames, passwords, tokens. Fleet data is encrypted on this laptop for your Windows account only.
 - **Never in this repo:** hosts, IPs, tenant/subscription IDs, company names. Run `.\Tools\Test-Sanitized.ps1` before every push.
+- **Updates:** `U` in the console (or `vmm update`): fetch, show changes, check GitHub results, smoke test, reinstall. GitHub CLI sign-in only; no token stored.
 - **Help:** `vmm help`, `Get-Help <Function> -Full`, [docs/USAGE.md](docs/USAGE.md).
 
 ## Overview
@@ -110,6 +111,7 @@ and today's progress bar with Azure context and credential state.
 | V | VPN status, connect, disconnect |
 | A | Assistant (optional AI) |
 | W | Setup wizard |
+| U | GitHub / updates: status, update, sign in, clone, issue, pull request |
 | H / Q | Help / Quit (clears session credentials) |
 
 On a host screen: Enter run step, `G` RDP guide, `X` host agent, `P` paste result, `Y` confirm a
@@ -147,6 +149,8 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm vpn` / `vmm connect` / `vmm disconnect` | VPN |
 | `vmm ai -Prompt ".." [-IncludeFleet]` | Optional assistant |
 | `vmm setup [-Page Vpn]` | Setup wizard |
+| `vmm github` / `vmm update [-CheckOnly]` / `vmm clone` | GitHub status, update vmm, clone the repo |
+| `vmm issue [-FromErrorLog]` / `vmm pr [-NewBranch x -Message ..] [-Draft]` | Report an issue, open a pull request |
 | `vmm policy [-Notice]` | OS policy per host, management note |
 | `vmm order -HostName x -Reason ".."` / `-Clear` | Work on a client-OS host by order |
 
@@ -156,6 +160,23 @@ Feature flags in the config (`Features.HostAgent`, `Features.Vpn`, `Features.Ai`
 
 The classic one-task scripts (`Scripts\Expand-AzOsDisk.ps1`, `CreateSnapshots.ps1`, ...) still
 work and honour the same time window. See [docs/USAGE.md](docs/USAGE.md).
+
+## GitHub integration
+
+Needs the GitHub CLI (`winget install GitHub.cli`) and `gh auth login` once; gh keeps the login in
+Windows Credential Manager and vmm never reads it. Set up during install (wizard page GitHub) or later
+with `U` > `W` / `vmm setup -Page GitHub`.
+
+| Action | Console | CLI | Safety |
+|---|---|---|---|
+| Status | `U` > `S` | `vmm github` | Read-only |
+| Update vmm | `U` > `U` | `vmm update` | Shows new commits; needs GitHub checks passed (else type YES); smoke test must pass before install, else the clone is moved back; settings and data untouched |
+| Clone | `U` > `C` | `vmm clone -Path <dir>` | Sets `GitHub.SourcePath` |
+| Issue | `U` > `I` | `vmm issue -FromErrorLog` | Masked like the AI assistant, preview + confirm |
+| Pull request | `U` > `P` | `vmm pr -NewBranch x -Message ".." -Title ".."` | Leak scan against your local values first; preview + confirm |
+
+GitHub checks (`.github/workflows/ci.yml`) run the leak scan, smoke test and Pester on Windows
+PowerShell 5.1 and PowerShell 7 for every push and pull request.
 
 ## OS policy
 
@@ -190,6 +211,7 @@ Details and the snapshot-after-each-step answer: [docs/WORKFLOW.md](docs/WORKFLO
 
 ```
 VmMaintenance\
+  .github\workflows\ci.yml       GitHub checks (Windows, PS 5.1 + 7)
   Install.ps1 / Uninstall.ps1       per-user install, no admin
   README.md  CHANGELOG.md  llms.txt  PROJECT.json
   docs\
@@ -266,4 +288,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 03:34 UTC_
+_Last updated: 2026-11-14 03:48 UTC_

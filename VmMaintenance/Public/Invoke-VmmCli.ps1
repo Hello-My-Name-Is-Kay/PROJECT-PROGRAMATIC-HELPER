@@ -53,6 +53,11 @@ function Invoke-VmmCli {
         'setup'    = @{ F = 'Start-VmmSetupWizard';       D = 'first-run / setup wizard (all options, with explanations)' }
         'policy'   = @{ F = 'Get-VmmPolicyReport';        D = 'OS policy: scope per host, management warnings [-Notice]' }
         'order'    = @{ F = 'Set-VmmHostOrder';           D = 'work on a client-OS host by order -HostName x -Reason ".." | -Clear' }
+        'github'   = @{ F = 'Get-VmmGitHubStatus';        D = 'GitHub: sign-in, versions, latest commit, checks' }
+        'update'   = @{ F = 'Update-VmmFromGitHub';       D = 'update vmm from GitHub [-CheckOnly]' }
+        'clone'    = @{ F = 'Install-VmmSourceClone';     D = 'clone the repo for updates/PRs [-Path dir]' }
+        'issue'    = @{ F = 'New-VmmGitHubIssue';         D = 'open an issue [-FromErrorLog] [-Title ..] [-Body ..]' }
+        'pr'       = @{ F = 'New-VmmGitHubPullRequest';   D = 'pull request from a branch [-NewBranch x -Message ..] [-Title ..] [-Draft]' }
         'set'      = @{ F = 'Set-VmmSetting';             D = 'change a setting       -Name Staging.SourceShare -Value "\\srv\share"' }
         'config'   = @{ F = 'Import-VmmConfig';           D = 'show config path / reload [-Path file]' }
     }

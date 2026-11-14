@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "license": "private",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
@@ -53,7 +53,18 @@
     ],
     "future": [
       "MCP server for an approved work AI model"
-    ]
+    ],
+    "github": {
+      "via": "GitHub CLI (gh), its own sign-in",
+      "commands": [
+        "github",
+        "update",
+        "clone",
+        "issue",
+        "pr"
+      ],
+      "ci": ".github/workflows/ci.yml"
+    }
   },
   "feature_flags": [
     "Features.HostAgent",
@@ -86,6 +97,7 @@
     "Get-VmmAzureVmDisk",
     "Get-VmmDailyProgress",
     "Get-VmmFleet",
+    "Get-VmmGitHubStatus",
     "Get-VmmLansweeperDiskSpace",
     "Get-VmmPolicyReport",
     "Get-VmmRdpGuide",
@@ -96,6 +108,7 @@
     "Import-VmmConfig",
     "Import-VmmFleet",
     "Initialize-VmmConfig",
+    "Install-VmmSourceClone",
     "Invoke-VmmAssistant",
     "Invoke-VmmCli",
     "Invoke-VmmFleetCheck",
@@ -105,6 +118,8 @@
     "Mount-VmmUpgradeMedia",
     "New-VmmBlockerReport",
     "New-VmmDiskFromSnapshot",
+    "New-VmmGitHubIssue",
+    "New-VmmGitHubPullRequest",
     "New-VmmSnapshot",
     "Remove-VmmExpiredSnapshot",
     "Remove-VmmFleetHost",
@@ -114,7 +129,8 @@
     "Set-VmmSetting",
     "Start-VmmConsole",
     "Start-VmmSetupWizard",
-    "Test-VmmStagingSource"
+    "Test-VmmStagingSource",
+    "Update-VmmFromGitHub"
   ],
   "private_functions": [
     "Assert-VmmModule",
@@ -141,6 +157,7 @@
     "Get-VmmDpapiType",
     "Get-VmmErrorHint",
     "Get-VmmExtendScript",
+    "Get-VmmGitHubRepo",
     "Get-VmmHostCheckScript",
     "Get-VmmHostHealth",
     "Get-VmmHostPolicy",
@@ -153,6 +170,7 @@
     "Get-VmmQueue",
     "Get-VmmSessionCredential",
     "Get-VmmSetting",
+    "Get-VmmSourceClone",
     "Get-VmmStagingPackage",
     "Get-VmmTagValue",
     "Get-VmmUniqueSnapshotName",
@@ -163,6 +181,9 @@
     "Get-VmmWorkflowDefinition",
     "Initialize-VmmConsoleInput",
     "Invoke-VmmAiChat",
+    "Invoke-VmmChildScript",
+    "Invoke-VmmGh",
+    "Invoke-VmmGit",
     "Invoke-VmmGuestExtend",
     "Invoke-VmmListView",
     "Invoke-VmmOsDiskResize",
@@ -192,6 +213,7 @@
     "Show-VmmAzureScreen",
     "Show-VmmCredentialScreen",
     "Show-VmmFleetScreen",
+    "Show-VmmGitHubScreen",
     "Show-VmmGuideScreen",
     "Show-VmmHelpScreen",
     "Show-VmmHostScreen",

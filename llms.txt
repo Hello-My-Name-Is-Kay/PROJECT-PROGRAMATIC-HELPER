@@ -28,5 +28,8 @@ Rules an assistant must keep when changing this code:
 - [VmMaintenance/Resources/VmmHostAgent.ps1](VmMaintenance/Resources/VmmHostAgent.ps1): program 2 (remote host)
 - [PROJECT.json](PROJECT.json): machine-readable summary
 
+## CI
+- [.github/workflows/ci.yml](.github/workflows/ci.yml): leak scan, smoke test, Pester on Windows PS 5.1 + 7
+
 ## Tests
 - [Tools/Invoke-SmokeTest.ps1](Tools/Invoke-SmokeTest.ps1), [tests/VmMaintenance.Tests.ps1](tests/VmMaintenance.Tests.ps1), [Tools/Test-Sanitized.ps1](Tools/Test-Sanitized.ps1)

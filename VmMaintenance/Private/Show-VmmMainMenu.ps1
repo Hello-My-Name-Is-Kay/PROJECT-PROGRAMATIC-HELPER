@@ -16,10 +16,11 @@ function Show-VmmMainMenu {
         @{ K = 'V'; T = 'VPN               status, connect, disconnect (you sign in in the VPN client)' }
         @{ K = 'A'; T = 'Assistant         optional AI help: explain an error, next step (off by default)' }
         @{ K = 'W'; T = 'Setup wizard      all options page by page, with explanations' }
+        @{ K = 'U'; T = 'GitHub / updates  update vmm, sign in, report an issue, pull request' }
         @{ K = 'H'; T = 'Help              keys, rules, where files live' }
         @{ K = 'Q'; T = 'Quit              clears session credentials from memory' }
     )
-    $sel = 0; $status = ''
+    $sel = 0; $status = "$script:VmmUpdateNotice"
     while ($true) {
         $rows = @($items | ForEach-Object { @{ Text = "[$($_.K)] $($_.T)"; Color = 'Gray' } })
         $r = Invoke-VmmListView -Title 'Main menu' -Rows $rows -Selected $sel -Status $status `
@@ -55,6 +56,7 @@ function Show-VmmMainMenu {
                       if ($q) { $f = (Read-VmmPrompt 'Include a sanitized fleet summary? (y/N)') -match '^[yY]'; Invoke-VmmAssistant -Prompt $q -IncludeFleet:$f }
                   }) }
             'W' { [void](Invoke-VmmTuiAction -Title 'Setup wizard' -Action { Start-VmmSetupWizard }) }
+            'U' { Show-VmmGitHubScreen }
             'H' { Show-VmmHelpScreen }
             'Q' { return }
         }

@@ -4,3 +4,6 @@
 *.psd1 text eol=crlf
 *.sql  text eol=crlf
 *.md   text eol=lf
+*.cs   text eol=crlf
+*.yml  text eol=lf
+*.json text eol=lf

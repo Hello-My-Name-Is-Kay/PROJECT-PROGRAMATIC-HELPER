@@ -15,9 +15,15 @@
     .\Install.ps1
 .EXAMPLE
     .\Install.ps1 -AcceptDefaults      # no questions; set everything later in vmm > Settings
+.EXAMPLE
+    .\Install.ps1 -Update              # what 'vmm update' runs after the smoke test passed
 #>
 [CmdletBinding()]
-param([switch]$AcceptDefaults)
+param(
+    [switch]$AcceptDefaults,
+    [switch]$Update          # used by 'vmm update': copy module + launcher only, no questions, settings untouched
+)
+if ($Update) { $AcceptDefaults = $true }
 
 $ErrorActionPreference = 'Stop'
 function Say($t, $c = 'Gray') { Write-Host $t -ForegroundColor $c }
@@ -41,14 +47,14 @@ Say "`n VmMaintenance $ver - installer" Cyan
 Say ' ------------------------------------------------------------' DarkGray
 
 # --- 2. Installer-only options (everything else is asked by the setup wizard after the copy)
-$wantTask = AskYes ' Export the daily report automatically every day (scheduled task, runs while you are logged on)' 'Y'
+$wantTask = if ($Update) { $false } else { AskYes ' Export the daily report automatically every day (scheduled task, runs while you are logged on)' 'Y' }
 $taskAt   = if ($wantTask) { Ask ' Time for the daily export (laptop clock, HH:mm)' '17:15' } else { $null }
 if ($taskAt -and $taskAt -notmatch '^([01]\d|2[0-3]):[0-5]\d$') { Say " '$taskAt' is not HH:mm - using 17:15." Yellow; $taskAt = '17:15' }
 
 # --- 3. Prerequisite modules
 $az = 'Az.Accounts', 'Az.Compute', 'Az.ResourceGraph'
 $missing = @($az | Where-Object { -not (Get-Module -ListAvailable -Name $_) })
-if ($missing) {
+if ($missing -and -not $Update) {
     Say "`n Missing modules: $($missing -join ', ') (needed for Azure steps only)" Yellow
     if (AskYes ' Install them now for your user (Install-Module -Scope CurrentUser)' 'Y') {
         try { Install-Module $missing -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop; Say ' Az modules installed.' Green }
@@ -93,7 +99,12 @@ $env:Path = "$env:Path;$bin"
 Import-Module (Join-Path $targets[0] 'VmMaintenance.psd1') -Force
 Initialize-VmmConfig
 Import-VmmConfig | Out-Null
-# First-run UI: warnings (type YES) + every option page by page, validated, saved at the end
+if ($Update) {
+    Say " Updated to $ver. Settings, encrypted data and reports were not touched." Green
+    exit 0
+}
+# First-run UI: warnings (type YES) + every option page by page (incl. GitHub), validated, saved at the end
+& (Get-Module VmMaintenance) { param($p) $script:VmmInstallSource = $p } $repo
 Start-VmmSetupWizard -AcceptDefaults:$AcceptDefaults
 $m = Get-Module VmMaintenance
 & $m { Save-VmmStore -Store (Read-VmmStore); $s = Read-VmmStore; if ($null -eq $s) { throw 'store self-test failed' } }

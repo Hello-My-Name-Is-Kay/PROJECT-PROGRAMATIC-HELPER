@@ -18,6 +18,18 @@ function Start-VmmConsole {
     try { if (-not $script:VmmConfig) { Import-VmmConfig } }
     catch { Write-VmmLog $_.Exception.Message -Level Error; return }
 
+    # Update notice (one quick GitHub call, never blocks the start)
+    $script:VmmUpdateNotice = ''
+    if ((Get-VmmSetting 'GitHub.CheckOnStart' -Default $true) -and (Get-VmmSetting 'GitHub.Repo' -Default '') -and (Get-Command gh -ErrorAction SilentlyContinue)) {
+        try {
+            $repo = Get-VmmGitHubRepo; $br = Get-VmmSetting 'GitHub.Branch' -Default 'main'
+            $c = Invoke-VmmGh -Arguments @('api', "repos/$repo/contents/VmMaintenance/VmMaintenance.psd1?ref=$br", '--jq', '.content') -Activity 'Update check'
+            $t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($c -replace '\s', '')))
+            if ($t -match "ModuleVersion\s*=\s*'([\d\.]+)'" -and [version]$Matches[1] -gt (Get-Module VmMaintenance).Version) {
+                $script:VmmUpdateNotice = "Update available: $($Matches[1]) - press U, then U (or: vmm update)"
+            }
+        } catch { }
+    }
     $oldFg = [Console]::ForegroundColor; $oldBg = [Console]::BackgroundColor
     $script:VmmTuiRunning = $true
     Initialize-VmmConsoleInput

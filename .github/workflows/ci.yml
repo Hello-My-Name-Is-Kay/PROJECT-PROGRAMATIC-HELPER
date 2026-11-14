@@ -1,0 +1,69 @@
+# Runs the offline tests on GitHub-hosted Windows runners. Touches no host, Azure or SQL.
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (${{ matrix.shell }})
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]   # Windows PowerShell 5.1 and PowerShell 7
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versions
+        run: $PSVersionTable | Format-Table -AutoSize
+
+      - name: Leak scan (GUIDs, IPv4)
+        run: .\Tools\Test-Sanitized.ps1
+
+      - name: Smoke test
+        run: .\Tools\Invoke-SmokeTest.ps1
+
+      - name: Pester
+        run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+          Install-Module Pester -MinimumVersion 5.5 -Scope CurrentUser -Force -SkipPublisherCheck
+          Import-Module Pester -MinimumVersion 5.5
+          $c = New-PesterConfiguration
+          $c.Run.Path = '.\tests'
+          $c.Run.Exit = $true
+          $c.Output.Verbosity = 'Detailed'
+          $c.TestResult.Enabled = $true
+          $c.TestResult.OutputPath = "pester-${{ matrix.shell }}.xml"
+          Invoke-Pester -Configuration $c
+
+      - name: Script analyzer (errors only, report)
+        if: matrix.shell == 'pwsh'
+        continue-on-error: true
+        run: |
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          $r = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+          $r | Format-Table RuleName, ScriptName, Line, Message -AutoSize -Wrap
+          if ($r) { exit 1 }
+
+      - name: Test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pester-${{ matrix.shell }}
+          path: pester-${{ matrix.shell }}.xml
+          if-no-files-found: ignore
