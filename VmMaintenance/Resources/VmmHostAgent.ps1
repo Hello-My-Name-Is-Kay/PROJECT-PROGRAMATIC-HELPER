@@ -1,33 +1,35 @@
 <#
 .SYNOPSIS
-    VmMaintenance host agent - the small program you run ON a remote host inside RDP/RDM.
+    VmMaintenance EXTRACTOR - the small program you run ON a remote host inside RDP/RDM.
+    (The Manager is vmm on your laptop; it builds this file and reads what it extracts.)
 .DESCRIPTION
-    Copy this file to the host's desktop, then in a PowerShell window on the host run:
-
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\VmmHostAgent.ps1"
-
-    (-ExecutionPolicy Bypass applies to this one process only; nothing on the host is reconfigured.)
+    1. Paste this file on the host's desktop (the Manager put it on your clipboard).
+    2. Right-click it > Run with PowerShell. (Or: powershell.exe -NoProfile -ExecutionPolicy Bypass -File <file>.
+       Bypass applies to this one process only; nothing on the host is reconfigured.)
+    3. It extracts at once and saves VMM_<HOST>_<time>.vmm on this desktop (and the same text on the
+       clipboard). Copy that file to your laptop's Desktop or Downloads: the Manager imports it by itself.
 
     What it does:
-      - Extracts this host's facts (OS, build, SQL, C: space, pending reboot, staged files).
+      - Extracts this host's facts and inventory columns (OS, language, build, SQL, C: space, pending reboot,
+        domain, licence, security/monitoring agents, legacy TLS, staged files). Read-only.
       - Shows every workflow step: done, current, future, and WHY a step is or is not available now
         (Lisbon business hours, admin rights, rollback snapshot, staged files, free space).
       - Runs the steps that can be done from inside the host (check, stage, extend C:, start the
-        upgrade, verify), with the same time rules and override rules as the laptop console.
+        upgrade, verify), with the same time rules and override rules as the laptop. After each step the
+        result file on the desktop is refreshed.
       - Keeps a sanitized log of what this program did here (no IPs, user names, share paths, secrets).
-      - Exports an ENCRYPTED result line (VMM2|...) for the laptop. Only the laptop that built this
-        agent can read it (RSA-OAEP + AES-256 + HMAC-SHA256).
-      - "Finish" removes the work folder, this file and the clipboard content at the end of the cycle.
+      - The result file is ENCRYPTED for your laptop only (RSA-OAEP + AES-256 + HMAC-SHA256).
+      - "Finish" removes the work folder, this file, the result files and the clipboard at the end of the cycle.
 
     Work folder: C:\Temp\VmmAgent (Administrators, SYSTEM and you only).
-    Compatible with Windows PowerShell 2.0 to 5.1. Read-only unless you choose a change step.
+    Compatible with Windows PowerShell 2.0 to 5.1. Extraction needs no administrator rights; change steps do.
 
     [SEC] Treat everything shown here as business data carried over the VPN: do not copy it anywhere
-    other than the vmm console on your laptop.
+    other than the vmm Manager on your laptop.
 .PARAMETER Extract
-    No menu: collect facts, append to the log and print the encrypted result line.
+    No menu: extract, save the result file on the desktop, copy it to the clipboard, exit.
 .PARAMETER Finish
-    No menu: remove the work folder and this file (end of the maintenance cycle).
+    No menu: remove the work folder, this file and the result files (end of the maintenance cycle).
 .PARAMETER NoClipboard
     Do not put the result line on the clipboard.
 .PARAMETER NoColor
@@ -47,7 +49,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.1.0'
+$AgentVersion = '2.5.0'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
@@ -470,7 +472,18 @@ function Protect-Result([string]$Text) {
         $aes.Clear(); $rsa.Clear()
     }
 }
-function Export-Result {
+function Save-ResultFile([string]$Line) {
+    # Result file on this user's desktop, one per host: VMM_<HOST>_<yyyyMMdd_HHmm>.vmm (older ones replaced).
+    $desk = [Environment]::GetFolderPath('Desktop')
+    if (-not $desk -or -not (Test-Path -LiteralPath $desk)) { $desk = Join-Path $env:USERPROFILE 'Desktop' }
+    Get-ChildItem -LiteralPath $desk -Filter ('VMM_' + $env:COMPUTERNAME + '_*.vmm') -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    $file = Join-Path $desk ('VMM_' + $env:COMPUTERNAME + '_' + (Get-Date).ToString('yyyyMMdd_HHmm') + '.vmm')
+    [IO.File]::WriteAllText($file, $Line, [Text.Encoding]::ASCII)
+    $file
+}
+function Export-Result([switch]$Auto) {
+    if ($Auto -and -not $Card.PublicKey) { Warn ' No laptop key in this file: nothing saved. Build the extractor on the laptop (X on the host, or vmm extractor).'; return }
+    Info ' Extracting this host (read-only; the licence query can take a few seconds)...'
     $f = Get-Facts
     $lines = @(
         'Name=' + $f.Name, 'OS=' + $f.OS, 'Lang=' + $f.Lang, 'Version=' + $f.Version, 'Build=' + $f.Build, 'SP=' + $f.SP,
@@ -479,7 +492,6 @@ function Export-Result {
         'PendingReboot=' + $(if ($f.PendingReboot) { 'Yes' } else { 'No' }), 'Sql=' + $f.Sql, 'LastBoot=' + $f.LastBoot,
         'TempExists=' + $f.TempExists, 'AgentVersion=' + $AgentVersion, 'ExportedAt=' + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     )
-    Info ' Reading inventory columns (licence query can take a few seconds)...'
     try { $lines += @(Get-InvProbe $Card.Services) } catch { Warn ' Inventory columns could not be read; fill them on the laptop (I on the host screen).' }
     foreach ($p in (Get-PackageState)) { $lines += ('Package=' + $p.Name + '|' + $p.State) }
     foreach ($e in (Read-Events)) { $lines += ('Event=' + $e.At + '|' + $e.Step + '|' + $e.Status + '|' + $e.Note) }
@@ -493,18 +505,25 @@ function Export-Result {
         if ((Read-Host ' >') -cne 'PLAIN') { Mute 'Cancelled.'; return }
         $out = 'VMM1|' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text))
     }
-    Write-Event 'Export' 'Success' ('result line exported (' + $out.Substring(0, 4) + ')')
-    if (-not $NoClipboard) {
-        try { $out | & clip.exe; Good 'Result copied to the clipboard. On the laptop: vmm console > host > P, or: vmm collect' }
-        catch { Warn 'Clipboard not available; copy the line below by hand.' }
-    }
-    Write-Host $out
+    try { Write-Event 'Export' 'Success' ('result exported (' + $out.Substring(0, 4) + ')') } catch { }   # no log folder rights: the file still gets saved
+    $file = $null
+    try { $file = Save-ResultFile $out } catch { Warn (' Could not save the result file on the desktop: ' + (Protect-Text $_.Exception.Message)) }
+    if (-not $NoClipboard) { try { $out | & clip.exe } catch { } }
+    Write-Host ''
+    if ($file) {
+        Good ' ================================================================================'
+        Good (' RESULT SAVED ON THE DESKTOP: ' + [IO.Path]::GetFileName($file))
+        Good ' Copy this file to your laptop''s Desktop or Downloads. The Manager imports it by itself.'
+        Good ' (Also on the clipboard: on the laptop press P on the host screen, or run vmm collect.)'
+        Good ' ================================================================================'
+    } elseif (-not $NoClipboard) { Good ' Result copied to the clipboard. On the laptop: P on the host screen, or vmm collect.'; Write-Host $out }
+    else { Write-Host $out }
 }
 
 # ============================================================== finish
 function Invoke-Finish([switch]$Force) {
     if (-not $Force) {
-        Warn "Removes $WorkDir (log, temp files), this agent file and the clipboard content."
+        Warn "Removes $WorkDir (log, temp files), this extractor, its result files on the desktop and the clipboard."
         Warn 'Staged install files in the target folder are NOT touched. Type FINISH to continue.'
         if ((Read-Host ' >') -cne 'FINISH') { Mute 'Cancelled.'; return $false }
     }
@@ -514,6 +533,8 @@ function Invoke-Finish([switch]$Force) {
         catch { $ok = $false; Bad ('Could not remove the work folder: ' + (Protect-Text $_.Exception.Message)) }
     }
     try { & cmd.exe /c 'echo off | clip' } catch { }
+    $desk = [Environment]::GetFolderPath('Desktop')
+    if ($desk) { Get-ChildItem -LiteralPath $desk -Filter ('VMM_' + $env:COMPUTERNAME + '_*.vmm') -ErrorAction SilentlyContinue | ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force; Good ('Removed ' + $_.Name) } catch { } } }
     if ($Script:SelfPath -and (Test-Path -LiteralPath $Script:SelfPath)) {
         try { Remove-Item -LiteralPath $Script:SelfPath -Force; Good 'Removed the agent file.' }
         catch { $ok = $false; Bad 'Could not remove the agent file; delete it from the desktop by hand.' }
@@ -526,7 +547,7 @@ function Invoke-Finish([switch]$Force) {
 function Show-Header {
     Clear-Host
     $w = Get-Window
-    Say (" VMM host agent $AgentVersion | $env:COMPUTERNAME | {0} {1}" -f $w.Now.ToString('ddd yyyy-MM-dd HH:mm'), $Card.TimeZoneId) 'White'
+    Say (" VMM extractor $AgentVersion | $env:COMPUTERNAME | {0} {1}" -f $w.Now.ToString('ddd yyyy-MM-dd HH:mm'), $Card.TimeZoneId) 'White'
     if ($w.ChangesAllowed) { Good (' ' + $w.Why) } else { Warn (' ' + $w.Why) }
     if (-not (Test-Admin)) { Warn ' Not elevated: checks and staging only. For changes, run PowerShell as administrator.' }
     try {
@@ -535,7 +556,8 @@ function Show-Header {
         if (-not $pol.Workable) { Warn (' POLICY: ' + $pol.Why) }
         foreach ($x in $pol.Warnings) { Bad (' WARN MANAGEMENT: ' + $x) }
     } catch { }
-    if (-not $CardText) { Warn ' Generic agent (no plan from the laptop): statuses are local only, export is unencrypted.' }
+    if (-not $Card.PublicKey) { Warn ' Template without the laptop key: results cannot be encrypted. Build the extractor on the laptop (vmm extractor).' }
+    elseif (-not $Card.Host) { Mute ' Extractor for any host (no plan for this one): extraction only. To run steps here use the per-host extractor (X on the laptop).' }
     elseif ($Card.Host -and $Card.Host -ne $env:COMPUTERNAME) { Bad " PLAN IS FOR $($Card.Host), NOT THIS HOST. Do not run change steps here." }
     elseif ($Card.Generated) {
         try {
@@ -620,7 +642,14 @@ function Invoke-RunMenu {
 # ============================================================== main
 try {
     if ($Finish) { [void](Invoke-Finish -Force); return }
-    if ($Extract) { Invoke-Check 'Precheck'; Export-Result; return }
+    if ($Extract) { Export-Result -Auto; return }
+
+    # Extract straight away, so the result file is on the desktop before any menu choice.
+    Show-Header
+    try { Export-Result -Auto } catch { Bad (' ERROR: ' + (Protect-Text $_.Exception.Message)) }
+    Write-Host ''
+    Mute ' Menu below for status, steps and history. Q closes this window; the result file stays on the desktop.'
+    Pause-Agent
 
     while ($true) {
         Show-Header
@@ -628,8 +657,8 @@ try {
         Write-Host ' 2 Steps     current and future steps, and why each is or is not available'
         Write-Host ' 3 Run       run a step from here'
         Write-Host ' 4 History   what this program did on this host'
-        Write-Host ' 5 Export    encrypted result line for the laptop (clipboard)'
-        Write-Host ' 6 Finish    end of maintenance: remove agent files from this host'
+        Write-Host ' 5 Export    save the result file on the desktop again (and clipboard)'
+        Write-Host ' 6 Finish    end of maintenance: remove the extractor and its files from this host'
         Write-Host ' Q Quit      keep files for the next session'
         $k = Read-Host ' Choice'
         Show-Header
@@ -637,7 +666,7 @@ try {
             switch -Regex ($k) {
                 '^1$' { Show-Facts (Get-Facts); Show-Inventory; Pause-Agent }
                 '^2$' { [void](Show-Plan); Pause-Agent }
-                '^3$' { Invoke-RunMenu; Pause-Agent }
+                '^3$' { Invoke-RunMenu; if ($Card.PublicKey) { Export-Result -Auto }; Pause-Agent }
                 '^4$' { Show-History; Pause-Agent }
                 '^5$' { Export-Result; Pause-Agent }
                 '^6$' { if (Invoke-Finish) { return }; Pause-Agent }

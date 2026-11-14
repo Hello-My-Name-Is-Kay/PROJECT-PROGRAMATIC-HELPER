@@ -262,6 +262,26 @@ if (-not $isWin) {
             catch { if ($_.Exception.Message -eq 'accepted') { throw 'tampered agent result was accepted' } }
             $true
         }
+        Test-Step 'Extractor result file on the laptop Desktop/Downloads is imported and removed' {
+            $agentPath = Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($agentPath, [ref]$null, [ref]$null)
+            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Protect-Result' }, $true) | Select-Object -First 1
+            . ([scriptblock]::Create($fn.Extent.Text))
+            $rsa = & $m { Get-VmmAgentKey }
+            try { $Card = @{ PublicKey = $rsa.ToXmlString($false) } } finally { $rsa.Clear() }
+            $inbox = Join-Path $tmpRoot 'inbox'; New-Item -ItemType Directory -Path $inbox -Force | Out-Null
+            $line = Protect-Result ("Name=SMOKE-HOST`nOS=Microsoft Windows Server 2016 Standard`nLang=fr-FR`nBuild=14393`nCTotalGB=127`nCFreeGB=40.5`nSql=none`nInv.Domain=corp.example`nInv.TlsLegacyDisabled=Yes`nInv.Bogus=x`nEvent=2026-11-14T10:00:00Z|Export|Success|result exported")
+            $f = Join-Path $inbox 'VMM_SMOKE-HOST_20261114_1000.vmm'
+            [IO.File]::WriteAllText($f, $line, [Text.Encoding]::ASCII)
+            $r = & $m { param($p) Import-VmmResultInbox -Path $p -Quiet -PassThru } $inbox
+            Assert-Equal @($r.Imported).Count 1 'imported files'
+            if (Test-Path -LiteralPath $f) { throw 'imported file was not removed' }
+            $h = & $m { (Read-VmmStore).Hosts | Where-Object { $_.Name -eq 'SMOKE-HOST' } }
+            Assert-Equal $h.Check.Lang 'fr-FR' 'language'
+            Assert-Equal $h.InventoryAuto.Domain.Value 'corp.example' 'inventory domain'
+            if ($h.InventoryAuto.PSObject.Properties['Bogus']) { throw 'unknown inventory key accepted' }
+            Assert-Equal $h.Steps.Precheck.Status 'Success' 'precheck from extraction'
+        }
         Test-Step 'Fleet store file contains no plaintext host name' {
             $f = Get-ChildItem -LiteralPath (Join-Path $tmpRoot 'data') -Filter '*.vmm' | Select-Object -First 1
             if (-not $f) { throw 'no .vmm file written' }

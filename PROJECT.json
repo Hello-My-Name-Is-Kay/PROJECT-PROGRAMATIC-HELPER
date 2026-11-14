@@ -1,25 +1,16 @@
 {
   "name": "VmMaintenance",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "license": "private",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
     "laptop": "Windows, PowerShell 5.1 and 7",
     "host_agent": "Windows PowerShell 2.0-5.1"
   },
-  "programs": [
-    {
-      "name": "vmm",
-      "path": "Scripts/vmm.ps1",
-      "module": "VmMaintenance/VmMaintenance.psd1",
-      "role": "laptop console: TUI + CLI"
-    },
-    {
-      "name": "VmmHostAgent",
-      "path": "VmMaintenance/Resources/VmmHostAgent.ps1",
-      "role": "runs on one remote host: status, steps with reasons, sanitized log, encrypted export, self-removal"
-    }
-  ],
+  "programs": {
+    "manager": "vmm (module VmMaintenance) on the laptop",
+    "extractor": "Resources/VmmHostAgent.ps1 template -> VmmExtractor.ps1 (any host) / VmmExtractor_<HOST>_<time>.ps1 (with plan); writes VMM_<HOST>_<time>.vmm on the host desktop; Manager imports from Collect.InboxFolders"
+  },
   "workflow": [
     "Precheck",
     "Stage",
@@ -109,6 +100,7 @@
     "Import-VmmCollectorResult",
     "Import-VmmConfig",
     "Import-VmmFleet",
+    "Import-VmmResultInbox",
     "Initialize-VmmConfig",
     "Install-VmmSourceClone",
     "Invoke-VmmAssistant",

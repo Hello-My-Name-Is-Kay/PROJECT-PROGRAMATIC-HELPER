@@ -36,8 +36,10 @@ function Invoke-VmmCli {
         'next'     = @{ F = 'Invoke-VmmNextStep';         D = 'run next auto step     [-HostName x | -All]' }
         'step'     = @{ F = 'Invoke-VmmWorkflowStep';     D = 'run one step           -HostName x -Step Precheck|Stage|PreSnapshot|ExpandDisk|Upgrade|Verify [-Confirmed] [-Override -OverrideReason ".."]' }
         'guide'    = @{ F = 'Get-VmmRdpGuide';            D = 'RDP/RDM checklist      -HostName x -Step y' }
-        'agent'    = @{ F = 'Export-VmmHostAgent';        D = 'host agent .ps1 for RDP -HostName x | -Generic' }
-        'collect'  = @{ F = 'Import-VmmCollectorResult';  D = 'record host result     [-Line "VMM2|..."] (default: clipboard) [-Step Verify]' }
+        'agent'    = @{ F = 'Export-VmmHostAgent';        D = 'same as extractor (old name)' }
+        'collect'  = @{ F = 'Import-VmmCollectorResult';  D = 'record host result     [-Path VMM_x.vmm | -Line "VMM2|..."] (default: clipboard)' }
+        'inbox'    = @{ F = 'Import-VmmResultInbox';      D = 'import all VMM_*.vmm result files from Desktop/Downloads [-Path dir]' }
+        'extractor' = @{ F = 'Export-VmmHostAgent';       D = 'build the extractor     -Generic (any host) | -HostName x (with its plan)' }
         'stage'    = @{ F = 'Test-VmmStagingSource';      D = 'staging gate check (share + hashes)' }
         'inventory' = @{ F = 'Get-VmmInventory';          D = 'server inventory (24 columns) [-HostName x] [-Missing] [-Export]' }
         'inventory-set' = @{ F = 'Set-VmmInventoryValue'; D = 'set a column by hand   -HostName x[,y] -Field "Server Owner" -Value ".." | -Clear' }

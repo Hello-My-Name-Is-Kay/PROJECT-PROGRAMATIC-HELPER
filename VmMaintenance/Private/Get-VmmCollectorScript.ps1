@@ -21,8 +21,12 @@ $f = @('Name=' + $env:COMPUTERNAME, 'OS=' + $os.Caption, 'Lang=' + $lang, 'Versi
 # VMM-INVPROBE
 $line = 'VMM1|' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($f -join "`n")))
 $line | clip.exe
-Write-Host $line
-Write-Host 'Copied to clipboard. Paste it into vmm on your laptop (P on the host screen).' -ForegroundColor Green
+$desk = [Environment]::GetFolderPath('Desktop')
+Get-ChildItem -LiteralPath $desk -Filter ('VMM_' + $env:COMPUTERNAME + '_*.vmm') | Remove-Item -Force
+$file = Join-Path $desk ('VMM_' + $env:COMPUTERNAME + '_' + (Get-Date).ToString('yyyyMMdd_HHmm') + '.vmm')
+[IO.File]::WriteAllText($file, $line, [Text.Encoding]::ASCII)
+Write-Host ('Saved on the desktop: ' + [IO.Path]::GetFileName($file) + ' - copy it to your laptop''s Desktop or Downloads (vmm imports it).') -ForegroundColor Green
+Write-Host 'Also on the clipboard: P on the host screen in vmm. Delete the .vmm file from this desktop afterwards.' -ForegroundColor Green
 '@
     # Inventory columns: reuse the host agent's Get-InvProbe (one implementation, PowerShell 2.0 compatible)
     $probe = ''

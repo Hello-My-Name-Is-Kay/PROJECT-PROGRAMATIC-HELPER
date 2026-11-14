@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host agent for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; TL;DR at the top. SECTIONS: TLDR:6-23 | Overview:24-39 | At a glance:40-56 | Quick start:57-80 | Media repository:81-109 | Server inventory:110-143 | Host agent the program on th:144-162 | Console UI:163-194 | CLI:195-238 | GitHub integration:239-255 | OS policy:256-270 | Workflow per host:271-284 | Directory tree:285-315 | Where your data lives never:316-330 | Testing:331-343 | Errors:344-357 | Future your work AI model wi:358-367 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; TL;DR at the top. SECTIONS: TLDR:6-23 | Overview:24-42 | At a glance:43-59 | Quick start:60-83 | Media repository:84-112 | Server inventory:113-146 | Extractor the program on the:147-172 | Console UI:173-205 | CLI:206-250 | GitHub integration:251-267 | OS policy:268-282 | Workflow per host:283-296 | Directory tree:297-327 | Where your data lives never:328-342 | Testing:343-355 | Errors:356-369 | Future your work AI model wi:370-379 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.4.0 &nbsp;|&nbsp; **This file:** 2026-11-14
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.5.0 &nbsp;|&nbsp; **This file:** 2026-11-14
 
 ## TL;DR
 
@@ -12,9 +12,9 @@
 - **Install:** `Get-ChildItem -Recurse . | Unblock-File` then `powershell -ExecutionPolicy Bypass -File .\Install.ps1`, then `vmm` or the **VM Maintenance** desktop shortcut. Runs from any folder; the installed copy does not depend on it.
 - **Test first:** `.\Tools\Invoke-SmokeTest.ps1`. GitHub checks pass on Windows PowerShell 5.1 and 7 (211 smoke checks, 60 Pester tests); real hosts, Azure, VPN and the UI are not tested yet.
 - **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
-- **Server inventory:** the 24-column team sheet per host. Read automatically where possible (check, host agent), worked out from the workflow, else typed by you with a help window per column. `N` in the menu, `I` on a host, `vmm inventory -Export`. Help text unclear? `T` opens a GitHub issue.
+- **Server inventory:** the 24-column team sheet per host. Read automatically where possible (check, Extractor), worked out from the workflow, else typed by you with a help window per column. `N` in the menu, `I` on a host, `vmm inventory -Export`. Help text unclear? `T` opens a GitHub issue.
 - **Day:** `V` VPN, `6` credentials, `3` check fleet, `4` staging gate, `1` plan. Target 10 machines per day, shown in the header.
-- **Host without remote access:** open the host, `X` builds the host agent; run it on the host's desktop in RDP; export; `P` on the laptop; agent `6` Finish removes it.
+- **Two programs:** the **Manager** (`vmm`, your laptop) and the **Extractor** (a .ps1 you run on a remote host in RDP/RDM). Hosts the Manager cannot reach: copy the Extractor to the host's desktop, right-click > Run with PowerShell, copy the `VMM_<HOST>_<time>.vmm` file it leaves on the desktop back to your laptop's Desktop or Downloads. The Manager imports it by itself.
 - **Blocked by access:** `B` writes the manager report (clipboard); answer Sent / Later / Bypass; the queue moves on.
 - **Never stored:** usernames, passwords, tokens. Fleet data is encrypted on this laptop for your Windows account only.
 - **Never in this repo:** hosts, IPs, tenant/subscription IDs, company names. Run `.\Tools\Test-Sanitized.ps1` before every push.
@@ -28,8 +28,11 @@ Two PowerShell programs:
 
 | Program | Runs on | Role |
 |---|---|---|
-| `vmm` (module VmMaintenance) | your laptop | The "big planet": all hosts, encrypted store, keyboard-and-mouse text UI + CLI, parallel checks, staging, Azure disk/snapshot work, VPN, reports for your manager |
-| `VmmHostAgent.ps1` | one remote host, inside RDP/RDM | Copied to the host's desktop: extracts that host's info, shows current and future steps and *why* each is or is not available, runs the steps that must happen inside the host, keeps a sanitized log, exports an encrypted result back to the laptop, removes itself at the end |
+| **Manager**: `vmm` (module VmMaintenance) | your laptop | All hosts, encrypted store, keyboard-and-mouse text UI + CLI, parallel checks over the network, staging, Azure disk/snapshot work, VPN, inventory, reports for your manager. Builds the Extractor and reads what it brings back |
+| **Extractor**: `VmmExtractor.ps1` (any host) or `VmmExtractor_<HOST>_<time>.ps1` (with that host's plan) | one remote host, inside RDP/RDM | For hosts the Manager cannot reach. Extracts the host's facts and inventory at once and leaves an encrypted `VMM_<HOST>_<time>.vmm` file on the host's desktop; shows current and future steps and *why*; runs the steps that must happen inside the host; sanitized log; removes itself at the end |
+
+Rule: everything the Manager can do over the network it does by itself. When you have to be hands-on
+(RDP/RDM), the Extractor reduces it to copy a file in, right-click, copy a file out.
 
 - Windows PowerShell 5.1 and PowerShell 7, Windows only.
 - Environment-agnostic: no host, IP, tenant, subscription or company value is in this repository.
@@ -49,7 +52,7 @@ Two PowerShell programs:
 | No remote access | RDP/RDM guide: numbered steps, confirm each, paste the collector line back |
 | Azure sign-in stuck on "Select a tenant and subscription" | Picker turned off for the process, tenant + subscription passed explicitly; device-code sign-in available |
 | Rollback | Checkpoint snapshot after each successful changing step (Azure VMs); prune expired ones at the end, preview first |
-| Work inside a host | Host agent: status, steps with reasons, run, history, encrypted export, Finish removes every trace |
+| Work inside a host | Extractor: extracts at once to an encrypted file on the desktop; status, steps with reasons, run, history, Finish removes every trace |
 | VPN | Cisco Secure Client (vpncli), Windows VPN profiles, or any client via a probe host; host work stops with a clear error when the VPN is down |
 | First run | Setup wizard: warnings you confirm, every option explained and validated (`vmm setup`) |
 | AI help (optional, off) | Microsoft Foundry Local / Ollama on the laptop, or your organisation's Azure OpenAI with your work account; sanitized, confirm-before-send, advisory only |
@@ -98,7 +101,7 @@ One network folder holds everything the hosts need (`Staging.SourceShare`, asked
 
 | Rule | Detail |
 |---|---|
-| Image per host | `Staging.OsMediaVersion` (default 2019) in the host's **install language** (read by Check, the collector and the host agent). An in-place upgrade needs the same language, so there is no fallback: a missing language closes the gate and names the exact file to download |
+| Image per host | `Staging.OsMediaVersion` (default 2019) in the host's **install language** (read by Check, the collector and the Extractor). An in-place upgrade needs the same language, so there is no fallback: a missing language closes the gate and names the exact file to download |
 | Host folder | `<share>\<HOST>\` (top level), matched to the fleet name, case-insensitive; different folder names go in `Staging.HostFolders` |
 | SQL updates | Staged with the host; a warning when the host has no SQL Server instance of that version. Not run by vmm |
 | Destination | `Staging.TargetFolder` (`C:\Temp`) on the host, verified by size and SHA256 when known |
@@ -113,7 +116,7 @@ The team keeps one sheet per server with 24 columns. vmm fills it **as early as 
 first, and helps you with the rest**:
 
 1. **Automatic (from a terminal, no typing).** The fleet check (`3`, or `C` on a host) reads them over
-   WMI from the laptop. When a host cannot be reached that way, the host agent (`X`, export `5`) or the
+   WMI from the laptop. When a host cannot be reached that way, the Extractor (it saves a result file on the host's desktop) or the
    RDP collector reads the same columns on the host and brings them back in the encrypted result.
 2. **Worked out by vmm.** From the workflow it already tracks: what is left to do, how far the host is,
    when the upgrade happened.
@@ -128,7 +131,7 @@ first, and helps you with the rest**:
 
 | Column | How it is filled |
 |---|---|
-| Hostname, OS Version, SQL Present | Automatic: fleet check / host agent / collector |
+| Hostname, OS Version, SQL Present | Automatic: fleet check / Extractor / collector |
 | Domain, IPAddress, Domain controller | Automatic (DNS, `Win32_ComputerSystem`, network adapters) |
 | Windows License | Automatic (activation state, as `slmgr /dli` shows it) |
 | QUALYS Cloud AGENT, CrowdStrike Agent, Zabbix, IVANTI, LANSWEEPER AGENT | Automatic: service found and running / installed (stopped) / not installed. Service names per agent are in the field file |
@@ -141,21 +144,28 @@ Nothing about the six workflow steps changes: the inventory never blocks a step.
 `Reports\Inventory\Inventory_<date>.csv` with exactly these headers in this order
 (`Inventory.CsvDelimiter`: `,` or `;` for Excel with Portuguese/French settings).
 
-## Host agent (the program on the remote host)
+## Extractor (the program on the remote host)
 
-1. On the laptop: open the host (Fleet, Enter) and press `X`, or run `vmm agent -HostName srv01`.
-   The file `VmmAgent_SRV01_<time>.ps1` is written and, in Windows PowerShell 5.1, put on the clipboard as a file.
-2. In RDP/RDM: paste it on the host's desktop, open PowerShell (as administrator for change steps) and run:
-   ```powershell
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\VmmAgent_SRV01_<time>.ps1"
-   ```
-   `-ExecutionPolicy Bypass` applies to that one process; nothing on the host is reconfigured.
-3. Menu: `1` Status, `2` Steps (current / future / why), `3` Run a step, `4` History, `5` Export, `6` Finish.
-4. Export copies a `VMM2|...` line. On the laptop press `P` on the host, or `vmm collect` (reads the clipboard).
-5. End of the cycle: `6` Finish removes `C:\Temp\VmmAgent`, the agent file and the clipboard content.
-   Staged install files in `C:\Temp` are not touched.
+For hosts the Manager cannot reach over the network (no WMI/RPC, other domain, RDP-only):
 
-The agent works on Windows PowerShell 2.0 to 5.1, refuses change steps for a plan made for another host,
+| # | Where | You do | The programs do |
+|---|---|---|---|
+| 1 | Laptop | `E` > `B` once (or `vmm extractor`): one `VmmExtractor.ps1` for every host. With a host's plan (to run steps there): `X` on the host | Writes the file with this laptop's public key and puts it on the clipboard |
+| 2 | Host (RDP/RDM) | Paste on the desktop. Right-click > **Run with PowerShell** | Extracts at once (read-only, no admin needed) and saves `VMM_<HOST>_<time>.vmm` on the desktop, encrypted for your laptop only. Also on the clipboard |
+| 3 | Laptop | Copy that `.vmm` file to your Desktop or Downloads | Imported when vmm starts, with `E`, `P` on the host, or `vmm inbox`; the file is deleted after import. Precheck or Verify is chosen by itself |
+| 4 | Host, end of cycle | Extractor menu `6` Finish | Removes `C:\Temp\VmmAgent`, the Extractor, its result files and the clipboard |
+
+The Extractor's menu (after the extraction): `1` Status, `2` Steps (current / future / why), `3` Run a step
+(the result file is refreshed after each step), `4` History, `5` Export again, `6` Finish. Change steps need
+PowerShell as administrator and the per-host Extractor.
+
+Without copying a file: `G` on the host shows a collector script to paste into PowerShell on the host; it
+saves the same kind of file (not encrypted).
+
+Run by hand instead of right-click: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\VmmExtractor.ps1"`
+(Bypass applies to that process only; if Group Policy enforces AllSigned, sign the file).
+
+The Extractor works on Windows PowerShell 2.0 to 5.1, refuses change steps for a plan made for another host,
 applies the same Lisbon time rules and override rules, and logs only sanitized lines
 (no IPs, user names, share paths or secrets) to `C:\Temp\VmmAgent\agent.log`, readable by
 Administrators, SYSTEM and you only.
@@ -178,6 +188,7 @@ and today's progress bar with Azure context and credential state.
 | 8 | Snapshots: preview and prune expired |
 | 9 | Settings: every option, saved to your local config |
 | 0 | Import hosts |
+| E | Extractor: import `VMM_*.vmm` result files, build the Extractor |
 | N | Inventory: columns filled / missing per host, export CSV |
 | V | VPN status, connect, disconnect |
 | A | Assistant (optional AI) |
@@ -185,7 +196,7 @@ and today's progress bar with Azure context and credential state.
 | U | GitHub / updates: status, update, sign in, clone, issue, pull request |
 | H / Q | Help / Quit (clears session credentials) |
 
-On a host screen: Enter run step, `G` RDP guide, `X` host agent, `P` paste result, `Y` confirm a
+On a host screen: Enter run step, `G` RDP guide, `X` Extractor with this host's plan, `P` import result (clipboard, then Desktop/Downloads), `Y` confirm a
 guided step, `B` blocker report and move on, `R` resolve, `L` mstsc, `H` hold, `C` check, `I` inventory.
 
 Arrows, PgUp/PgDn, Home/End move; Enter opens; Esc goes back; letters run the actions shown
@@ -206,7 +217,8 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm next [-HostName x] [-All]` | Run the next automatic step |
 | `vmm step -HostName x -Step Upgrade` | Run one step (`-Override -OverrideReason ".."` in business hours) |
 | `vmm guide -HostName x -Step Upgrade` | RDP/RDM checklist |
-| `vmm collect -Line "VMM1..."` | Record the collector result from inside RDP |
+| `vmm collect [-Path VMM_x.vmm \| -Line "VMM2..."]` | Record one result (file, pasted line, or clipboard) |
+| `vmm inbox` | Import every `VMM_*.vmm` result file from Desktop/Downloads (also at start and with `E`) |
 | `vmm stage` | Staging gate: share reachable, files present, hashes |
 | `vmm inventory` | Server inventory: filled/missing per host; `-HostName x` all columns with source; `-Missing`; `-Export` CSV |
 | `vmm inventory-set` | Set a column by hand: `-HostName x[,y] -Field "Server Owner" -Value ".."` or `-Clear` |
@@ -220,7 +232,7 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm azure [-Save] [-DeviceCode]` | Sign in and pick the subscription |
 | `vmm set -Name Key -Value v` | Change a setting |
 | `vmm config` | Show / reload the config |
-| `vmm agent -HostName x` / `vmm agent -Generic` | Build the host agent |
+| `vmm extractor` / `vmm extractor -HostName x` | Build the Extractor: for any host, or with that host's plan (`vmm agent` = same) |
 | `vmm vpn` / `vmm connect` / `vmm disconnect` | VPN |
 | `vmm ai -Prompt ".." [-IncludeFleet]` | Optional assistant |
 | `vmm setup [-Page Vpn]` | Setup wizard |
@@ -364,4 +376,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 04:30 UTC_
+_Last updated: 2026-11-14 04:53 UTC_

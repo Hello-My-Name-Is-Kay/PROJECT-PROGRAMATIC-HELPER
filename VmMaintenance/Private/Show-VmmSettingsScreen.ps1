@@ -5,6 +5,7 @@ function Show-VmmSettingsScreen {
     $keys = @(
         @('Staging.SourceShare', 'Media repository: OS images at the root, one folder per host')
         @('Staging.OsMediaVersion', 'Windows Server image version to stage (2019 = target)')
+        @('Collect.AutoImport', 'Import extractor result files from Desktop/Downloads at start')
         @('Inventory.Defaults.AssignedTechnician', 'Inventory: default Assigned Technician')
         @('Inventory.Defaults.Phase', 'Inventory: default Phase')
         @('Inventory.CsvDelimiter', 'Inventory CSV separator: , or ;')

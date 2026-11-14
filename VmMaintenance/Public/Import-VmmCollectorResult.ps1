@@ -11,9 +11,16 @@ function Import-VmmCollectorResult {
         Import-VmmCollectorResult -Line (Get-Clipboard)
     .EXAMPLE
         vmm collect
+    .EXAMPLE
+        vmm collect -Path .\VMM_SRV01_20261114_1030.vmm
     #>
     [CmdletBinding()]
-    param([string]$Line, [ValidateSet('Precheck', 'Verify')][string]$Step = 'Precheck')
+    param([string]$Line, [string]$Path, [ValidateSet('Auto', 'Precheck', 'Verify')][string]$Step = 'Auto', [switch]$PassThru)
+    if ($Path) {
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw (New-VmmErrorRecord -Activity "Result file not found: $Path" -Category ObjectNotFound -ErrorId 'VmmResultFile') }
+        if ((Get-Item -LiteralPath $Path).Length -gt 6MB) { throw (New-VmmErrorRecord -Activity 'Result file too large.' -Target $Path -Category InvalidData -ErrorId 'VmmCollectorSize') }
+        $Line = [IO.File]::ReadAllText($Path)
+    }
     if (-not $Line) { $Line = try { (Get-Clipboard) -join '' } catch { '' } }
     $Line = "$Line".Trim()
     if ($Line.Length -gt 6MB) { throw (New-VmmErrorRecord -Activity 'Result line too large.' -Category InvalidData -ErrorId 'VmmCollectorSize') }
@@ -72,6 +79,11 @@ function Import-VmmCollectorResult {
     Update-VmmInventoryAuto -Record $rec -Values $check.Inv -Via $via
 
     $known = @((Get-VmmWorkflowDefinition).Name)
+    if ($Step -eq 'Auto') {
+        # After the upgrade was launched/done and not yet verified, a new extraction is the Verify; else Precheck.
+        $u = $rec.Steps.PSObject.Properties['Upgrade']; $v = $rec.Steps.PSObject.Properties['Verify']
+        $Step = if ($u -and $u.Value.Status -in 'Success', 'Launched' -and -not ($v -and $v.Value.Status -eq 'Success')) { 'Verify' } else { 'Precheck' }
+    }
     $okStatus = 'Success', 'Failed', 'NotNeeded', 'Launched', 'Override', 'Error'
     $seen = @{}; foreach ($h in $rec.History) { $seen["$($h.At)|$($h.Step)|$($h.Result)"] = $true }
     $added = 0
@@ -91,10 +103,12 @@ function Import-VmmCollectorResult {
         }
         $added++
     }
-    if (-not $events -and $Step -in 'Precheck', 'Verify') {
+    $stepEvents = @($events | Where-Object { $_.Count -ge 3 -and $known -contains $_[1] })
+    if (-not $stepEvents -and $Step -in 'Precheck', 'Verify') {
         if ($Step -eq 'Precheck' -and -not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $check.OS; Lang = $check.Lang; Build = $check.Build; Sql = $check.Sql } }
         Set-VmmStepState -Record $rec -Step $Step -Status 'Success' -Note "via $via`: $($check.OS), C: $($check.CFreeGB) GB free, SQL: $($check.Sql)"
     } elseif (-not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $check.OS; Lang = $check.Lang; Build = $check.Build; Sql = $check.Sql } }
     Save-VmmStore -Store $store
     Write-VmmLog "$($rec.Name): facts recorded via $via ($($check.OS), C: $($check.CFreeGB) GB free), $added new host event(s)." -Level Success
+    if ($PassThru) { [pscustomobject]@{ Host = $rec.Name; Step = $Step; Via = $via; Events = $added } }
 }

@@ -23,3 +23,5 @@ logs/
 *.psd1.bak
 Reports/
 VmmAgent_*.ps1
+VmmExtractor*.ps1
+VMM_*.vmm

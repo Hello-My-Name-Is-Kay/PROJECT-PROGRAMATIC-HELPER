@@ -29,7 +29,7 @@ function Show-VmmHostScreen {
         if ($open) { $status = "Open blocker: $($open[-1].Step) - $($open[-1].Summary) (contact: $($open[-1].Contact))" }
         $r = Invoke-VmmListView -Title $facts -ColumnHeader ('   {0,-12} {1,-10} {2,-7} {3,-8} {4}' -f 'Step', 'Status', 'Mode', 'Allowed', 'Note') `
              -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X', 'I') `
-             -Help 'Enter run | G guide | X agent | Y confirm | P paste | B blocker | R resolve | L mstsc | H hold | C check | I inventory | Esc'
+             -Help 'Enter run | G guide | X extractor | Y confirm | P import result | B blocker | R resolve | L mstsc | H hold | C check | I inventory | Esc'
         $sel = $r.Index; $status = ''
         $step = $steps[$r.Index].Name
         switch ($r.Action) {
@@ -37,12 +37,15 @@ function Show-VmmHostScreen {
             'Enter' { [void](Invoke-VmmTuiAction -Title "$HostName - $step" -Action { Invoke-VmmStepFromTui -HostName $HostName -Step $step }) }
             'Y'     { [void](Invoke-VmmTuiAction -Title "$HostName - confirm $step done" -Action { Invoke-VmmStepFromTui -HostName $HostName -Step $step -Confirmed }) }
             'G'     { Show-VmmGuideScreen -HostName $HostName -Step $step }
-            'X'     { [void](Invoke-VmmTuiAction -Title "Host agent for $HostName" -Action { Export-VmmHostAgent -HostName $HostName }) }
+            'X'     { [void](Invoke-VmmTuiAction -Title "Extractor for $HostName" -Action { Export-VmmHostAgent -HostName $HostName }) }
             'P'     { [void](Invoke-VmmTuiAction -Title 'Paste collector result' -Action {
                           $clip = try { (Get-Clipboard) -join '' } catch { '' }
-                          if ($clip -notmatch '^VMM[12]\|') { $clip = Read-VmmPrompt 'Paste the VMM2|... (agent) or VMM1|... (collector) line' }
-                          $st = if ($step -eq 'Verify') { 'Verify' } else { 'Precheck' }
-                          Import-VmmCollectorResult -Line $clip -Step $st }) }
+                          if ($clip -match '^VMM[12]\|') { Import-VmmCollectorResult -Line $clip; return }
+                          $r = Import-VmmResultInbox -PassThru
+                          if (@($r.Imported | Where-Object Host -eq $HostName).Count) { return }
+                          $clip = Read-VmmPrompt 'No result file for this host on Desktop/Downloads. Paste the VMM2|... line, or a .vmm file path'
+                          if ($clip -and (Test-Path -LiteralPath $clip.Trim('"') -PathType Leaf)) { Import-VmmCollectorResult -Path $clip.Trim('"') }
+                          elseif ($clip) { Import-VmmCollectorResult -Line $clip } }) }
             'B'     { [void](Invoke-VmmTuiAction -Title "Blocker report - $HostName / $step" -Action {
                           $m = Read-VmmPrompt 'Exact error or what is missing (paste it)'
                           if ($m) { New-VmmBlockerReport -HostName $HostName -Step $step -Message $m | Out-Null } }); return }

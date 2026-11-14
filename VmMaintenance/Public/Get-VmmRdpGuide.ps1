@@ -19,8 +19,9 @@ function Get-VmmRdpGuide {
 
     $items = switch ($Step) {
         { $_ -in 'Precheck', 'Verify' } {
-            [pscustomobject]@{ Text = "Preferred: the host agent (status, steps, encrypted result). Build it with X on this host or: vmm agent -HostName $h. Paste it on the RDP desktop, then:"; Command = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\' + "VmmAgent_$h" + '_<time>.ps1"' }
-            [pscustomobject]@{ Text = 'Without the agent, the paste-in collector below does the same read-only check:'; Command = $null }
+            [pscustomobject]@{ Text = "Preferred: the extractor. Build it with X on this host (or: vmm extractor for one file that works on every host). It is on the clipboard: paste it on the RDP desktop."; Command = $null }
+            [pscustomobject]@{ Text = 'On the host: right-click the file > Run with PowerShell. It saves VMM_<HOST>_<time>.vmm on the desktop. Copy that file to this laptop''s Desktop or Downloads: vmm imports it by itself (E in the menu).'; Command = $null }
+            [pscustomobject]@{ Text = 'Without copying a file: paste the collector below into PowerShell on the host (same read-only extraction):'; Command = $null }
             $open; $ps
             [pscustomobject]@{ Text = 'Paste the collector (read-only). It prints a VMM1|... line and copies it to the clipboard.'; Command = (Get-VmmCollectorScript) }
             [pscustomobject]@{ Text = "Back on the laptop: press P on this host's screen (or run: vmm collect -Step $Step) to record the result."; Command = $null }

@@ -282,6 +282,19 @@ Describe 'Server inventory' {
     }
 }
 
+Describe 'Manager and extractor' {
+    It 'vmm extractor with no arguments builds the any-host extractor' {
+        (Get-Command Export-VmmHostAgent).DefaultParameterSet | Should -Be 'Generic'
+    }
+    It 'the extractor extracts and saves its result file on start, before the menu' {
+        $text = [IO.File]::ReadAllText((Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'))
+        $text | Should -Match 'function Save-ResultFile'
+        $text | Should -Match "VMM_' \+ \`$env:COMPUTERNAME"
+        $main = $text.Substring($text.IndexOf('# ============================================================== main'))
+        $main.IndexOf('Export-Result -Auto') | Should -BeLessThan $main.IndexOf('while ($true)')
+    }
+}
+
 Describe 'Logging and errors' {
     It 'Protect-VmmLogText masks secrets' {
         $o = InModuleScope VmMaintenance { Protect-VmmLogText 'pwd=abc123 token: xyz Bearer eyJhbGci.x.y' }

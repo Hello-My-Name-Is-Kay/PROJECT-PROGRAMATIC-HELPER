@@ -30,6 +30,9 @@ function Start-VmmConsole {
             }
         } catch { }
     }
+    # Extractor results copied to Desktop/Downloads are imported before the menu shows
+    $script:VmmInboxNotice = ''
+    if (Get-VmmSetting 'Collect.AutoImport' -Default $true) { try { Import-VmmResultInbox -Quiet | Out-Null } catch { } }
     $oldFg = [Console]::ForegroundColor; $oldBg = [Console]::BackgroundColor
     $script:VmmTuiRunning = $true
     Initialize-VmmConsoleInput

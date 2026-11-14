@@ -13,6 +13,7 @@ function Show-VmmMainMenu {
         @{ K = '8'; T = 'Snapshots, prune  preview and delete expired snapshots' }
         @{ K = '9'; T = 'Settings          share, targets, hours, snapshot policy, upgrade command...' }
         @{ K = '0'; T = 'Import hosts      add machines from a list file or names' }
+        @{ K = 'E'; T = 'Extractor         import result files (VMM_*.vmm) from Desktop/Downloads; build the extractor' }
         @{ K = 'N'; T = 'Inventory         24 columns per host: what is missing, export CSV (I on a host to fill)' }
         @{ K = 'V'; T = 'VPN               status, connect, disconnect (you sign in in the VPN client)' }
         @{ K = 'A'; T = 'Assistant         optional AI help: explain an error, next step (off by default)' }
@@ -21,7 +22,7 @@ function Show-VmmMainMenu {
         @{ K = 'H'; T = 'Help              keys, rules, where files live' }
         @{ K = 'Q'; T = 'Quit              clears session credentials from memory' }
     )
-    $sel = 0; $status = "$script:VmmUpdateNotice"
+    $sel = 0; $status = (@("$script:VmmInboxNotice", "$script:VmmUpdateNotice") | Where-Object { $_ }) -join ' | '
     while ($true) {
         $rows = @($items | ForEach-Object { @{ Text = "[$($_.K)] $($_.T)"; Color = 'Gray' } })
         $r = Invoke-VmmListView -Title 'Main menu' -Rows $rows -Selected $sel -Status $status `
@@ -58,6 +59,12 @@ function Show-VmmMainMenu {
                   }) }
             'W' { [void](Invoke-VmmTuiAction -Title 'Setup wizard' -Action { Start-VmmSetupWizard }) }
             'U' { Show-VmmGitHubScreen }
+            'E' { [void](Invoke-VmmTuiAction -Title 'Extractor (program for the remote hosts)' -Action {
+                      Import-VmmResultInbox
+                      Write-VmmLog 'B = build the extractor for every host (one file), a host name = extractor with that host''s plan, Enter = back' -Level Info
+                      $a = Read-VmmPrompt 'Choice'
+                      if ($a -match '^[bB]$') { Export-VmmHostAgent -Generic | Out-Null } elseif ($a) { Export-VmmHostAgent -HostName $a | Out-Null }
+                  }) }
             'N' { [void](Invoke-VmmTuiAction -Title 'Inventory' -Action {
                       Get-VmmInventory
                       $a = Read-VmmPrompt 'E = export CSV, M = missing only, a host name = its columns, Enter = back'

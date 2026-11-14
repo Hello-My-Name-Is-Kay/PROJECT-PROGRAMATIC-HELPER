@@ -1,5 +1,18 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.4.0 - 2026-11-14:4-14 | 2.3.0 - 2026-11-14:15-29 | 2.2.1 - 2026-11-14:30-36 | 2.2.0 - 2026-11-14:37-44 | 2.1.0 - 2026-11-14:45-62 | 2.0.0 - 2026-11-14:63-68 | 1.0.0 - 2026-11-14:69-73 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.5.0 - 2026-11-14:4-16 | 2.4.0 - 2026-11-14:17-27 | 2.3.0 - 2026-11-14:28-42 | 2.2.1 - 2026-11-14:43-49 | 2.2.0 - 2026-11-14:50-57 | 2.1.0 - 2026-11-14:58-75 | 2.0.0 - 2026-11-14:76-81 | 1.0.0 - 2026-11-14:82-86 -->
 # Changelog
+
+## 2.5.0 - 2026-11-14
+
+- Two programs, named as used: the **Manager** (`vmm`) and the **Extractor** (the .ps1 run on a host in RDP/RDM).
+- Extractor extracts as soon as it starts (no menu choice) and saves `VMM_<HOST>_<time>.vmm` (encrypted) on the
+  host's desktop, plus the clipboard; refreshed after each step; Finish removes the result files too.
+  Runs with right-click > Run with PowerShell; extraction needs no administrator rights.
+- One Extractor for every host: `vmm extractor` / `E` > `B` (`VmmExtractor.ps1`, carries the laptop key, no plan).
+  Per-host Extractor with its plan: `X` on the host (`VmmExtractor_<HOST>_<time>.ps1`).
+- Manager imports result files from Desktop and Downloads (`Collect.InboxFolders`) at start, with `E`, with `P`
+  on the host, or `vmm inbox`; imported files are deleted; Precheck or Verify chosen by itself.
+  `vmm collect -Path <file>` for one file. The RDP collector also saves a result file on the desktop.
+- Fix: an imported Extractor result with only an Export event now records Precheck/Verify.
 
 ## 2.4.0 - 2026-11-14
 
@@ -70,4 +83,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 04:30 UTC_
+_Last updated: 2026-11-14 04:53 UTC_

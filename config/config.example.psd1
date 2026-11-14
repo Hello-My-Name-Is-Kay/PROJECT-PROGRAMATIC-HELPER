@@ -108,6 +108,12 @@
         )
     }
 
+    Collect = @{
+        # Extractor result files (VMM_<HOST>_<time>.vmm) you copy back from the hosts are picked up here.
+        InboxFolders = @('Desktop', 'Downloads')   # Desktop | Downloads | any folder path
+        AutoImport   = $true                       # import them when vmm starts (also: E in the menu, vmm inbox)
+    }
+
     Inventory = @{
         # 24-column server inventory (column list, order and help texts: VmMaintenance\Resources\InventoryFields.psd1).
         # Values typed here apply to every host that has no value of its own (empty = ask per host).
