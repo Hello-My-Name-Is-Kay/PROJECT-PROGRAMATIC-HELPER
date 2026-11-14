@@ -10,7 +10,7 @@
 - **Business hours, Mon-Fri 08:00-17:00 Lisbon:** read-only checks and staging into `C:\Temp` only. Changes off-hours and weekends.
 - **Disk expansion** (Azure) is after hours only, no override: the VM is shut down, the disk resized, the VM started.
 - **Install:** `Get-ChildItem -Recurse . | Unblock-File` then `powershell -ExecutionPolicy Bypass -File .\Install.ps1`, then `vmm` or the **VM Maintenance** desktop shortcut. Runs from any folder; the installed copy does not depend on it.
-- **Test first:** `.\Tools\Invoke-SmokeTest.ps1`. GitHub checks pass on Windows PowerShell 5.1 and 7 (199 smoke checks, 46 Pester tests); real hosts, Azure, VPN and the UI are not tested yet.
+- **Test first:** `.\Tools\Invoke-SmokeTest.ps1`. GitHub checks pass on Windows PowerShell 5.1 and 7 (202 smoke checks, 57 Pester tests); real hosts, Azure, VPN and the UI are not tested yet.
 - **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
 - **Day:** `V` VPN, `6` credentials, `3` check fleet, `4` staging gate, `1` plan. Target 10 machines per day, shown in the header.
 - **Host without remote access:** open the host, `X` builds the host agent; run it on the host's desktop in RDP; export; `P` on the laptop; agent `6` Finish removes it.
@@ -297,7 +297,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1                                         # before every commit/push
 ```
 
-Status (2.2.1): the offline smoke test (199 checks) and Pester (46 tests) pass on GitHub's Windows runners in
+Status (2.3.0): the offline smoke test (202 checks) and Pester (57 tests) pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
