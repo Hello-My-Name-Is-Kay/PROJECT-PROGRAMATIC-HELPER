@@ -1,0 +1,5 @@
+# One server or VM name per line. Lines starting with # are ignored, so is text after #.
+# Short names, FQDNs or Azure VM names all work (domain suffix is stripped where relevant).
+# Real lists live outside the repository, e.g. %APPDATA%\VmMaintenance\lists\*.txt
+server-01
+server-02.example.local

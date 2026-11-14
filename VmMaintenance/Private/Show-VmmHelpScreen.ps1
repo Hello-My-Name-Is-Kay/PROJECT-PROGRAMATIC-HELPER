@@ -1,0 +1,31 @@
+function Show-VmmHelpScreen {
+    # Keys, rules and file locations.
+    [CmdletBinding()]
+    param()
+    $lines = @(
+        'KEYS: arrows/PgUp/PgDn/Home/End move, Enter or click opens, double-click opens, wheel scrolls, Esc goes back.'
+        'Letters shown in the bottom bar run actions on the selected row.'
+        ''
+        'TIME RULES (Settings > Schedule):'
+        '  Mon-Fri business hours: checks + staging to C:\Temp only. Changes need OVERRIDE + reason (recorded, reported).'
+        '  Weekends/holidays (and weekday off-hours if enabled): everything allowed.'
+        ''
+        'WORKFLOW per host: 1 Precheck > 2 Stage > 3 PreSnapshot > 4 ExpandDisk > 5 Upgrade > 6 Verify; prune at the end.'
+        '  Checkpoint snapshot after each successful changing step on Azure VMs (Workflow.SnapshotAfter).'
+        '  Can''t reach a host? G opens the RDP/RDM guide; P pastes the collector result back.'
+        '  Missing access? B writes a report for your manager (you send it from Outlook) and you move on.'
+        ''
+        'TARGET: Target.MachinesPerDay (default 10). Counted when Stage or Verify succeeds that day.'
+        ''
+        'SECURITY: usernames/passwords are asked each session, kept only in memory, cleared on Quit.'
+        '  Fleet data is AES-256 + HMAC encrypted; the key is DPAPI-bound to your Windows account.'
+        '  Daily/blocker reports are plaintext (your manager must read them).'
+        ''
+        "FILES: config $script:VmmConfigPath"
+        "       data   $(Get-VmmPath -Name Data)"
+        "       reports $(Get-VmmPath -Name Reports)"
+        ''
+        'CLI: every action exists as a command - run: vmm help'
+    )
+    [void](Invoke-VmmListView -Title 'Help' -Rows @($lines | ForEach-Object { @{ Text = $_ } }) -Help 'Esc back')
+}

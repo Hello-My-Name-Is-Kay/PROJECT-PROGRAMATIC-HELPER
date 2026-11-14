@@ -1,0 +1,88 @@
+function Import-VmmCollectorResult {
+    <#
+    .SYNOPSIS
+        Records a result line from a host: VMM2|... (host agent, encrypted for this laptop) or
+        VMM1|... (paste-in collector / generic agent, plain).
+    .DESCRIPTION
+        [SEC] The line is untrusted input: size-limited, MAC-checked (VMM2), every field validated and
+        length-capped, the host must already be in the fleet, and only known step names and statuses
+        are accepted. Agent events (steps run on the host, overrides) are added to the host history.
+    .EXAMPLE
+        Import-VmmCollectorResult -Line (Get-Clipboard)
+    .EXAMPLE
+        vmm collect
+    #>
+    [CmdletBinding()]
+    param([string]$Line, [ValidateSet('Precheck', 'Verify')][string]$Step = 'Precheck')
+    if (-not $Line) { $Line = try { (Get-Clipboard) -join '' } catch { '' } }
+    $Line = "$Line".Trim()
+    if ($Line.Length -gt 6MB) { throw (New-VmmErrorRecord -Activity 'Result line too large.' -Category InvalidData -ErrorId 'VmmCollectorSize') }
+    if ($Line -match '^VMM2\|([A-Za-z0-9+/=]+)$') {
+        $text = Unprotect-VmmAgentResult -Base64 $Matches[1]
+        $via = 'host agent (encrypted)'
+    } elseif ($Line -match '^VMM1\|([A-Za-z0-9+/=]+)$') {
+        try { $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Matches[1])) }
+        catch { throw (New-VmmErrorRecord -Activity 'Collector line is not valid base64.' -Fix 'Copy the whole line again.' -Category InvalidData) }
+        $via = 'RDP collector'
+    } else {
+        $peek = if ($Line.Length -gt 12) { $Line.Substring(0, 12) + '...' } else { $Line }
+        throw (New-VmmErrorRecord -Activity 'Not a result line from a host.' -Target $peek `
+            -Cause 'The clipboard holds something else, or the line was cut when copying.' `
+            -Fix 'On the host run the agent (menu 5 Export) or the collector again; both copy the full VMM2|/VMM1| line. Paste that.' -Category InvalidData)
+    }
+
+    $clean = { param($v, [int]$max = 200) $t = ("$v" -replace '[\x00-\x1F\x7F]', ' ').Trim(); if ($t.Length -gt $max) { $t = $t.Substring(0, $max) }; Protect-VmmLogText $t }
+    $num = { param($v) $d = 0.0; if ([double]::TryParse("$v", [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$d) -and $d -ge 0 -and $d -lt 1e6) { $d } else { $null } }
+    $f = @{}; $events = @(); $packages = @()
+    foreach ($l in ($text -split "`n" | Select-Object -First 2000)) {
+        $i = $l.IndexOf('='); if ($i -lt 1) { continue }
+        $k = $l.Substring(0, $i); $v = $l.Substring($i + 1)
+        if ($k -eq 'Event') { $events += , ($v -split '\|', 4) }
+        elseif ($k -eq 'Package') { $packages += & $clean $v 120 }
+        elseif ($k -match '^[A-Za-z]{1,20}$') { $f[$k] = $v }
+    }
+    if ("$($f['Name'])" -notmatch '^[A-Za-z0-9][A-Za-z0-9\-]{0,62}$') {
+        throw (New-VmmErrorRecord -Activity 'Result has no valid host name.' -Category InvalidData -ErrorId 'VmmCollectorName')
+    }
+
+    $store = Read-VmmStore
+    $rec = Get-VmmHostRecord -Store $store -Name $f['Name']   # throws when the host is not in the fleet
+    $check = [pscustomobject]@{
+        Name = $rec.Name; CheckedAt = (Get-Date).ToUniversalTime().ToString('o'); IPv4 = $rec.IPv4; Ping = 'n/a'; Ports = 'n/a'
+        Reachable = 'Yes'; OS = (& $clean $f['OS'] 120); Version = (& $clean $f['Version'] 30); Build = (& $clean $f['Build'] 20); SP = (& $clean $f['SP'] 5)
+        LastBoot = (& $clean $f['LastBoot'] 30); Manufacturer = (& $clean $f['Manufacturer'] 80); Model = (& $clean $f['Model'] 80)
+        Platform = $(if ($f['Platform'] -in 'Azure', 'Hyper-V', 'VMware', 'Physical') { $f['Platform'] } else { 'Unknown' })
+        CTotalGB = (& $num $f['CTotalGB']); CFreeGB = (& $num $f['CFreeGB'])
+        PendingReboot = $(if ($f['PendingReboot'] -eq 'Yes') { 'Yes' } else { 'No' })
+        Sql = $(if ($f['Sql']) { & $clean $f['Sql'] 300 } else { 'none' }); Software = (($packages | Select-Object -First 20) -join '; ')
+        Error = $null; Via = $via
+    }
+    $rec.Check = $check; $rec.Platform = $check.Platform; $rec.Health = Get-VmmHostHealth -Check $check
+
+    $known = @((Get-VmmWorkflowDefinition).Name)
+    $okStatus = 'Success', 'Failed', 'NotNeeded', 'Launched', 'Override', 'Error'
+    $seen = @{}; foreach ($h in $rec.History) { $seen["$($h.At)|$($h.Step)|$($h.Result)"] = $true }
+    $added = 0
+    foreach ($e in $events) {
+        if ($e.Count -lt 3) { continue }
+        $at = & $clean $e[0] 25; $st = $e[1]; $res = $e[2]; $note = if ($e.Count -ge 4) { & $clean $e[3] 200 } else { '' }
+        if ($res -notin $okStatus -or $at -notmatch '^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$') { continue }
+        if ($seen.ContainsKey("$at|$st|$res")) { continue }
+        if ($res -eq 'Override') {
+            $store.Overrides = @($store.Overrides) + [pscustomobject]@{ At = $at; Target = "$($rec.Name)/$st (on host)"; Reason = $note; Mode = 'agent' }
+        }
+        if ($st -in $known -and $res -ne 'Override') {
+            Set-VmmStepState -Record $rec -Step $st -Status $res -Note "on host: $note"
+            $rec.History[-1].At = $at
+        } else {
+            $rec.History = @($rec.History) + [pscustomobject]@{ At = $at; Step = $st; Result = $res; Note = "on host: $note" }
+        }
+        $added++
+    }
+    if (-not $events -and $Step -in 'Precheck', 'Verify') {
+        if ($Step -eq 'Precheck' -and -not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $check.OS; Build = $check.Build; Sql = $check.Sql } }
+        Set-VmmStepState -Record $rec -Step $Step -Status 'Success' -Note "via $via`: $($check.OS), C: $($check.CFreeGB) GB free, SQL: $($check.Sql)"
+    } elseif (-not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $check.OS; Build = $check.Build; Sql = $check.Sql } }
+    Save-VmmStore -Store $store
+    Write-VmmLog "$($rec.Name): facts recorded via $via ($($check.OS), C: $($check.CFreeGB) GB free), $added new host event(s)." -Level Success
+}

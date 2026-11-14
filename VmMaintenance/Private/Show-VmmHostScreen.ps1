@@ -1,0 +1,50 @@
+function Show-VmmHostScreen {
+    # One host: facts + the six workflow steps. Run steps, open the RDP guide, paste collector output,
+    # raise a blocker and move on, launch mstsc, hold/unhold.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$HostName)
+    $sel = 0; $status = ''
+    while ($true) {
+        $store = Read-VmmStore
+        $rec = Get-VmmHostRecord -Store $store -Name $HostName
+        $w = Get-VmmTimeWindow
+        $steps = @(Get-VmmWorkflowDefinition)
+        $c = $rec.Check
+        $facts = "$($rec.Name) | $($rec.Platform) | $($rec.Health) | $(if ($c) { "$($c.OS) b$($c.Build) | C: $($c.CFreeGB) GB free | SQL: $($c.Sql) | reboot pending: $($c.PendingReboot)" } else { 'not checked yet' })$(if ($rec.Hold) { ' | ON HOLD' })"
+        $rows = foreach ($s in $steps) {
+            $st = $rec.Steps.PSObject.Properties[$s.Name]
+            $state = if ($st) { $st.Value.Status } else { '-' }
+            $note  = if ($st) { $st.Value.Note } else { $s.Title }
+            $allowed = $s.Class -ne 'Change' -or $w.ChangesAllowed
+            $col = switch -Regex ($state) { '^(Success|NotNeeded)$' { 'Green' } '^(Failed|Blocked)$' { 'Red' } '^(Launched|Skipped|Pending)$' { 'Yellow' } default { if ($allowed) { 'Gray' } else { 'DarkGray' } } }
+            $mode = if ($s.Mode -eq 'Hybrid') { if ($rec.Azure) { 'auto' } else { 'guided' } } else { $s.Mode.ToLower() }
+            @{ Text = ('{0}. {1,-12} {2,-10} {3,-7} {4,-8} {5}' -f $s.Order, $s.Name, $state, $mode, $(if ($allowed) { 'now' } else { 'window' }), $note); Color = $col }
+        }
+        $open = @($rec.Blockers | Where-Object { -not $_.Resolved })
+        if ($open) { $status = "Open blocker: $($open[-1].Step) - $($open[-1].Summary) (contact: $($open[-1].Contact))" }
+        $r = Invoke-VmmListView -Title $facts -ColumnHeader ('   {0,-12} {1,-10} {2,-7} {3,-8} {4}' -f 'Step', 'Status', 'Mode', 'Allowed', 'Note') `
+             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X') `
+             -Help 'Enter run | G RDP guide | X host agent | Y confirm | P paste result | B blocker+move on | R resolve | L mstsc | H hold | C check | Esc'
+        $sel = $r.Index; $status = ''
+        $step = $steps[$r.Index].Name
+        switch ($r.Action) {
+            'Esc'   { return }
+            'Enter' { [void](Invoke-VmmTuiAction -Title "$HostName - $step" -Action { Invoke-VmmStepFromTui -HostName $HostName -Step $step }) }
+            'Y'     { [void](Invoke-VmmTuiAction -Title "$HostName - confirm $step done" -Action { Invoke-VmmStepFromTui -HostName $HostName -Step $step -Confirmed }) }
+            'G'     { Show-VmmGuideScreen -HostName $HostName -Step $step }
+            'X'     { [void](Invoke-VmmTuiAction -Title "Host agent for $HostName" -Action { Export-VmmHostAgent -HostName $HostName }) }
+            'P'     { [void](Invoke-VmmTuiAction -Title 'Paste collector result' -Action {
+                          $clip = try { (Get-Clipboard) -join '' } catch { '' }
+                          if ($clip -notmatch '^VMM[12]\|') { $clip = Read-VmmPrompt 'Paste the VMM2|... (agent) or VMM1|... (collector) line' }
+                          $st = if ($step -eq 'Verify') { 'Verify' } else { 'Precheck' }
+                          Import-VmmCollectorResult -Line $clip -Step $st }) }
+            'B'     { [void](Invoke-VmmTuiAction -Title "Blocker report - $HostName / $step" -Action {
+                          $m = Read-VmmPrompt 'Exact error or what is missing (paste it)'
+                          if ($m) { New-VmmBlockerReport -HostName $HostName -Step $step -Message $m | Out-Null } }); return }
+            'R'     { [void](Invoke-VmmTuiAction -Title 'Resolve blockers' -Action { Resolve-VmmBlocker -HostName $HostName }) }
+            'L'     { Start-Process mstsc.exe -ArgumentList "/v:$HostName"; $status = "mstsc started for $HostName (or open it in RDM)" }
+            'H'     { $rec.Hold = -not $rec.Hold; Save-VmmStore -Store $store; $status = "Hold = $($rec.Hold)" }
+            'C'     { [void](Invoke-VmmTuiAction -Title "Check $HostName" -Action { Invoke-VmmFleetCheck -Name $HostName }) }
+        }
+    }
+}

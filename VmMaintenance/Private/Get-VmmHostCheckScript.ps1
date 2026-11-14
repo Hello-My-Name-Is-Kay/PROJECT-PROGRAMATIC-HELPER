@@ -1,0 +1,98 @@
+function Get-VmmHostCheckScript {
+    # Self-contained check run per host inside a runspace. Read-only: DNS, ping, TCP ports, then CIM over
+    # DCOM (same transport as Get-WmiObject) for OS, model, C:, Azure agent, SQL instances, pending
+    # reboot and watched software (registry Uninstall keys - never Win32_Product, which triggers MSI repairs).
+    [CmdletBinding()]
+    param()
+    @'
+param($Name, $A)
+$r = [ordered]@{
+    Name = $Name; CheckedAt = (Get-Date).ToUniversalTime().ToString('o'); IPv4 = $null; Ping = 'No'; Ports = ''
+    Reachable = 'No'; OS = $null; Version = $null; Build = $null; SP = $null; LastBoot = $null
+    Manufacturer = $null; Model = $null; Platform = $null; CTotalGB = $null; CFreeGB = $null
+    PendingReboot = $null; Sql = ''; Software = ''; Error = $null
+}
+try {
+    $ip = [System.Net.Dns]::GetHostAddresses($Name) | Where-Object { $_.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1
+    $r.IPv4 = "$ip"
+} catch { $r.Error = "DNS: name does not resolve from this laptop ($($_.Exception.InnerException.Message))"; return [pscustomobject]$r }
+
+try { $png = New-Object System.Net.NetworkInformation.Ping; if ($png.Send($Name, $A.TimeoutMs).Status -eq 'Success') { $r.Ping = 'Yes' } } catch { } finally { if ($png) { $png.Dispose() } }
+
+$open = @()
+foreach ($port in $A.Ports) {
+    $c = New-Object System.Net.Sockets.TcpClient
+    try { $ar = $c.BeginConnect($Name, [int]$port, $null, $null); if ($ar.AsyncWaitHandle.WaitOne($A.TimeoutMs) -and $c.Connected) { $open += $port } } catch { } finally { $c.Close() }
+}
+$r.Ports = $open -join ','
+if ($open -notcontains 135) {
+    $r.Reachable = if ($r.Ping -eq 'Yes' -or $open) { 'Partial' } else { 'No' }
+    $r.Error = 'TCP 135 (RPC) closed: WMI/DCOM checks skipped. Host down, firewall, or RDP-only access - use the RDP collector.'
+    return [pscustomobject]$r
+}
+
+$s = $null
+try {
+    $sp = @{ ComputerName = $Name; SessionOption = (New-CimSessionOption -Protocol Dcom); ErrorAction = 'Stop'; OperationTimeoutSec = 30 }
+    if ($A.Credential) { $sp.Credential = $A.Credential }
+    $s = New-CimSession @sp
+    $os = Get-CimInstance -CimSession $s -ClassName Win32_OperatingSystem -ErrorAction Stop
+    $cs = Get-CimInstance -CimSession $s -ClassName Win32_ComputerSystem -ErrorAction Stop
+    $c  = Get-CimInstance -CimSession $s -ClassName Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
+    $r.Reachable = 'Yes'
+    $r.OS = $os.Caption; $r.Version = $os.Version; $r.Build = $os.BuildNumber; $r.SP = $os.ServicePackMajorVersion
+    $r.LastBoot = if ($os.LastBootUpTime) { ([datetime]$os.LastBootUpTime).ToUniversalTime().ToString('o') } else { $null }
+    $r.Manufacturer = $cs.Manufacturer; $r.Model = $cs.Model
+    $r.CTotalGB = [math]::Round($c.Size / 1GB, 1); $r.CFreeGB = [math]::Round($c.FreeSpace / 1GB, 1)
+
+    if ($cs.Manufacturer -like '*VMware*') { $r.Platform = 'VMware' }
+    elseif ($cs.Model -like '*Virtual Machine*' -and $cs.Manufacturer -like '*Microsoft*') {
+        $agent = Get-CimInstance -CimSession $s -ClassName Win32_Service -Filter "Name='WindowsAzureGuestAgent'" -ErrorAction SilentlyContinue
+        $r.Platform = if ($agent) { 'Azure' } else { 'Hyper-V' }
+    } else { $r.Platform = 'Physical' }
+
+    # Registry through StdRegProv (HKLM = 2147483650)
+    $hk = [uint32]2147483650
+    $reg = { param($m, $a) Invoke-CimMethod -CimSession $s -Namespace root/default -ClassName StdRegProv -MethodName $m -Arguments $a -ErrorAction Stop }
+    $str = { param($k, $v) (& $reg 'GetStringValue' @{ hDefKey = $hk; sSubKeyName = $k; sValueName = $v }).sValue }
+
+    # SQL Server instances: name, version (PatchLevel), edition
+    $inst = & $reg 'EnumValues' @{ hDefKey = $hk; sSubKeyName = 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' }
+    if ($inst.ReturnValue -eq 0 -and $inst.sNames) {
+        $r.Sql = (@(foreach ($n in $inst.sNames) {
+            $id = & $str 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' $n
+            $ver = & $str "SOFTWARE\Microsoft\Microsoft SQL Server\$id\Setup" 'PatchLevel'
+            $ed  = & $str "SOFTWARE\Microsoft\Microsoft SQL Server\$id\Setup" 'Edition'
+            "$n $ver $ed".Trim()
+        })) -join '; '
+    } else { $r.Sql = 'none' }
+
+    # Pending reboot (CBS, Windows Update, file rename operations)
+    $pend = $false
+    if ((& $reg 'EnumKey' @{ hDefKey = $hk; sSubKeyName = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending' }).ReturnValue -eq 0) { $pend = $true }
+    if ((& $reg 'EnumKey' @{ hDefKey = $hk; sSubKeyName = 'SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired' }).ReturnValue -eq 0) { $pend = $true }
+    $pfr = & $reg 'GetMultiStringValue' @{ hDefKey = $hk; sSubKeyName = 'SYSTEM\CurrentControlSet\Control\Session Manager'; sValueName = 'PendingFileRenameOperations' }
+    if ($pfr.ReturnValue -eq 0 -and $pfr.sValue) { $pend = $true }
+    $r.PendingReboot = if ($pend) { 'Yes' } else { 'No' }
+
+    # Watched software (only names matching Fleet.SoftwareWatch)
+    if ($A.Watch) {
+        $found = @()
+        foreach ($root in 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall') {
+            $keys = & $reg 'EnumKey' @{ hDefKey = $hk; sSubKeyName = $root }
+            if ($keys.ReturnValue -ne 0) { continue }
+            foreach ($k in $keys.sNames) {
+                $dn = & $str "$root\$k" 'DisplayName'
+                if (-not $dn) { continue }
+                foreach ($w in $A.Watch) { if ($dn -like $w) { $found += "$dn $(& $str "$root\$k" 'DisplayVersion')".Trim(); break } }
+            }
+        }
+        $r.Software = (@($found | Sort-Object -Unique)) -join '; '
+    }
+} catch {
+    if ($r.Reachable -ne 'Yes') { $r.Reachable = 'Partial' }
+    $r.Error = "CIM/DCOM: $($_.Exception.Message)"
+} finally { if ($s) { Remove-CimSession -CimSession $s -ErrorAction SilentlyContinue } }
+[pscustomobject]$r
+'@
+}

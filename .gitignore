@@ -1,0 +1,25 @@
+# Local settings and server lists stay on your disk only
+config/*.local.psd1
+config/config.psd1
+config/lists/
+*.local.*
+*.txt
+!config/servers.example.txt
+!llms.txt
+
+# Run output
+*.csv
+*.log
+*_tags_preupgrade_*.json
+Output/
+
+# Encrypted store, keys, built agents, logs (local only)
+data/
+agents/
+logs/
+*.vmm
+*.vmm.bak
+*.key
+*.psd1.bak
+Reports/
+VmmAgent_*.ps1

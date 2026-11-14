@@ -1,0 +1,31 @@
+# VmMaintenance
+
+> PowerShell fleet console (Windows, PS 5.1/7) for server maintenance before in-place OS upgrades, plus a host agent (PS 2.0+) run inside RDP. Environment-agnostic: no hosts, IPs, IDs or credentials in the repository.
+
+Rules an assistant must keep when changing this code:
+- One function per file; Public/ = exported, Private/ = internal; noun prefix Vmm.
+- ASCII-only source; CRLF for .ps1/.psm1/.psd1/.cs/.sql (PS 5.1 reads BOM-less files as ANSI).
+- Never store usernames, passwords or tokens. Credentials live only in $script:VmmCredentials for the session.
+- Never put real environment values in the repo; they live in %APPDATA%\VmMaintenance\config.psd1.
+- Errors: throw (New-VmmErrorRecord -Activity -Target -Exception -Cause -Fix -ErrorId 'Vmm...').
+- Host changes go through Assert-VmmWindow (Lisbon business hours: checks + staging only).
+- Mark security decisions with [SEC] comments; planned extensions with TODO-FUTURE.
+- Regenerate FunctionsToExport in VmMaintenance.psd1 when adding a Public file.
+
+## Docs
+- [README](README.md): what it does, quick start, UI keys, CLI, host agent, data locations
+- [Architecture](docs/ARCHITECTURE.md): layout, state, file formats, step flow, extension points
+- [Workflow](docs/WORKFLOW.md): steps, time rules, checkpoint snapshots, prune, blockers, host agent
+- [Usage](docs/USAGE.md): daily runbook
+- [Security](docs/SECURITY.md): protections, honest limits, untested list
+- [AI](docs/AI.md): optional assistant providers, access request, future MCP
+
+## Code entry points
+- [Scripts/vmm.ps1](Scripts/vmm.ps1): CLI/TUI entry, global flags, exit codes
+- [VmMaintenance/Public/Invoke-VmmCli.ps1](VmMaintenance/Public/Invoke-VmmCli.ps1): command map
+- [VmMaintenance/Public/Invoke-VmmWorkflowStep.ps1](VmMaintenance/Public/Invoke-VmmWorkflowStep.ps1): step engine
+- [VmMaintenance/Resources/VmmHostAgent.ps1](VmMaintenance/Resources/VmmHostAgent.ps1): program 2 (remote host)
+- [PROJECT.json](PROJECT.json): machine-readable summary
+
+## Tests
+- [Tools/Invoke-SmokeTest.ps1](Tools/Invoke-SmokeTest.ps1), [tests/VmMaintenance.Tests.ps1](tests/VmMaintenance.Tests.ps1), [Tools/Test-Sanitized.ps1](Tools/Test-Sanitized.ps1)
