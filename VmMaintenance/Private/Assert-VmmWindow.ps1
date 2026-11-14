@@ -7,12 +7,18 @@ function Assert-VmmWindow {
         [Parameter(Mandatory)][ValidateSet('ReadOnly', 'Staging', 'Change')][string]$Class,
         [Parameter(Mandatory)][string]$Target,
         [switch]$Override,
-        [string]$OverrideReason
+        [string]$OverrideReason,
+        [string]$NoOverrideReason   # set = this change can never be overridden in business hours
     )
     if ($Class -ne 'Change') { return }
     $w = Get-VmmTimeWindow
     if ($w.ChangesAllowed) { return }
 
+    if ($Override -and $NoOverrideReason) {
+        throw (New-VmmErrorRecord -Activity "Override refused for '$Target'." -Target "$($w.ZoneTime.ToString('ddd HH:mm')) $($w.ZoneLabel)" `
+            -Cause $NoOverrideReason -Fix "Run it from $($w.NextChangeAt.ToString('ddd HH:mm')) (in $($w.UntilChangeText))." `
+            -Category PermissionDenied -ErrorId 'VmmWindowBlocked')
+    }
     if ($Override) {
         if (-not $OverrideReason -or $OverrideReason.Trim().Length -lt 10) {
             throw (New-VmmErrorRecord -Activity 'Override refused: a reason of at least 10 characters is required.' -Target $Target `

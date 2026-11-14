@@ -113,7 +113,8 @@ function Expand-VmmOsDisk {
         $work = @($plan | Where-Object Status -eq 'Ready')
         if (-not $work) { Write-VmmLog 'Nothing to do: no VM is Ready. See Status/Notes in the plan above.' -Level Warn; return }
 
-        Assert-VmmWindow -Class Change -Target "OS disk expand: $(($work.VMName) -join ', ')" -Override:$Override -OverrideReason $OverrideReason
+        $noOv = if (-not (Get-VmmSetting 'Policy.ExpandDiskOverride' -Default $false)) { 'Disk expansion shuts the VMs down (deallocate, resize, start): after business hours only.' } else { $null }
+        Assert-VmmWindow -Class Change -Target "OS disk expand: $(($work.VMName) -join ', ')" -Override:$Override -OverrideReason $OverrideReason -NoOverrideReason $noOv
         $impact = if ($ExtendOnly) { 'no downtime for running VMs' } else { 'running VMs go down for about 5-10 minutes' }
         if (-not $PSCmdlet.ShouldProcess(($work.VMName -join ', '), "$mode on $($work.Count) VM(s) - $impact")) {
             Write-VmmLog 'Cancelled - nothing changed.' -Level Warn

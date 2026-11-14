@@ -1,5 +1,24 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host agent for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic. SECTIONS: At a glance:18-34 | Quick start:35-53 | Host agent the program on th:54-72 | Console UI:73-102 | CLI:103-138 | Workflow per host:139-152 | Directory tree:153-182 | Where your data lives never :183-196 | Testing:197-209 | Errors:210-223 | Future your work AI model wi:224-233 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host agent for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic; TL;DR at the top. SECTIONS: TLDR:6-20 | Overview:21-36 | At a glance:37-53 | Quick start:54-72 | Host agent the program on th:73-91 | Console UI:92-121 | CLI:122-159 | OS policy:160-174 | Workflow per host:175-188 | Directory tree:189-218 | Where your data lives never :219-232 | Testing:233-245 | Errors:246-259 | Future your work AI model wi:260-269 -->
 # VmMaintenance
+
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.1.0 &nbsp;|&nbsp; **This file:** 2026-11-14
+
+## TL;DR
+
+- **Goal:** every server on **Windows Server 2019**. Windows 10/11 and other client OS are skipped unless ordered (`vmm order`).
+- **Warn management** about Windows Server 2008 (not R2; 2008 R2 is fine) and physical machines: `vmm policy -Notice`.
+- **Business hours, Mon-Fri 08:00-17:00 Lisbon:** read-only checks and staging into `C:\Temp` only. Changes off-hours and weekends.
+- **Disk expansion** (Azure) is after hours only, no override: the VM is shut down, the disk resized, the VM started.
+- **Install:** `Get-ChildItem -Recurse . | Unblock-File` then `powershell -ExecutionPolicy Bypass -File .\Install.ps1`, then `vmm`.
+- **Test first:** `.\Tools\Invoke-SmokeTest.ps1` (nothing has run in real PowerShell yet).
+- **Day:** `V` VPN, `6` credentials, `3` check fleet, `4` staging gate, `1` plan. Target 10 machines per day, shown in the header.
+- **Host without remote access:** open the host, `X` builds the host agent; run it on the host's desktop in RDP; export; `P` on the laptop; agent `6` Finish removes it.
+- **Blocked by access:** `B` writes the manager report (clipboard); answer Sent / Later / Bypass; the queue moves on.
+- **Never stored:** usernames, passwords, tokens. Fleet data is encrypted on this laptop for your Windows account only.
+- **Never in this repo:** hosts, IPs, tenant/subscription IDs, company names. Run `.\Tools\Test-Sanitized.ps1` before every push.
+- **Help:** `vmm help`, `Get-Help <Function> -Full`, [docs/USAGE.md](docs/USAGE.md).
+
+## Overview
 
 Terminal fleet console for Windows server maintenance ahead of in-place OS upgrades.
 Two PowerShell programs:
@@ -128,6 +147,8 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm vpn` / `vmm connect` / `vmm disconnect` | VPN |
 | `vmm ai -Prompt ".." [-IncludeFleet]` | Optional assistant |
 | `vmm setup [-Page Vpn]` | Setup wizard |
+| `vmm policy [-Notice]` | OS policy per host, management note |
+| `vmm order -HostName x -Reason ".."` / `-Clear` | Work on a client-OS host by order |
 
 Global flags: `--no-mouse`, `--no-color`, `--config <file>`, `--debug-errors`, `--version`.
 Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the time window, 4 VPN down, 5 security check failed.
@@ -136,6 +157,21 @@ Feature flags in the config (`Features.HostAgent`, `Features.Vpn`, `Features.Ai`
 The classic one-task scripts (`Scripts\Expand-AzOsDisk.ps1`, `CreateSnapshots.ps1`, ...) still
 work and honour the same time window. See [docs/USAGE.md](docs/USAGE.md).
 
+## OS policy
+
+| Host OS / platform | Scope | What the tool does |
+|---|---|---|
+| Windows Server 2019 (`Policy.TargetOs`) | AtTarget | Nothing to upgrade; left out of the queue |
+| Server 2022 / 2025 | NewerThanTarget | Never downgraded; left out |
+| Windows 10, 11 and other client OS | ClientOs | Not touched: change steps refused, left out of the queue. `vmm order -HostName x -Reason "..."` puts it in scope (logged) |
+| Windows Server 2008 (not R2) | InScope + warning | Management warning: no direct in-place path to 2019 |
+| Windows Server 2008 R2, 2012 (R2), 2016 | InScope | Normal workflow |
+| Physical machine | InScope + warning | Management warning: no Azure snapshot or disk resize |
+
+`vmm policy` lists the scope of every host; `vmm policy -Notice` writes the management note, copies it
+and records your Sent / Later / Bypass answer. The daily report has Policy, ManagementWarning and
+ManagementNotified columns.
+
 ## Workflow per host
 
 | # | Step | Class | Business hours | Off-hours / weekend | Checkpoint after |
@@ -143,7 +179,7 @@ work and honour the same time window. See [docs/USAGE.md](docs/USAGE.md).
 | 1 | Precheck | Read-only | Yes | Yes | No |
 | 2 | Stage | Staging | Yes (into `C:\Temp`) | Yes | No |
 | 3 | PreSnapshot | Change | Override only | Yes | Is the snapshot |
-| 4 | ExpandDisk | Change | Override only | Yes | Yes (Azure) |
+| 4 | ExpandDisk | Change | No (VM is shut down) | Yes | Yes (Azure) |
 | 5 | Upgrade | Change | Override only | Yes | Yes (Azure) |
 | 6 | Verify | Read-only | Yes | Yes | No |
 | - | Prune | Change | Override only | Yes | - |
@@ -230,4 +266,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 03:30 UTC_
+_Last updated: 2026-11-14 03:34 UTC_

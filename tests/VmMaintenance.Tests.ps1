@@ -121,6 +121,29 @@ Describe 'Config helpers' {
     }
 }
 
+Describe 'Get-VmmHostPolicy (Server 2019 goal)' {
+    It '<Os> on <Platform> -> <Scope>, warnings <Warn>' -TestCases @(
+        @{ Os = 'Microsoft Windows Server 2016 Datacenter';    Platform = 'Azure';    Scope = 'InScope';         Warn = 0 }
+        @{ Os = 'Microsoft Windows Server 2019 Standard';      Platform = 'Azure';    Scope = 'AtTarget';        Warn = 0 }
+        @{ Os = 'Microsoft Windows Server 2022 Standard';      Platform = 'VMware';   Scope = 'NewerThanTarget'; Warn = 0 }
+        @{ Os = 'Microsoft Windows 10 Enterprise';             Platform = 'VMware';   Scope = 'ClientOs';        Warn = 0 }
+        @{ Os = 'Microsoft Windows 11 Pro';                    Platform = 'Physical'; Scope = 'ClientOs';        Warn = 1 }
+        @{ Os = 'Microsoft Windows Server 2008 Standard';      Platform = 'VMware';   Scope = 'InScope';         Warn = 1 }
+        @{ Os = 'Microsoft Windows Server 2008 R2 Standard';   Platform = 'Hyper-V';  Scope = 'InScope';         Warn = 0 }
+        @{ Os = 'Microsoft Windows Server 2012 R2 Standard';   Platform = 'Physical'; Scope = 'InScope';         Warn = 1 }
+        @{ Os = '';                                            Platform = 'Unknown';  Scope = 'Unknown';         Warn = 0 }
+    ) {
+        $p = InModuleScope VmMaintenance -Parameters @{ Os = $Os; Platform = $Platform } {
+            $r = New-VmmHostRecord -Name 'policy-test'
+            $r.Platform = $Platform
+            if ($Os) { $r.Check = [pscustomobject]@{ OS = $Os } }
+            Get-VmmHostPolicy -Record $r
+        }
+        $p.Scope | Should -Be $Scope
+        @($p.Warnings).Count | Should -Be $Warn
+    }
+}
+
 Describe 'Logging and errors' {
     It 'Protect-VmmLogText masks secrets' {
         $o = InModuleScope VmMaintenance { Protect-VmmLogText 'pwd=abc123 token: xyz Bearer eyJhbGci.x.y' }

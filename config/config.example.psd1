@@ -107,7 +107,7 @@
     Upgrade = @{
         Mode        = 'Guided'   # Guided = you run it in RDP/RDM | RunCommand = Azure only, launched remotely
         CommandLine = ''         # e.g. C:\Temp\<media>\setup.exe /auto upgrade /quiet /eula accept
-        ExpectedOs  = ''         # Verify passes only if the OS caption matches, e.g. '*Server 2019*'
+        ExpectedOs  = '*Server 2019*'   # Verify passes only if the OS caption matches
     }
 
     Reports = @{
@@ -116,6 +116,17 @@
 
     UI = @{
         Mouse = $true            # mouse clicks/wheel in the console UI (Windows Terminal / conhost)
+    }
+
+    # Fleet OS policy
+    Policy = @{
+        TargetOs           = '*Server 2019*'                    # goal for every machine
+        NewerOs            = @('*Server 2022*', '*Server 2025*') # never downgraded
+        ClientOs           = @('*Windows 10*', '*Windows 11*', '*Windows 8*', '*Windows 7*')   # not touched without orders (vmm order)
+        WarnOs             = @('*Server 2008*')                 # warn management...
+        WarnOsExcept       = @('*2008 R2*')                     # ...but 2008 R2 is fine
+        WarnPhysical       = $true                              # warn management about physical machines
+        ExpandDiskOverride = $false                             # disk expand deallocates the VM: no business-hours override
     }
 
     # Feature flags: turn whole areas on or off without touching code

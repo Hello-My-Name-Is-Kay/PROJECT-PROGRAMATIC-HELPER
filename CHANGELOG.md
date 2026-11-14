@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 210 - 2026-11-14:4-17 | 200 - 2026-11-14:18-23 | 100 - 2026-11-14:24-28 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 210 - 2026-11-14:4-21 | 200 - 2026-11-14:22-27 | 100 - 2026-11-14:28-32 -->
 # Changelog
 
 ## 2.1.0 - 2026-11-14
@@ -12,6 +12,10 @@
 - Setup wizard (`vmm setup`, first run, installer): warnings, validated options per page.
 - Global flags (`--no-mouse`, `--no-color`, `--config`, `--debug-errors`, `--version`), feature flags,
   exit codes, sanitized error log.
+- OS policy: target Windows Server 2019; client OS (Windows 10/11) skipped unless ordered (`vmm order`);
+  management warnings for Windows Server 2008 (not R2) and physical machines (`vmm policy -Notice`);
+  disk expansion after hours only (no override). Policy columns in the daily report and the host agent.
+- README: creator, version, date and TL;DR at the top.
 - Security: SQL login no longer pre-filled from config (no usernames stored); prune respects the time window;
   stricter result import validation.
 
@@ -25,4 +29,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 03:30 UTC_
+_Last updated: 2026-11-14 03:34 UTC_

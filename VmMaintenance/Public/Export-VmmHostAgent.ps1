@@ -60,12 +60,17 @@ function Export-VmmHostAgent {
         $lines.Add('OkGB=' + ([string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0}', (Get-VmmSetting 'Lansweeper.OkGB' -Default 40))))
         $lines.Add('CriticalGB=' + ([string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0}', (Get-VmmSetting 'Lansweeper.CriticalGB' -Default 32))))
         $lines.Add('TargetFolder=' + (Get-VmmSetting 'Staging.TargetFolder' -Default 'C:\Temp'))
-        $lines.Add('ExpectedOs=' + (& $flat (Get-VmmSetting 'Upgrade.ExpectedOs' -Default '')))
+        $lines.Add('ExpectedOs=' + (& $flat (Get-VmmSetting 'Upgrade.ExpectedOs' -Default '*Server 2019*')))
         $lines.Add('UpgradeCommand=' + (& $flat (Get-VmmSetting 'Upgrade.CommandLine' -Default '')))
         $lines.Add('Share=' + (Get-VmmSetting 'Staging.SourceShare' -Default ''))
         $lines.Add('Platform=' + $rec.Platform)
         $lines.Add('AzureVm=' + $(if ($rec.Azure) { 'Yes' } else { 'No' }))
         $lines.Add('PublicKey=' + $pub)
+        $pol = Get-VmmHostPolicy -Record $rec
+        $lines.Add('TargetOs=' + (Get-VmmSetting 'Policy.TargetOs' -Default '*Server 2019*'))
+        $lines.Add('PolicyScope=' + $pol.Scope)
+        $lines.Add('PolicyWhy=' + (& $flat $pol.Why))
+        $lines.Add('PolicyWarnings=' + (& $flat ($pol.Warnings -join ' / ')))
         foreach ($p in $rec.Steps.PSObject.Properties) {
             $lines.Add('Step.' + $p.Name + '=' + $p.Value.Status + '|' + $p.Value.At + '|' + (& $flat $p.Value.Note).Replace('|', '/'))
         }

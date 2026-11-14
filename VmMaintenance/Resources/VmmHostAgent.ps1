@@ -86,7 +86,8 @@ function Read-Card {
         Host = ''; Generated = ''; ValidHours = '48'; TimeZoneId = 'GMT Standard Time'
         BusinessDays = 'Monday,Tuesday,Wednesday,Thursday,Friday'; BusinessStart = '08:00'; BusinessEnd = '17:00'
         OffHoursWeekdays = 'True'; Holidays = ''; OkGB = '40'; CriticalGB = '32'; TargetFolder = 'C:\Temp'
-        ExpectedOs = ''; UpgradeCommand = ''; Share = ''; PublicKey = ''; Platform = ''; AzureVm = 'No'
+        ExpectedOs = '*Server 2019*'; UpgradeCommand = ''; Share = ''; PublicKey = ''; Platform = ''; AzureVm = 'No'
+        TargetOs = '*Server 2019*'; PolicyScope = ''; PolicyWhy = ''; PolicyWarnings = ''
         Steps = @{}; Packages = @()
     }
     if (-not $CardText) { return $c }
@@ -218,6 +219,27 @@ function Get-Window {
     New-Object PSObject -Property @{ Now = $now; Known = $known; ChangesAllowed = $allowed; Why = $why }
 }
 
+# ============================================================== OS policy
+# Goal: Windows Server 2019 everywhere. Client OS (Windows 10/11...) is not touched without orders.
+# Management is warned about Windows Server 2008 (not R2) and physical machines.
+function Get-Policy($Facts) {
+    $scope = $Card.PolicyScope; $why = $Card.PolicyWhy
+    if (-not $scope -or $scope -eq 'Unknown') {
+        $scope = 'InScope'; $why = 'Upgrade to ' + $Card.TargetOs + '.'
+        if ($Facts.OS -notlike '*Server*') { $scope = 'ClientOs'; $why = "Client OS ($($Facts.OS)): not touched without orders." }
+        elseif ($Facts.OS -like $Card.TargetOs) { $scope = 'AtTarget'; $why = "Already on the target OS ($($Facts.OS))." }
+        elseif ($Facts.OS -like '*Server 2022*' -or $Facts.OS -like '*Server 2025*') { $scope = 'NewerThanTarget'; $why = 'Newer than the target: never downgraded.' }
+    }
+    $warn = @()
+    if ($Card.PolicyWarnings) { $warn = @($Card.PolicyWarnings -split ' / ') }
+    else {
+        if ($Facts.OS -like '*Server 2008*' -and $Facts.OS -notlike '*2008 R2*') { $warn += 'Windows Server 2008 (not R2): warn management before any change.' }
+        if ($Facts.Platform -eq 'Physical') { $warn += 'Physical machine: warn management (no Azure snapshot or disk resize).' }
+    }
+    $ok = ($scope -eq 'InScope' -or $scope -eq 'ClientOsOrdered')
+    New-Object PSObject -Property @{ Scope = $scope; Why = $why; Warnings = $warn; Workable = $ok }
+}
+
 # ============================================================== step plan
 $StepNames = @('Precheck', 'Stage', 'PreSnapshot', 'ExpandDisk', 'Upgrade', 'Verify')
 function Get-LastStatus([string]$Step) {
@@ -230,6 +252,7 @@ function Test-Done([string]$Step) { (Get-LastStatus $Step) -match '^(Success|Not
 
 function Get-Plan($Facts) {
     $w = Get-Window
+    $pol = Get-Policy $Facts
     $admin = $Facts.Admin
     $pk = @(Get-PackageState)
     $staged = ($pk.Count -gt 0) -and -not ($pk | Where-Object { $_.State -ne 'Verified' -and $_.State -ne 'Present' })
@@ -269,7 +292,9 @@ function Get-Plan($Facts) {
             }
             'Verify' { $why = 'Read-only. Compares the OS with the expected result.' }
         }
-        if ($can -and $class -eq 'Change' -and -not $w.ChangesAllowed) { $can = $false; $why = $w.Why + ' (override possible)' }
+        if ($class -ne 'ReadOnly' -and -not $pol.Workable) { $can = $false; $why = 'Policy: ' + $pol.Why }
+        elseif ($can -and $s -eq 'ExpandDisk' -and -not $w.ChangesAllowed) { $can = $false; $why = $w.Why + ' Disk expansion is after hours only (the VM is shut down).' }
+        elseif ($can -and $class -eq 'Change' -and -not $w.ChangesAllowed) { $can = $false; $why = $w.Why + ' (override possible)' }
         $plan += New-Object PSObject -Property @{ Step = $s; Class = $class; Status = (Get-LastStatus $s); Available = $can; Why = $why }
     }
     $plan
@@ -453,6 +478,12 @@ function Show-Header {
     Say (" VMM host agent $AgentVersion | $env:COMPUTERNAME | {0} {1}" -f $w.Now.ToString('ddd yyyy-MM-dd HH:mm'), $Card.TimeZoneId) 'White'
     if ($w.ChangesAllowed) { Good (' ' + $w.Why) } else { Warn (' ' + $w.Why) }
     if (-not (Test-Admin)) { Warn ' Not elevated: checks and staging only. For changes, run PowerShell as administrator.' }
+    try {
+        $pf = New-Object PSObject -Property @{ OS = "$((Get-WmiObject Win32_OperatingSystem).Caption)"; Platform = $Card.Platform }
+        $pol = Get-Policy $pf
+        if (-not $pol.Workable) { Warn (' POLICY: ' + $pol.Why) }
+        foreach ($x in $pol.Warnings) { Bad (' WARN MANAGEMENT: ' + $x) }
+    } catch { }
     if (-not $CardText) { Warn ' Generic agent (no plan from the laptop): statuses are local only, export is unencrypted.' }
     elseif ($Card.Host -and $Card.Host -ne $env:COMPUTERNAME) { Bad " PLAN IS FOR $($Card.Host), NOT THIS HOST. Do not run change steps here." }
     elseif ($Card.Generated) {

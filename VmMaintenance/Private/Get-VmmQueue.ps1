@@ -6,6 +6,8 @@ function Get-VmmQueue {
     if (-not $Store) { $Store = Read-VmmStore }
     $w = Get-VmmTimeWindow
     $queue = foreach ($h in ($Store.Hosts | Where-Object { -not $_.Hold })) {
+        $pol = Get-VmmHostPolicy -Record $h
+        if (-not $pol.Workable) { continue }   # client OS without orders, already on target, newer than target
         $n = Get-VmmNextStep -Record $h
         if (-not $n) { continue }
         $st = $h.Steps.PSObject.Properties[$n.Name]
@@ -14,6 +16,7 @@ function Get-VmmQueue {
         [pscustomobject]@{
             Host = $h.Name; Step = $n; State = $(if ($st) { $st.Value.Status } else { 'todo' })
             Allowed = ($n.Class -ne 'Change' -or $w.ChangesAllowed); Guided = $guided; Health = $h.Health
+            Warn = ($pol.Warnings -join ' | ')
         }
     }
     @($queue | Sort-Object @{ e = { -not $_.Allowed } }, @{ e = { $_.State -in 'Blocked', 'Failed' } }, @{ e = { $_.Step.Order } }, Host)

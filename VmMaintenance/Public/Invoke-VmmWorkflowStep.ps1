@@ -41,7 +41,18 @@ function Invoke-VmmWorkflowStep {
                 -Fix "Run $($e.Name) first (vmm step -HostName $name -Step $($e.Name))." -Category InvalidOperation -ErrorId 'VmmStepOrder')
         }
     }
-    Assert-VmmWindow -Class $sd.Class -Target "$name/$Step" -Override:$Override -OverrideReason $OverrideReason
+    # OS policy: target Windows Server 2019; client OS only with an order; nothing to do on target/newer OS
+    $pol = Get-VmmHostPolicy -Record $rec
+    if ($sd.Class -ne 'ReadOnly' -and -not $pol.Workable) {
+        throw (New-VmmErrorRecord -Activity "Policy: $Step not run on $name." -Target "$name ($($pol.Os))" -Cause $pol.Why `
+            -Fix $(if ($pol.Scope -eq 'ClientOs') { "Only with orders: vmm order -HostName $name -Reason '<ticket / who approved>'" } else { 'Nothing to do; put the host on hold (H) or remove it.' }) `
+            -Category PermissionDenied -ErrorId 'VmmPolicy')
+    }
+    foreach ($w in $pol.Warnings) { Write-VmmLog "[$name] $w" -Level Warn }
+    # [SEC] Disk expansion deallocates the VM: business-hours override is refused unless Policy.ExpandDiskOverride
+    $noOv = $null
+    if ($Step -eq 'ExpandDisk' -and -not (Get-VmmSetting 'Policy.ExpandDiskOverride' -Default $false)) { $noOv = 'Disk expansion shuts the VM down (deallocate, resize, start): after business hours only.' }
+    Assert-VmmWindow -Class $sd.Class -Target "$name/$Step" -Override:$Override -OverrideReason $OverrideReason -NoOverrideReason $noOv
 
     $isAzure = [bool]$rec.Azure
     $guided  = $sd.Mode -eq 'Guided' -or ($sd.Mode -eq 'Hybrid' -and -not $isAzure)
@@ -106,7 +117,7 @@ function Invoke-VmmWorkflowStep {
                 $r = @(Invoke-VmmFleetCheck -Name $name -PassThru -Quiet)[0]
                 $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
                 if ($r.Reachable -ne 'Yes') { throw "Host not reachable after the change: $($r.Error)" }
-                $expect = Get-VmmSetting 'Upgrade.ExpectedOs' -Default ''
+                $expect = Get-VmmSetting 'Upgrade.ExpectedOs' -Default (Get-VmmSetting 'Policy.TargetOs' -Default '*Server 2019*')
                 if ($expect -and $r.OS -notlike $expect) { throw "OS is '$($r.OS)', expected '$expect'. Upgrade not finished or rolled back." }
                 if (-not $expect -and $rec.Baseline -and $r.Build -eq $rec.Baseline.Build) { $note = 'WARNING: build unchanged since Precheck. ' }
                 $note += "$($r.OS) build $($r.Build), C: $($r.CFreeGB) GB free, SQL: $($r.Sql)"

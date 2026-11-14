@@ -53,4 +53,4 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1      # before any commit or push
 ```
 
-_Last updated: 2026-11-14 03:30 UTC_
+_Last updated: 2026-11-14 03:34 UTC_

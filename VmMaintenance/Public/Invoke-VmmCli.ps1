@@ -51,6 +51,8 @@ function Invoke-VmmCli {
         'disconnect' = @{ F = 'Disconnect-VmmVpn';        D = 'stop the VPN' }
         'ai'       = @{ F = 'Invoke-VmmAssistant';        D = 'ask the optional AI assistant -Prompt ".." [-IncludeFleet]' }
         'setup'    = @{ F = 'Start-VmmSetupWizard';       D = 'first-run / setup wizard (all options, with explanations)' }
+        'policy'   = @{ F = 'Get-VmmPolicyReport';        D = 'OS policy: scope per host, management warnings [-Notice]' }
+        'order'    = @{ F = 'Set-VmmHostOrder';           D = 'work on a client-OS host by order -HostName x -Reason ".." | -Clear' }
         'set'      = @{ F = 'Set-VmmSetting';             D = 'change a setting       -Name Staging.SourceShare -Value "\\srv\share"' }
         'config'   = @{ F = 'Import-VmmConfig';           D = 'show config path / reload [-Path file]' }
     }

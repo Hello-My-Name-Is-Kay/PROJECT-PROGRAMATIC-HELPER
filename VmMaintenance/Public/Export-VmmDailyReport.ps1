@@ -34,6 +34,10 @@ function Export-VmmDailyReport {
             $row[$s.Name] = if ($st) { $st.Value.Status } else { '' }
         }
         $row['OpenBlockers'] = @($h.Blockers | Where-Object { -not $_.Resolved }).Count
+        $pol = Get-VmmHostPolicy -Record $h
+        $row['Policy'] = $pol.Scope
+        $row['ManagementWarning'] = ($pol.Warnings -join ' | ')
+        $row['ManagementNotified'] = $(if ($h.PSObject.Properties['PolicyNotice'] -and $h.PolicyNotice) { $h.PolicyNotice.Contact } elseif ($pol.Warnings) { 'NOT YET' } else { '' })
         $row['LastCheck'] = & $toZone $c.CheckedAt
         [pscustomobject]$row
     }

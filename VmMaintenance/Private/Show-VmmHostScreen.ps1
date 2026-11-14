@@ -20,6 +20,11 @@ function Show-VmmHostScreen {
             $mode = if ($s.Mode -eq 'Hybrid') { if ($rec.Azure) { 'auto' } else { 'guided' } } else { $s.Mode.ToLower() }
             @{ Text = ('{0}. {1,-12} {2,-10} {3,-7} {4,-8} {5}' -f $s.Order, $s.Name, $state, $mode, $(if ($allowed) { 'now' } else { 'window' }), $note); Color = $col }
         }
+        $pol = Get-VmmHostPolicy -Record $rec
+        if (-not $status) {
+            if (-not $pol.Workable) { $status = "POLICY: $($pol.Why)" }
+            elseif ($pol.Warnings) { $status = "WARN MANAGEMENT: $($pol.Warnings -join ' | ') (vmm policy -Notice)" }
+        }
         $open = @($rec.Blockers | Where-Object { -not $_.Resolved })
         if ($open) { $status = "Open blocker: $($open[-1].Step) - $($open[-1].Summary) (contact: $($open[-1].Contact))" }
         $r = Invoke-VmmListView -Title $facts -ColumnHeader ('   {0,-12} {1,-10} {2,-7} {3,-8} {4}' -f 'Step', 'Status', 'Mode', 'Allowed', 'Note') `

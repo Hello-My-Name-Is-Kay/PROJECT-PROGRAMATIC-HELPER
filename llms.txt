@@ -8,6 +8,7 @@ Rules an assistant must keep when changing this code:
 - Never store usernames, passwords or tokens. Credentials live only in $script:VmmCredentials for the session.
 - Never put real environment values in the repo; they live in %APPDATA%\VmMaintenance\config.psd1.
 - Errors: throw (New-VmmErrorRecord -Activity -Target -Exception -Cause -Fix -ErrorId 'Vmm...').
+- OS policy (Get-VmmHostPolicy): target Windows Server 2019; client OS untouched unless ordered; warn management on Server 2008 non-R2 and physical; disk expand after hours only.
 - Host changes go through Assert-VmmWindow (Lisbon business hours: checks + staging only).
 - Mark security decisions with [SEC] comments; planned extensions with TODO-FUTURE.
 - Regenerate FunctionsToExport in VmMaintenance.psd1 when adding a Public file.

@@ -1,8 +1,15 @@
-<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, checkpoint snapshots and prune, blockers, daily target, host agent steps. SECTIONS: Steps:7-25 | Time rules Europe/Lisbon:26-43 | Snapshot after every success:44-72 | Blockers:73-85 | Daily target:86-91 | Inside the host the host age:92-111 -->
+<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, checkpoint snapshots and prune, blockers, daily target, host agent steps. SECTIONS: OS policy:7-13 | Steps:14-32 | Time rules Europe/Lisbon:33-53 | Snapshot after every success:54-82 | Blockers:83-95 | Daily target:96-101 | Inside the host the host age:102-121 -->
 # Workflow
 
 How one host moves from "imported" to "done", what the time rules allow, where snapshots
 are taken and when they are pruned.
+
+## OS policy
+
+Goal: Windows Server 2019 on every machine. Client OS (Windows 10/11...) is skipped unless an order
+is recorded (`vmm order`). Hosts already on 2019 or newer are left out. Management is warned about
+Windows Server 2008 (not R2) and physical machines (`vmm policy -Notice`). Read-only steps run on every
+host; Stage and change steps only on hosts in scope.
 
 ## Steps
 
@@ -33,6 +40,9 @@ daylight saving handled by Windows).
 | Mon-Fri 08:00-16:59 | Yes | Yes, into `C:\Temp` only | Override only |
 | Mon-Fri before 08:00 / from 17:00 | Yes | Yes | Yes (`Schedule.AllowChangesOffHoursWeekdays`, default on) |
 | Saturday, Sunday, `Schedule.Holidays` | Yes | Yes | Yes |
+
+**Disk expansion** is never overridable in business hours (`Policy.ExpandDiskOverride = $false`): the
+Azure VM is shut down (deallocated), the OS disk resized and the VM started again.
 
 **Override**: `-Override -OverrideReason "<who approved, why>"` on the CLI, or type `OVERRIDE`
 and a reason in the console. The reason must be 10+ characters. Every override is written to
@@ -108,4 +118,4 @@ Change steps need the window or an override (typed `OVERRIDE` + reason), and the
 confirmation. The export carries every logged event; the laptop adds them to the host history and
 records host-side overrides in the daily report.
 
-_Last updated: 2026-11-14 03:30 UTC_
+_Last updated: 2026-11-14 03:34 UTC_

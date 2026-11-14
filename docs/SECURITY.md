@@ -66,4 +66,4 @@ in PowerShell 7; `Update-AzConfig -LoginExperienceV2`; `Invoke-AzVMRunCommand -S
 `Set-Clipboard -Path`; `vpncli.exe` output parsing on your Cisco Secure Client version; Foundry Local's
 port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the `icacls` ACL; Pester 5 tests.
 
-_Last updated: 2026-11-14 03:30 UTC_
+_Last updated: 2026-11-14 03:34 UTC_

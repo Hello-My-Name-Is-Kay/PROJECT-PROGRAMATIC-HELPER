@@ -87,6 +87,7 @@
     "Get-VmmDailyProgress",
     "Get-VmmFleet",
     "Get-VmmLansweeperDiskSpace",
+    "Get-VmmPolicyReport",
     "Get-VmmRdpGuide",
     "Get-VmmServerPlatform",
     "Get-VmmTimeWindow",
@@ -109,6 +110,7 @@
     "Remove-VmmFleetHost",
     "Resolve-VmmBlocker",
     "Select-VmmAzureContext",
+    "Set-VmmHostOrder",
     "Set-VmmSetting",
     "Start-VmmConsole",
     "Start-VmmSetupWizard",
@@ -141,6 +143,7 @@
     "Get-VmmExtendScript",
     "Get-VmmHostCheckScript",
     "Get-VmmHostHealth",
+    "Get-VmmHostPolicy",
     "Get-VmmHostRecord",
     "Get-VmmHostStage",
     "Get-VmmNextDiskTier",
@@ -224,5 +227,16 @@
     "Tools/Invoke-SmokeTest.ps1",
     "tests/VmMaintenance.Tests.ps1"
   ],
-  "status": "Written and statically checked; not yet executed in PowerShell."
+  "status": "Written and statically checked; not yet executed in PowerShell.",
+  "creator": "Kay (GitHub: Hello-My-Name-Is-Kay)",
+  "os_policy": {
+    "target": "Windows Server 2019",
+    "skip_unless_ordered": "client OS (Windows 10/11 ...)",
+    "never_downgrade": "Server 2022/2025",
+    "warn_management": [
+      "Windows Server 2008 (not R2)",
+      "physical machines"
+    ],
+    "disk_expand": "Azure, after business hours only, no override (VM deallocated)"
+  }
 }

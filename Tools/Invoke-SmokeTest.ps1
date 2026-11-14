@@ -150,6 +150,14 @@ Test-Step 'Lisbon time zone id resolves (GMT Standard Time)' {
     [void][System.TimeZoneInfo]::FindSystemTimeZoneById('GMT Standard Time'); $true
 }
 
+Test-Step 'Policy: Windows 10 is skipped, 2008 (not R2) and physical warn, 2019 is at target' {
+    $r = & $m {
+        $mk = { param($os, $plat) $h = New-VmmHostRecord -Name 'x'; $h.Platform = $plat; $h.Check = [pscustomobject]@{ OS = $os }; Get-VmmHostPolicy -Record $h }
+        @((& $mk 'Microsoft Windows 10 Pro' 'VMware').Scope, (& $mk 'Microsoft Windows Server 2019 Standard' 'Azure').Scope,
+          @((& $mk 'Microsoft Windows Server 2008 Enterprise' 'Physical').Warnings).Count, @((& $mk 'Microsoft Windows Server 2008 R2 Enterprise' 'VMware').Warnings).Count)
+    }
+    Assert-Equal ($r -join ',') 'ClientOs,AtTarget,2,0' 'policy'
+}
 Test-Step 'Find-VmmPlaceholder finds nested <placeholder>' {
     Assert-Equal (& $m { Find-VmmPlaceholder -Value @{ A = @{ B = @('x', '<your-share>') } } }) '<your-share>' 'placeholder'
 }

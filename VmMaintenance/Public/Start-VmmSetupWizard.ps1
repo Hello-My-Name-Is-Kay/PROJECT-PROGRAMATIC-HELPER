@@ -90,7 +90,9 @@ function Start-VmmSetupWizard {
             [void](& $ask 'Workflow.CheckpointRetentionDays' 'Days before checkpoints may be pruned' '7' 'int')
             [void](& $ask 'Upgrade.Mode' 'Upgrade run by' 'Guided' 'choice' @('Guided', 'RunCommand'))
             [void](& $ask 'Upgrade.CommandLine' 'Exact upgrade command (shown in guides and the host agent; empty = later)' '')
-            [void](& $ask 'Upgrade.ExpectedOs' 'Verify passes only if the OS matches (wildcards, e.g. *Server 2019*)' '')
+            [void](& $ask 'Upgrade.ExpectedOs' 'Verify passes only if the OS matches (wildcards)' '*Server 2019*')
+            [void](& $ask 'Policy.TargetOs' 'Target OS for every machine (client OS is skipped unless ordered)' '*Server 2019*')
+            [void](& $ask 'Policy.WarnPhysical' 'Warn management about physical machines' 'True' 'bool')
         }
         if (& $want 'Access') {
             & $title 'Access' @('Prompt = you type a host admin account each session (memory only). CurrentUser = your logged-on Windows identity.')
