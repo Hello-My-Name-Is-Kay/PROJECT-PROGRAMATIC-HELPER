@@ -206,7 +206,7 @@ Describe 'Media repository (ISO root + one folder per host)' {
         @($pk | Where-Object Gate).Count | Should -Be 0
     }
     It 'closes the gate with the exact file name when the language image is missing' {
-        $pk = InModuleScope VmMaintenance { @(Get-VmmStagingPackage -Record ([pscustomobject]@{ Name = 'SERVER_09'; Check = [pscustomobject]@{ OS = 'x'; Lang = 'pt-PT'; Sql = 'none' }; Baseline = $null })) }
+        $pk = @(InModuleScope VmMaintenance { Get-VmmStagingPackage -Record ([pscustomobject]@{ Name = 'SERVER_09'; Check = [pscustomobject]@{ OS = 'x'; Lang = 'pt-PT'; Sql = 'none' }; Baseline = $null }) })
         $pk.Count | Should -Be 1
         $pk[0].Gate | Should -Match 'Win_Server_2019_PT_PT\.iso'
         $pk[0].Gate | Should -Match 'EN-US, FR-FR'
