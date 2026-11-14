@@ -282,6 +282,38 @@ if (-not $isWin) {
             if ($h.InventoryAuto.PSObject.Properties['Bogus']) { throw 'unknown inventory key accepted' }
             Assert-Equal $h.Steps.Precheck.Status 'Success' 'precheck from extraction'
         }
+        Test-Step 'Log: line encrypted on disk, readable with vmm log' {
+            & $m { Write-VmmLog 'smoke log line for LOGHOST-77' -Level Info -FileOnly }
+            $f = Get-ChildItem -LiteralPath (Join-Path $tmpRoot 'logs') -Filter 'vmm_*.log' | Select-Object -First 1
+            if (-not $f) { throw 'no day log written' }
+            $raw = [IO.File]::ReadAllText($f.FullName)
+            if ($raw -match 'LOGHOST-77') { throw 'host name in plaintext in the log file' }
+            if ($raw -notmatch '(?m)^E1:') { throw 'log line not encrypted' }
+            $e = @(& $m { Get-VmmLog -PassThru -Find 'LOGHOST-77' -Tail 10 })
+            Assert-Equal $e.Count 1 'lines found'
+            Assert-Equal $e[0].Level 'Info' 'level'
+        }
+        Test-Step 'Parallel run: results plus live progress lines in the log' {
+            $r = @(& $m { Invoke-VmmParallel -InputObject @('A1', 'A2', 'A3') -Throttle 2 -Activity 'Smoke' -ScriptText 'param($Name, $A) $A.Trace.Enqueue("${Name}: step one"); Start-Sleep -Milliseconds 300; [pscustomobject]@{ Name = $Name }' })
+            Assert-Equal (@($r.Name | Sort-Object) -join ',') 'A1,A2,A3' 'results'
+            $buf = @(& $m { $script:VmmLogBuffer | ForEach-Object Text })
+            if (-not ($buf -match '^A2: step one$')) { throw 'step line missing' }
+            if (-not ($buf -match '^A3: finished in')) { throw 'finished line missing' }
+            if (-not ($buf -match '^Smoke: all 3 finished')) { throw 'summary line missing' }
+            $true
+        }
+        Test-Step 'Maintenance: backup, list, restore, diagnose' {
+            $b = & $m { Invoke-VmmMaintenance -Action Backup -Quiet -PassThru -Confirm:$false }
+            if (-not (Test-Path -LiteralPath $b)) { throw 'no backup file' }
+            $l = @(& $m { Invoke-VmmMaintenance -Action ListBackups -PassThru })
+            if ($l[0].Hosts -lt 1) { throw "backup host count: $($l[0].Hosts)" }
+            & $m { param($f) Invoke-VmmMaintenance -Action Restore -BackupFile $f -Confirm:$false } ([IO.Path]::GetFileName($b))
+            if (-not (Test-Path -LiteralPath (Join-Path $tmpRoot 'data\fleet.vmm.before-restore'))) { throw 'no before-restore copy' }
+            $d = @(& $m { Invoke-VmmMaintenance -Action Diagnose -PassThru -Quiet })
+            $bad = @($d | Where-Object { $_.Check -in 'Data key', 'Fleet store' -and $_.Status -ne 'OK' })
+            if ($bad) { throw ($bad | ForEach-Object { "$($_.Check): $($_.Detail)" }) -join '; ' }
+            $true
+        }
         Test-Step 'Fleet store file contains no plaintext host name' {
             $f = Get-ChildItem -LiteralPath (Join-Path $tmpRoot 'data') -Filter '*.vmm' | Select-Object -First 1
             if (-not $f) { throw 'no .vmm file written' }

@@ -4,7 +4,7 @@ function Get-VmmPath {
     #   Data    = %LOCALAPPDATA%\VmMaintenance\data       (encrypted fleet store + DPAPI-protected key)
     #   Reports = %LOCALAPPDATA%\VmMaintenance\Reports    (daily CSV/HTML, blocker reports - plaintext by design)
     [CmdletBinding()]
-    param([Parameter(Mandatory)][ValidateSet('Config', 'Data', 'Reports', 'Blockers', 'Daily', 'Agents', 'Logs')][string]$Name)
+    param([Parameter(Mandatory)][ValidateSet('Config', 'Data', 'Reports', 'Blockers', 'Daily', 'Agents', 'Logs', 'Backups')][string]$Name)
     $local = [Environment]::GetFolderPath('LocalApplicationData')
     $path = switch ($Name) {
         'Config'   { Split-Path -Path (Get-VmmDefaultConfigPath) -Parent }
@@ -13,7 +13,8 @@ function Get-VmmPath {
         'Blockers' { Join-Path (Get-VmmPath -Name Reports) 'Blockers' }
         'Daily'    { Join-Path (Get-VmmPath -Name Reports) 'Daily' }
         'Agents'   { Join-Path (Split-Path -Path (Get-VmmPath -Name Data) -Parent) 'agents' }   # generated host agents (short-lived)
-        'Logs'     { Join-Path (Split-Path -Path (Get-VmmPath -Name Data) -Parent) 'logs' }     # sanitized error log
+        'Logs'     { Join-Path (Split-Path -Path (Get-VmmPath -Name Data) -Parent) 'logs' }     # day logs (encrypted) + sanitized error log
+        'Backups'  { Join-Path (Get-VmmPath -Name Data) 'backups' }                                 # encrypted fleet store copies
     }
     Resolve-VmmWorkDir -Path $path
 }

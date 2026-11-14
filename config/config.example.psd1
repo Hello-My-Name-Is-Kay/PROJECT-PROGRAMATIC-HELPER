@@ -114,6 +114,21 @@
         AutoImport   = $true                       # import them when vmm starts (also: E in the menu, vmm inbox)
     }
 
+    Log = @{
+        # Everything vmm does goes to one file per day in the logs folder (read it with: vmm log, L in the menu, F3 anywhere).
+        Live             = $true    # live log pane at the bottom of every screen + progress lines; F2 toggles it on any screen
+        PaneLines        = 6        # rows of the pane (2-20)
+        HeartbeatSeconds = 5        # long operations say what they are waiting on this often
+        ToFile           = $true
+        Encrypt          = $true    # lines encrypted with the store key (host names and IPs are in them)
+        KeepDays         = 30
+    }
+
+    Maintenance = @{
+        AutoBackup  = $true         # one encrypted copy of the fleet store per day, made when vmm starts
+        KeepBackups = 14
+    }
+
     Inventory = @{
         # 24-column server inventory (column list, order and help texts: VmMaintenance\Resources\InventoryFields.psd1).
         # Values typed here apply to every host that has no value of its own (empty = ask per host).

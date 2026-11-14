@@ -19,6 +19,8 @@ function Show-VmmMainMenu {
         @{ K = 'A'; T = 'Assistant         optional AI help: explain an error, next step (off by default)' }
         @{ K = 'W'; T = 'Setup wizard      all options page by page, with explanations' }
         @{ K = 'U'; T = 'GitHub / updates  update vmm, sign in, report an issue, pull request' }
+        @{ K = 'L'; T = 'Log               everything vmm did today, live (F2 shows/hides the log pane on any screen)' }
+        @{ K = 'M'; T = 'Maintenance       diagnose vmm, check/back up/restore the fleet store, clean logs and temp files' }
         @{ K = 'H'; T = 'Help              keys, rules, where files live' }
         @{ K = 'Q'; T = 'Quit              clears session credentials from memory' }
     )
@@ -83,6 +85,8 @@ function Show-VmmMainMenu {
                       $a = Read-VmmPrompt 'E = export CSV, M = missing only, a host name = its columns, Enter = back'
                       if ($a -match '^[eE]$') { Get-VmmInventory -Export } elseif ($a -match '^[mM]$') { Get-VmmInventory -Missing } elseif ($a) { Get-VmmInventory -HostName $a }
                   }) }
+            'L' { Show-VmmLogScreen; Clear-Host }
+            'M' { Show-VmmMaintenanceScreen }
             'H' { Show-VmmHelpScreen }
             'Q' { return }
         }

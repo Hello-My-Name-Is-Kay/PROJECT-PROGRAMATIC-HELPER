@@ -5,6 +5,8 @@ function Show-VmmHelpScreen {
     $lines = @(
         'KEYS: arrows/PgUp/PgDn/Home/End move, Enter or click opens, double-click opens, wheel scrolls, Esc goes back.'
         'Letters shown in the bottom bar run actions on the selected row.'
+        'F2 on any screen shows/hides the live log pane (also the progress lines of long operations). F3 = full log.'
+        'Everything is also written to an encrypted day log: vmm log (-Follow for live in a 2nd window). M = maintenance.'
         ''
         'TIME RULES (Settings > Schedule):'
         '  Mon-Fri business hours: checks + staging to C:\Temp only. Changes need OVERRIDE + reason (recorded, reported).'
@@ -24,6 +26,7 @@ function Show-VmmHelpScreen {
         "FILES: config $script:VmmConfigPath"
         "       data   $(Get-VmmPath -Name Data)"
         "       reports $(Get-VmmPath -Name Reports)"
+        "       logs   $(Get-VmmPath -Name Logs)"
         ''
         'CLI: every action exists as a command - run: vmm help'
     )

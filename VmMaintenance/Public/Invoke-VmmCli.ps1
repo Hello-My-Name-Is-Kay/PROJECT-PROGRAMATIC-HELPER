@@ -64,6 +64,8 @@ function Invoke-VmmCli {
         'clone'    = @{ F = 'Install-VmmSourceClone';     D = 'clone the repo for updates/PRs [-Path dir]' }
         'issue'    = @{ F = 'New-VmmGitHubIssue';         D = 'open an issue [-FromErrorLog] [-Title ..] [-Body ..]' }
         'pr'       = @{ F = 'New-VmmGitHubPullRequest';   D = 'pull request from a branch [-NewBranch x -Message ..] [-Title ..] [-Draft]' }
+        'log'      = @{ F = 'Get-VmmLog';                 D = 'the vmm log            [-Follow] [-Tail 200] [-Level Error] [-Find text] [-Date yyyy-MM-dd] [-List] [-Export]' }
+        'maint'    = @{ F = 'Invoke-VmmMaintenance';      D = 'maintenance of vmm     -Action Diagnose|CheckStore|Backup|ListBackups|Restore|CleanLogs|CleanTemp|ResetUi' }
         'set'      = @{ F = 'Set-VmmSetting';             D = 'change a setting       -Name Staging.SourceShare -Value "\\srv\share"' }
         'config'   = @{ F = 'Import-VmmConfig';           D = 'show config path / reload [-Path file]' }
     }
@@ -77,6 +79,8 @@ function Invoke-VmmCli {
         throw (New-VmmErrorRecord -Activity "Unknown command '$Command'." -Fix 'Run: vmm help' -Category InvalidArgument -ErrorId 'VmmCliUnknown')
     }
     $fn = $map[$Command].F
+    # Option names only: values can be host names (they are in the encrypted log anyway, but keep it short)
+    if ($Command -ne 'ui') { Write-VmmLog ("Command: vmm {0} {1}" -f $Command, (@($p.Keys | ForEach-Object { "-$_" }) -join ' ')) -Level Muted -FileOnly }
     if ($Command -eq 'config' -and -not $p.Count) { Import-VmmConfig; return }
     & $fn @p
 }

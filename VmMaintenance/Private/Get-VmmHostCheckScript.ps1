@@ -12,15 +12,19 @@ $r = [ordered]@{
     Manufacturer = $null; Model = $null; Platform = $null; CTotalGB = $null; CFreeGB = $null
     PendingReboot = $null; Sql = ''; Software = ''; Inv = $null; Error = $null
 }
+# Live log: each step goes to the laptop's log as it happens (Invoke-VmmParallel drains the queue)
+$say = { param($m) if ($A.Trace) { $A.Trace.Enqueue("${Name}: $m") } }
 # Connect by the FQDN from the import file when there is one; if the name does not resolve, use the imported IP.
 $conn = if ($A.Addr -and $A.Addr[$Name]) { $A.Addr[$Name] } else { $Name }
+& $say "resolving $conn"
 try {
     $ip = [System.Net.Dns]::GetHostAddresses($conn) | Where-Object { $_.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1
     if (-not $ip) { throw 'no IPv4 address' }
     $r.IPv4 = "$ip"
+    & $say "address $ip"
 } catch {
-    if ($A.IpMap -and $A.IpMap[$Name]) { $conn = $A.IpMap[$Name]; $r.IPv4 = $conn }
-    else { $r.Error = "DNS: $conn does not resolve from this laptop ($($_.Exception.InnerException.Message)). Import the host with its FQDN or IP (vmm import -Path hosts.csv)."; return [pscustomobject]$r }
+    if ($A.IpMap -and $A.IpMap[$Name]) { $conn = $A.IpMap[$Name]; $r.IPv4 = $conn; & $say "name does not resolve, using the imported IP $conn" }
+    else { & $say 'stopped: name does not resolve and no IP was imported'; $r.Error = "DNS: $conn does not resolve from this laptop ($($_.Exception.InnerException.Message)). Import the host with its FQDN or IP (vmm import -Path hosts.csv)."; return [pscustomobject]$r }
 }
 
 try { $png = New-Object System.Net.NetworkInformation.Ping; if ($png.Send($conn, $A.TimeoutMs).Status -eq 'Success') { $r.Ping = 'Yes' } } catch { } finally { if ($png) { $png.Dispose() } }
@@ -31,7 +35,9 @@ foreach ($port in $A.Ports) {
     try { $ar = $c.BeginConnect($conn, [int]$port, $null, $null); if ($ar.AsyncWaitHandle.WaitOne($A.TimeoutMs) -and $c.Connected) { $open += $port } } catch { } finally { $c.Close() }
 }
 $r.Ports = $open -join ','
+& $say ("ping {0}, open ports: {1}" -f $r.Ping, $(if ($open) { $open -join ',' } else { 'none' }))
 if ($open -notcontains 135) {
+    & $say 'stopped: TCP 135 (RPC) closed, WMI checks skipped'
     $r.Reachable = if ($r.Ping -eq 'Yes' -or $open) { 'Partial' } else { 'No' }
     $r.Error = 'TCP 135 (RPC) closed: WMI/DCOM checks skipped. Host down, firewall, or RDP-only access - use the RDP collector.'
     return [pscustomobject]$r
@@ -39,6 +45,7 @@ if ($open -notcontains 135) {
 
 $s = $null
 try {
+    & $say 'connecting over WMI/DCOM'
     $sp = @{ ComputerName = $conn; SessionOption = (New-CimSessionOption -Protocol Dcom); ErrorAction = 'Stop'; OperationTimeoutSec = 30 }
     if ($A.Credential) { $sp.Credential = $A.Credential }
     $s = New-CimSession @sp
@@ -52,6 +59,7 @@ try {
     $r.LastBoot = if ($os.LastBootUpTime) { ([datetime]$os.LastBootUpTime).ToUniversalTime().ToString('o') } else { $null }
     $r.Manufacturer = $cs.Manufacturer; $r.Model = $cs.Model
     $r.CTotalGB = [math]::Round($c.Size / 1GB, 1); $r.CFreeGB = [math]::Round($c.FreeSpace / 1GB, 1)
+    & $say ("{0}, C: {1} GB free of {2} GB" -f $r.OS, $r.CFreeGB, $r.CTotalGB)
 
     if ($cs.Manufacturer -like '*VMware*') { $r.Platform = 'VMware' }
     elseif ($cs.Model -like '*Virtual Machine*' -and $cs.Manufacturer -like '*Microsoft*') {
@@ -65,6 +73,7 @@ try {
     $str = { param($k, $v) (& $reg 'GetStringValue' @{ hDefKey = $hk; sSubKeyName = $k; sValueName = $v }).sValue }
 
     # SQL Server instances: name, version (PatchLevel), edition
+    & $say 'reading SQL instances and pending reboot (registry)'
     $inst = & $reg 'EnumValues' @{ hDefKey = $hk; sSubKeyName = 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' }
     if ($inst.ReturnValue -eq 0 -and $inst.sNames) {
         $r.Sql = (@(foreach ($n in $inst.sNames) {
@@ -88,11 +97,13 @@ try {
     $inv.Domain = if ($cs.PartOfDomain) { "$($cs.Domain)" } else { "WORKGROUP ($($cs.Domain))" }
     $inv.DomainController = if ($cs.DomainRole -ge 4) { 'Yes' } else { 'No' }
     $names = @{ 0 = 'Unlicensed'; 1 = 'Licensed'; 2 = 'Grace period (OOB)'; 3 = 'Grace period (OOT)'; 4 = 'Grace period (non-genuine)'; 5 = 'Notification'; 6 = 'Grace period (extended)' }
+    & $say 'Windows licence query (can take up to 90 s)'
     try {
         $lp = @(Get-CimInstance -CimSession $s -ClassName SoftwareLicensingProduct -Filter "Name LIKE 'Windows%' AND PartialProductKey IS NOT NULL" -Property LicenseStatus -OperationTimeoutSec 90 -ErrorAction Stop)
         $inv.WindowsLicense = if ($lp.Count) { $names[[int]$lp[0].LicenseStatus] } else { 'No product key installed' }
     } catch { }
     if ($A.Services -and $A.Services.Count) {
+        & $say 'inventory agent services'
         try {
             $svc = @(Get-CimInstance -CimSession $s -ClassName Win32_Service -Property Name, DisplayName, State -ErrorAction Stop)
             foreach ($k in @($A.Services.Keys)) {
@@ -112,6 +123,7 @@ try {
 
     # Watched software (only names matching Fleet.SoftwareWatch)
     if ($A.Watch) {
+        & $say 'installed software (watch list)'
         $found = @()
         foreach ($root in 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall') {
             $keys = & $reg 'EnumKey' @{ hDefKey = $hk; sSubKeyName = $root }
@@ -127,6 +139,7 @@ try {
 } catch {
     if ($r.Reachable -ne 'Yes') { $r.Reachable = 'Partial' }
     $r.Error = "CIM/DCOM: $($_.Exception.Message)"
+    & $say "WMI error: $($_.Exception.Message)"
 } finally { if ($s) { Remove-CimSession -CimSession $s -ErrorAction SilentlyContinue } }
 [pscustomobject]$r
 '@

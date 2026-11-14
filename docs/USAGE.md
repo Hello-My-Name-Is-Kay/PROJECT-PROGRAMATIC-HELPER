@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | Every morning business hours:19-34 | Evening weekend all steps:35-42 | Problems:43-52 | End of day:53-57 | Updates and GitHub:58-62 | Tests:63-71 -->
+<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | Every morning business hours:19-34 | Evening weekend all steps:35-42 | Problems:43-54 | End of day:55-59 | Updates and GitHub:60-64 | Tests:65-73 -->
 # Usage - daily runbook
 
 ## Once
@@ -48,7 +48,9 @@ check the preview, confirm, let it delete the plaintext file. Then `3` Check fle
 | Change needed in business hours | Only with agreement: `OVERRIDE` + reason (logged, in the daily report) |
 | Azure sign-in stuck on the tenant picker | `5` Azure (picker is turned off for the process); or `vmm azure -DeviceCode` |
 | VPN up but hosts time out | `vmm vpn` shows Degraded when the probe host does not answer: DNS / split tunnel |
-| Store cannot be decrypted | See SECURITY.md (DPAPI limits); restore `fleet.vmm.bak` or re-import |
+| Store cannot be decrypted | See SECURITY.md (DPAPI limits); `M` > `R` restores a daily backup (or `fleet.vmm.bak`), else re-import |
+| Looks stuck | Watch the live log (bottom of the screen, `F2` if hidden): it names the host and step it is waiting on every 5 s. `vmm log -Follow` in a second window shows the same |
+| vmm itself misbehaves | `M` > `D` diagnose; `vmm log -Level Error`; `vmm issue -FromErrorLog` sends the errors as a ticket |
 
 ## End of day
 
@@ -68,4 +70,4 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1      # before any commit or push
 ```
 
-_Last updated: 2026-11-14 04:56 UTC_
+_Last updated: 2026-11-14 11:53 UTC_

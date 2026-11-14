@@ -331,6 +331,28 @@ Describe 'Logging and errors' {
         $e.Exception.Message | Should -Match 'Doing X'
         $e.Exception.Message | Should -Match 'Do Y'
     }
+    It 'every log line lands in the live pane buffer, secrets masked' {
+        $b = InModuleScope VmMaintenance {
+            $saved = $script:VmmConfig; $script:VmmConfig = @{ Log = @{ ToFile = $false } }
+            Write-VmmLog 'pane test password=Hunter2' -Level Warn -FileOnly
+            $script:VmmConfig = $saved
+            $script:VmmLogBuffer[-1]
+        }
+        $b.Level | Should -Be 'Warn'
+        $b.Text | Should -Match 'pane test'
+        $b.Text | Should -Not -Match 'Hunter2'
+    }
+    It 'live log follows the session switch first, then the setting' {
+        InModuleScope VmMaintenance {
+            $saved = $script:VmmConfig; $script:VmmConfig = @{ Log = @{ ToFile = $false; Live = 'false' } }
+            $script:VmmLogLive = $null
+            $a = Test-VmmLogLive
+            $script:VmmLogLive = $true
+            $b = Test-VmmLogLive
+            $script:VmmLogLive = $null; $script:VmmConfig = $saved
+            "$a,$b"
+        } | Should -Be 'False,True'
+    }
 }
 
 Describe 'Encrypted store' -Skip:(-not (($PSVersionTable.PSEdition -eq 'Desktop') -or $IsWindows)) {

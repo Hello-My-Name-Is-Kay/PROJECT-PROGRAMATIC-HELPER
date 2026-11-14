@@ -30,6 +30,14 @@ function Start-VmmConsole {
             }
         } catch { }
     }
+    # Log: session start; one encrypted fleet store backup per day
+    Write-VmmLog ("vmm {0} started (PowerShell {1}, console {2}x{3}, live log {4})" -f (Get-Module VmMaintenance).Version, $PSVersionTable.PSVersion, [Console]::WindowWidth, [Console]::WindowHeight, $(if (Test-VmmLogLive) { 'on' } else { 'off' })) -Level Muted -FileOnly
+    if (Get-VmmSetting 'Maintenance.AutoBackup' -Default $true) {
+        try {
+            $today = 'fleet_{0}_*.vmm' -f (Get-Date).ToString('yyyyMMdd')
+            if (-not (Get-ChildItem -LiteralPath (Get-VmmPath -Name Backups) -Filter $today -File -ErrorAction SilentlyContinue)) { Invoke-VmmMaintenance -Action Backup -Quiet -Confirm:$false | Out-Null }
+        } catch { Write-VmmLog "Daily backup skipped: $($_.Exception.Message)" -Level Warn -FileOnly }
+    }
     # Extractor results copied to Desktop/Downloads are imported before the menu shows
     $script:VmmInboxNotice = ''
     if (Get-VmmSetting 'Collect.AutoImport' -Default $true) { try { Import-VmmResultInbox -Quiet | Out-Null } catch { } }
@@ -47,5 +55,6 @@ function Start-VmmConsole {
         [Console]::CursorVisible = $true
         Clear-Host
         Write-VmmLog 'vmm closed. Session credentials cleared from memory.' -Level Success
+        Write-VmmLog "Log of this session: vmm log  (file: $(try { Get-VmmPath -Name Logs } catch { '?' }))" -Level Muted
     }
 }

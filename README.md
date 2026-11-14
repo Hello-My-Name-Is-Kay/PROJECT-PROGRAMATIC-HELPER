@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; TL;DR at the top. SECTIONS: TLDR:6-24 | Overview:25-43 | At a glance:44-60 | Quick start:61-84 | Adding machines external dat:85-107 | Media repository:108-136 | Server inventory:137-170 | Extractor the program on the:171-196 | Console UI:197-229 | CLI:230-274 | GitHub integration:275-291 | OS policy:292-306 | Workflow per host:307-320 | Directory tree:321-351 | Where your data lives never:352-366 | Testing:367-379 | Errors:380-393 | Future your work AI model wi:394-403 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-26 | Overview:27-45 | At a glance:46-62 | Quick start:63-86 | Adding machines external dat:87-109 | Media repository:110-138 | Server inventory:139-172 | Extractor the program on the:173-198 | Console UI:199-240 | CLI:241-287 | GitHub integration:288-304 | OS policy:305-319 | Workflow per host:320-333 | Directory tree:334-364 | Where your data lives never:365-381 | Testing:382-394 | Errors:395-408 | Future your work AI model wi:409-418 -->
 # VmMaintenance
 
 **Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.6.0 &nbsp;|&nbsp; **This file:** 2026-11-14
@@ -14,6 +14,8 @@
 - **New machines:** a CSV with three columns, *hostname or FQDN, domain, IP* (`,` or `;`, header optional). `0` in the menu (drag the file, or Enter to browse; preview, then confirm) or `vmm import -Path hosts.csv`. The check then connects by FQDN, or by IP when the name does not resolve.
 - **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
 - **Server inventory:** the 24-column team sheet per host. Read automatically where possible (check, Extractor), worked out from the workflow, else typed by you with a help window per column. `N` in the menu, `I` on a host, `vmm inventory -Export`. Help text unclear? `T` opens a GitHub issue.
+- **Live log on every screen:** the bottom rows show what vmm is doing right now; long operations (fleet check, staging copies, Azure jobs) print each host's step, each finished host with its time, and every 5 s who is still running. `F2` hides/shows it on any screen, `F3` opens the full log. Everything also goes to an encrypted day log: `vmm log`, `vmm log -Follow` in a second window.
+- **Maintenance:** `M` in the menu or `vmm maint`: diagnose vmm, check / back up / restore the fleet store (one backup a day is automatic), clean old logs and temp files.
 - **Day:** `V` VPN, `6` credentials, `3` check fleet, `4` staging gate, `1` plan. Target 10 machines per day, shown in the header.
 - **Two programs:** the **Manager** (`vmm`, your laptop) and the **Extractor** (a .ps1 you run on a remote host in RDP/RDM). Hosts the Manager cannot reach: copy the Extractor to the host's desktop, right-click > Run with PowerShell, copy the `VMM_<HOST>_<time>.vmm` file it leaves on the desktop back to your laptop's Desktop or Downloads. The Manager imports it by itself.
 - **Blocked by access:** `B` writes the manager report (clipboard); answer Sent / Later / Bypass; the queue moves on.
@@ -218,6 +220,8 @@ and today's progress bar with Azure context and credential state.
 | A | Assistant (optional AI) |
 | W | Setup wizard |
 | U | GitHub / updates: status, update, sign in, clone, issue, pull request |
+| L | Log: everything vmm did today (filter, another day, plaintext export) |
+| M | Maintenance: diagnose, check / back up / restore the fleet store, clean logs and temp files, log options |
 | H / Q | Help / Quit (clears session credentials) |
 
 On a host screen: Enter run step, `G` RDP guide, `X` Extractor with this host's plan, `P` import result (clipboard, then Desktop/Downloads), `Y` confirm a
@@ -226,6 +230,13 @@ guided step, `B` blocker report and move on, `R` resolve, `L` mstsc, `H` hold, `
 Arrows, PgUp/PgDn, Home/End move; Enter opens; Esc goes back; letters run the actions shown
 in the footer. Mouse: click selects, double-click opens, wheel scrolls (classic console and
 Windows Terminal; QuickEdit is turned off while the UI runs and restored on exit).
+
+**Live log (every screen).** The bottom `Log.PaneLines` rows (default 6) show the newest log lines as they
+happen. `F2` shows or hides the pane on any screen (remembered as `Log.Live`; `--no-log` for one run), `F3` opens
+the full log. While an action runs, its window is the live log: time-stamped progress lines say which host is at
+which step (DNS, ping, ports, WMI, licence query...), when each host finished and how long it took, and every
+`Log.HeartbeatSeconds` (5) how many are done and which hosts have been running longest, so a stuck host is obvious.
+Staging copies report MB done, speed and time left; Azure jobs say what they are waiting on.
 
 ## CLI
 
@@ -264,8 +275,10 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm issue [-FromErrorLog]` / `vmm pr [-NewBranch x -Message ..] [-Draft]` | Report an issue, open a pull request |
 | `vmm policy [-Notice]` | OS policy per host, management note |
 | `vmm order -HostName x -Reason ".."` / `-Clear` | Work on a client-OS host by order |
+| `vmm log [-Follow] [-Level Error] [-Find x] [-Date yyyy-MM-dd] [-List] [-Export]` | The log: last lines, live in a second window, filters, plaintext copy for a ticket |
+| `vmm maint -Action Diagnose` | Maintenance: `Diagnose`, `CheckStore`, `Backup`, `ListBackups`, `Restore -BackupFile x`, `CleanLogs [-All]`, `CleanTemp`, `ResetUi` |
 
-Global flags: `--no-mouse`, `--no-color`, `--config <file>`, `--debug-errors`, `--version`.
+Global flags: `--no-mouse`, `--no-color`, `--no-log`, `--config <file>`, `--debug-errors`, `--version`.
 Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the time window, 4 VPN down, 5 security check failed.
 Feature flags in the config (`Features.HostAgent`, `Features.Vpn`, `Features.Ai`) switch whole areas on or off.
 
@@ -361,6 +374,8 @@ VmMaintenance\
 | Inventory values | Inside the fleet store | Encrypted like the rest of the store; the export `Reports\Inventory\*.csv` is plaintext |
 | Agent key | `%LOCALAPPDATA%\VmMaintenance\data\agent.key` | RSA private key, DPAPI |
 | Built agents | `%LOCALAPPDATA%\VmMaintenance\agents\` | Plaintext plan for one host; older copies deleted on export |
+| Day logs | `%LOCALAPPDATA%\VmMaintenance\logs\vmm_<yyyyMMdd>.log` | Every line masked for secrets, then encrypted per line (store key); kept `Log.KeepDays` (30). `vmm log -Export` writes a plaintext copy to `Reports\Logs` |
+| Store backups | `%LOCALAPPDATA%\VmMaintenance\data\backups\fleet_<time>.vmm` | Encrypted copies of the store, one a day at start, 14 kept |
 | Error log | `%LOCALAPPDATA%\VmMaintenance\logs\errors.log` | Sanitized, 1 MB cap |
 | Credentials | Process memory only, as `PSCredential` | Never written; cleared on quit. VPN credentials go only to the VPN client |
 
@@ -373,7 +388,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1                                         # before every commit/push
 ```
 
-Status (2.6.0): the offline smoke test (214 checks) and Pester (64 tests) pass on GitHub's Windows runners in
+Status (2.7.0): the offline smoke test (214 checks) and Pester (64 tests) pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -400,4 +415,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 04:56 UTC_
+_Last updated: 2026-11-14 11:53 UTC_

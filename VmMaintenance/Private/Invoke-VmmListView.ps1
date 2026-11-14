@@ -1,7 +1,8 @@
 function Invoke-VmmListView {
     # Generic scrollable list screen. Handles arrows, PgUp/PgDn, Home/End, wheel, click (select),
     # click on the selected row or double-click (open). Returns @{ Action; Index } where Action is
-    # 'Enter', 'Esc' or one of -Hotkeys (upper-case char).
+    # 'Enter', 'Esc' or one of -Hotkeys (upper-case char). On every screen: F2 shows/hides the live
+    # log pane at the bottom (Log.PaneLines rows, refreshed as lines arrive), F3 opens the full log.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Title,
@@ -17,10 +18,18 @@ function Invoke-VmmListView {
     $offset = 0
     $lastSize = ''
     $dirty = $true
+    $lastSeq = -1
+    $paneLines = 6
+    try { $paneLines = [math]::Min(20, [math]::Max(2, [int](Get-VmmSetting 'Log.PaneLines' -Default 6))) } catch { }
+    $script:VmmTuiListActive = $true
+    try {
     while ($true) {
         $size = "$([Console]::WindowWidth)x$([Console]::WindowHeight)"
         if ($size -ne $lastSize) { Clear-Host; $lastSize = $size; $dirty = $true }
-        $visible = [math]::Max(3, [Console]::WindowHeight - $listTop - 3)
+        # Live log pane: shown when on (F2) and the window leaves at least 3 list rows
+        $paneTop = [Console]::WindowHeight - 3 - $paneLines
+        $pane = (Test-VmmLogLive) -and ($paneTop - $listTop) -ge 3
+        $visible = if ($pane) { $paneTop - $listTop } else { [math]::Max(3, [Console]::WindowHeight - $listTop - 3) }
         if ($Rows.Count) { $Selected = [math]::Max(0, [math]::Min($Selected, $Rows.Count - 1)) } else { $Selected = 0 }
         if ($Selected -lt $offset) { $offset = $Selected }
         if ($Selected -ge $offset + $visible) { $offset = $Selected - $visible + 1 }
@@ -40,8 +49,15 @@ function Invoke-VmmListView {
             }
             $more = if ($Rows.Count -gt $visible) { "  [$($Selected + 1)/$($Rows.Count)]" } else { '' }
             Write-VmmTuiLine -Row ([Console]::WindowHeight - 2) -Text (" $Status$more") -Fg Yellow
-            Write-VmmTuiLine -Row ([Console]::WindowHeight - 1) -Text " $Help" -Fg Black -Bg Gray
+            $logKey = if ($pane) { 'F2 hide log' } else { 'F2 show log' }
+            Write-VmmTuiLine -Row ([Console]::WindowHeight - 1) -Text " $Help | $logKey | F3 full log" -Fg Black -Bg Gray
+            if (-not $pane) { Write-VmmTuiLine -Row ([Console]::WindowHeight - 3) -Text '' }
+            $lastSeq = -1
             $dirty = $false
+        }
+        if ($pane -and $lastSeq -ne [int]$script:VmmLogSeq) {
+            Show-VmmLogPane -Top $paneTop -Lines $paneLines
+            $lastSeq = [int]$script:VmmLogSeq
         }
 
         $e = Read-VmmInput -TimeoutMs 1000
@@ -70,6 +86,8 @@ function Invoke-VmmListView {
                     35 { $Selected = $Rows.Count - 1; break }       # End
                     13 { return @{ Action = 'Enter'; Index = $Selected } }
                     27 { return @{ Action = 'Esc'; Index = $Selected } }
+                    113 { [void](Switch-VmmLogLive); Clear-Host; $lastSize = ''; break }   # F2
+                    114 { if (-not $script:VmmInLogScreen) { Show-VmmLogScreen; $script:VmmTuiListActive = $true; Clear-Host; $lastSize = '' }; break }   # F3
                     default {
                         $ch = "$($e.Char)".ToUpper()
                         if ($ch -and $Hotkeys -contains $ch) { return @{ Action = $ch; Index = $Selected } }
@@ -78,4 +96,5 @@ function Invoke-VmmListView {
             }
         }
     }
+    } finally { $script:VmmTuiListActive = $false }
 }

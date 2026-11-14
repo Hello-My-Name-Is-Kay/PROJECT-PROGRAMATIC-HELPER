@@ -1,7 +1,8 @@
 function Unprotect-VmmBytes {
     # Verifies the HMAC (constant-time) before decrypting. Any tampering or corruption is refused.
     [CmdletBinding()]
-    param([Parameter(Mandatory)][byte[]]$Bytes, [string]$Source = 'fleet store')
+    param([Parameter(Mandatory)][byte[]]$Bytes, [string]$Source = 'fleet store', [hashtable]$DataKey)
+    # -DataKey: a key from Get-VmmDataKey for many calls in a row (log viewer); the caller clears it.
     $bad = { param($why)
         New-VmmErrorRecord -Activity 'Encrypted file is damaged or was modified.' -Target $Source -Cause $why `
             -Fix 'Restore the file from a backup, or delete it to start an empty fleet store (host records are lost; re-import your list).' `
@@ -9,7 +10,7 @@ function Unprotect-VmmBytes {
     }
     if ($Bytes.Length -lt 68 -or [Text.Encoding]::ASCII.GetString($Bytes, 0, 4) -ne 'VMM1') { throw (& $bad 'Unknown format or truncated file.') }
 
-    $key = Get-VmmDataKey
+    $key = if ($DataKey) { $DataKey } else { Get-VmmDataKey }
     try {
         $bodyLen = $Bytes.Length - 32
         $h = New-Object System.Security.Cryptography.HMACSHA256 -ArgumentList (, $key.Mac)
@@ -32,7 +33,9 @@ function Unprotect-VmmBytes {
         } finally { $aes.Dispose() }
         return , $plain
     } finally {
-        [Array]::Clear($key.Enc, 0, 32)
-        [Array]::Clear($key.Mac, 0, 32)
+        if (-not $DataKey) {
+            [Array]::Clear($key.Enc, 0, 32)
+            [Array]::Clear($key.Mac, 0, 32)
+        }
     }
 }

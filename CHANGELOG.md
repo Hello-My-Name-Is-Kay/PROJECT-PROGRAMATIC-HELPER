@@ -1,5 +1,23 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.6.0 - 2026-11-14:4-12 | 2.5.0 - 2026-11-14:13-25 | 2.4.0 - 2026-11-14:26-36 | 2.3.0 - 2026-11-14:37-51 | 2.2.1 - 2026-11-14:52-58 | 2.2.0 - 2026-11-14:59-66 | 2.1.0 - 2026-11-14:67-84 | 2.0.0 - 2026-11-14:85-90 | 1.0.0 - 2026-11-14:91-95 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.7.0 - 2026-11-14:4-21 | 2.6.0 - 2026-11-14:22-29 | 2.5.0 - 2026-11-14:30-42 | 2.4.0 - 2026-11-14:43-53 | 2.3.0 - 2026-11-14:54-68 | 2.2.1 - 2026-11-14:69-75 | 2.2.0 - 2026-11-14:76-83 | 2.1.0 - 2026-11-14:84-101 | 2.0.0 - 2026-11-14:102-107 | 1.0.0 - 2026-11-14:108-112 -->
 # Changelog
+
+## 2.7.0 - 2026-11-14
+
+- Live log on every screen: the bottom rows of each menu show the newest log lines as they happen
+  (`Log.PaneLines`, default 6). `F2` shows/hides it on any screen (remembered as `Log.Live`, `--no-log` for one
+  run), `F3` opens the full log, `L` in the main menu too.
+- Long operations say what they are doing: the fleet check logs each host's step (DNS, ping, ports, WMI, SQL,
+  licence query, services, software), each finished host with its time, and every `Log.HeartbeatSeconds` (5)
+  how many are done and which hosts have been running longest. Staging copies show MB, speed and time left;
+  Azure jobs (snapshots, resize) say what they are still waiting on.
+- Everything goes to a day log `logs\vmm_<date>.log` (every line, the result of each action with its duration,
+  the tables an action printed, CLI commands), masked for secrets and encrypted per line with the store key.
+  `vmm log` reads it (`-Follow` live in a second window, `-Level`, `-Find`, `-Date`, `-List`, `-Export` plaintext
+  copy). Kept `Log.KeepDays` (30) days.
+- Maintenance tools (`M`, `vmm maint`): diagnose (versions, settings, data key, store, backups, logs, leftovers,
+  gh/Az, disk, console size), check the fleet store, back up / list / restore it, clean logs and temp files,
+  log options, reset the UI. One encrypted store backup is made per day at start (`Maintenance.AutoBackup`,
+  14 kept).
 
 ## 2.6.0 - 2026-11-14
 
@@ -91,4 +109,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 04:56 UTC_
+_Last updated: 2026-11-14 11:53 UTC_

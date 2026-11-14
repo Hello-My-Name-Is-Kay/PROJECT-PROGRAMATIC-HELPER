@@ -50,7 +50,7 @@ function Copy-VmmStagingPackage {
             if (Test-Path -LiteralPath $dest) { if ((Get-Item -LiteralPath $dest).Length -eq $srcLen) { $needCopy = $false } }
             if ($needCopy -and $PSCmdlet.ShouldProcess("$($rec.Name):$target", "Copy $($p.Name) ($($p.SizeMB) MB)")) {
                 Write-VmmLog "$($rec.Name): copying $($p.Name) ($($p.SizeMB) MB)..." -Level Info
-                Copy-Item -LiteralPath $p.File -Destination $dest -Force -ErrorAction Stop
+                Copy-VmmFileWithProgress -Source $p.File -Destination $dest -Label "$($rec.Name): $($p.Name)"
             }
             if ($p.Sha256 -and (Test-Path -LiteralPath $dest)) {
                 $h = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash

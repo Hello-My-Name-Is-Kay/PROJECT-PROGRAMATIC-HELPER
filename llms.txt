@@ -26,6 +26,8 @@ Rules an assistant must keep when changing this code:
 - [VmMaintenance/Public/Invoke-VmmCli.ps1](VmMaintenance/Public/Invoke-VmmCli.ps1): command map
 - [VmMaintenance/Public/Invoke-VmmWorkflowStep.ps1](VmMaintenance/Public/Invoke-VmmWorkflowStep.ps1): step engine
 - [VmMaintenance/Resources/VmmHostAgent.ps1](VmMaintenance/Resources/VmmHostAgent.ps1): program 2 (remote host)
+- [VmMaintenance/Private/Add-VmmLogEntry.ps1](VmMaintenance/Private/Add-VmmLogEntry.ps1): every log line (live pane buffer + encrypted day log)
+- [VmMaintenance/Public/Invoke-VmmMaintenance.ps1](VmMaintenance/Public/Invoke-VmmMaintenance.ps1): maintenance of vmm itself
 - [PROJECT.json](PROJECT.json): machine-readable summary
 
 ## CI

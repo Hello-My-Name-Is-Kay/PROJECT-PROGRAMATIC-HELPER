@@ -5,6 +5,7 @@
     Global flags (any position):
       --no-mouse     keyboard only in the console UI (this run)
       --no-color     plain output (this run)
+      --no-log       live log pane and progress lines off (this run; the log file is still written)
       --config PATH  use another config file (this run)
       --debug-errors also print the script location of unexpected errors
       --version      print the module version
@@ -20,12 +21,13 @@
 #>
 # Simple (non-advanced) script on purpose: -Options land in $args and are parsed by Invoke-VmmCli.
 $all = @($args)
-$flags = @{ NoMouse = $false; NoColor = $false; Config = $null; DebugErrors = $false; Version = $false }
+$flags = @{ NoMouse = $false; NoColor = $false; NoLog = $false; Config = $null; DebugErrors = $false; Version = $false }
 $rest = New-Object System.Collections.Generic.List[object]
 for ($i = 0; $i -lt $all.Count; $i++) {
     switch -Exact ("$($all[$i])") {
         '--no-mouse'     { $flags.NoMouse = $true }
         '--no-color'     { $flags.NoColor = $true }
+        '--no-log'       { $flags.NoLog = $true }
         '--debug-errors' { $flags.DebugErrors = $true }
         '--version'      { $flags.Version = $true }
         '--config'       { $i++; if ($i -lt $all.Count) { $flags.Config = "$($all[$i])" } }
