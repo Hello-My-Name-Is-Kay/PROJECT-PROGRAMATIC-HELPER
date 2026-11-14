@@ -17,10 +17,12 @@ function Invoke-VmmCli {
 
     # -Key value / -Switch pairs -> splat hashtable (a value may be an array from "a,b")
     $p = @{}
+    $order = New-Object System.Collections.Generic.List[string]   # options as typed (for the log line)
     for ($i = 0; $i -lt $Arguments.Count; $i++) {
         $a = $Arguments[$i]
         if ($a -is [string] -and $a -match '^-([A-Za-z]\w*):?$') {
             $k = $Matches[1]
+            if (-not $order.Contains($k)) { $order.Add($k) }
             $next = if ($i + 1 -lt $Arguments.Count) { $Arguments[$i + 1] } else { $null }
             if ($null -eq $next -or ($next -is [string] -and $next -match '^-[A-Za-z]')) { $p[$k] = $true }
             else {
@@ -98,7 +100,7 @@ function Invoke-VmmCli {
     if ($Command -eq 'ui') { try { & $fn @p } finally { if ($locked) { Exit-VmmInstanceLock } }; return }
     if ($Command -eq 'log') { & $fn @p; return }   # reading the log does not write to it
     # Option names only: values can be host names (they are in the encrypted log anyway, but keep it short)
-    $shown = ("vmm {0} {1}" -f $Command, (@($p.Keys | ForEach-Object { "-$_" }) -join ' ')).Trim()
+    $shown = ("vmm {0} {1}" -f $Command, (@($order | ForEach-Object { "-$_" }) -join ' ')).Trim()
     Write-VmmLog "Command: $shown" -Level Muted -FileOnly
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $failed = $null
