@@ -676,8 +676,8 @@ Describe 'Encrypted store' -Skip:(-not (($PSVersionTable.PSEdition -eq 'Desktop'
 Describe 'RDP / RDM handoff' {
     It 'the .rdp file carries no account and shares only the drives asked for' {
         $t = InModuleScope VmMaintenance { Get-VmmRdpFileText -Address 'srv01' -Drive 'C', 'd:' }
-        $t | Should -Match '(?m)^full address:s:srv01$'
-        $t | Should -Match '(?m)^drivestoredirect:s:C:\;D:\;$'
+        $t | Should -Match '(?m)^full address:s:srv01\r?$'
+        $t | Should -Match '(?m)^drivestoredirect:s:C:\\;D:\\;\r?$'
         $t | Should -Not -Match '(?im)^(username|password|domain)'
         { InModuleScope VmMaintenance { Get-VmmRdpFileText -Address 'srv01;x' } } | Should -Throw
     }

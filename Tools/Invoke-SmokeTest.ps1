@@ -464,11 +464,11 @@ try {
                                                      Handoff = @{ RdmPath = (Join-Path $r 'nope\RemoteDesktopManager.exe'); Client = 'Ask' } } } $tmpHand
     Test-Step '.rdp file: host, clipboard on, only the asked drive shared, no account in it' {
         $t = & $m { Get-VmmRdpFileText -Address 'srv01.corp.example' -Drive 'c' }
-        foreach ($want in '(?m)^full address:s:srv01\.corp\.example$', '(?m)^redirectclipboard:i:1$', '(?m)^drivestoredirect:s:C:\;$', '(?m)^prompt for credentials:i:1$') {
+        foreach ($want in '(?m)^full address:s:srv01\.corp\.example\r?$', '(?m)^redirectclipboard:i:1\r?$', '(?m)^drivestoredirect:s:C:\\;\r?$', '(?m)^prompt for credentials:i:1\r?$') {
             if ($t -notmatch $want) { throw "no line matching $want" }
         }
         if ($t -match '(?im)^(username|password|domain)') { throw 'account data in the .rdp file' }
-        if ((& $m { Get-VmmRdpFileText -Address 'srv01' }) -notmatch '(?m)^drivestoredirect:s:$') { throw 'drives shared without -Drive' }
+        if ((& $m { Get-VmmRdpFileText -Address 'srv01' }) -notmatch '(?m)^drivestoredirect:s:\r?$') { throw 'drives shared without -Drive' }
         $true
     }
     Test-Step '.rdp file: an address with spaces or switches is refused' {
