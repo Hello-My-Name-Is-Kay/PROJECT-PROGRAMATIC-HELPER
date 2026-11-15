@@ -25,3 +25,13 @@ Reports/
 VmmAgent_*.ps1
 VmmExtractor*.ps1
 VMM_*.vmm
+
+# Remote desktop files, certificates, secrets, CI test output (never committed)
+*.rdp
+*.rdg
+*.pfx
+*.pem
+*.cer
+.env
+*.secret*
+pester-*.xml

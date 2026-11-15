@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-44 | Honest limits:45-69 | Untested:70-81 -->
+<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-45 | Honest limits:46-70 | Untested:71-82 -->
 # Security
 
 Rules this project follows, how each is implemented, and the honest limits.
@@ -39,8 +39,9 @@ specific exit code. The console catches per action and returns to the menu. The 
 stack traces.
 
 Repository: `.gitignore` excludes configs, lists, data, keys, reports and agents;
-`Tools\Test-Sanitized.ps1` fails the commit/push if a GUID, IPv4 or any value from your local config
-or server lists appears in a tracked file.
+`Tools\Test-Sanitized.ps1` fails the commit/push if a GUID, IPv4, e-mail address, token, key, password,
+Azure resource ID or any value from your local config or server lists appears in a file; `-History` checks
+every line ever committed and every commit message too (CI runs it on every pull request).
 
 ## Honest limits
 
@@ -74,7 +75,7 @@ import and exports, C# console helper compile, time rules, OS policy, PSD1 round
 store, tamper detection, host agent encryption to the laptop key, Pester tests.
 Not verified: mouse input in Windows Terminal and the interactive UI; `Update-AzConfig -LoginExperienceV2`; `Invoke-AzVMRunCommand -ScriptString`;
 `Set-Clipboard -Path`; `vpncli.exe` output parsing on your Cisco Secure Client version; Foundry Local's
-port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the `icacls` ACL; Pester 5 tests;
+port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the `icacls` ACL;
 launching mstsc / Remote Desktop Manager (`/Template:RDP /Host:`) / RDCMan with the generated files, `drivestoredirect`
 through company RDP policy, the handoff script on PowerShell 2.0, and verification over WinRM / admin share / WMI on real hosts.
 

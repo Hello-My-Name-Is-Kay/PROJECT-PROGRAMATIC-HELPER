@@ -29,7 +29,7 @@ function Connect-VmmAzure {
         catch {
             throw (New-VmmErrorRecord -Activity 'Azure sign-in failed.' -Target "tenant $TenantId" -Exception $_.Exception `
                 -Cause 'Wrong tenant id, sign-in window closed, MFA not completed, or no access to that tenant/subscription.' `
-                -Fix 'Check Azure.TenantId / Azure.Subscription (Settings, or vmm azure pick). No browser? Set Azure.UseDeviceAuthentication = $true.' `
+                -Fix 'Check Azure.TenantId / Azure.Subscription (Settings, or vmm azure -Save). No browser? Set Azure.UseDeviceAuthentication = $true.' `
                 -Category AuthenticationError -ErrorId 'VmmAzLogin')
         } finally { Resume-VmmConsoleInput }
     }
@@ -39,7 +39,7 @@ function Connect-VmmAzure {
     if (-not $ctx -or -not $ctx.Subscription) {
         throw (New-VmmErrorRecord -Activity 'Signed in, but no subscription is selected.' -Target "tenant $TenantId" `
             -Cause 'The tenant/subscription picker was skipped or left empty, and Azure.Subscription is not set.' `
-            -Fix 'Choose one: vmm azure pick   (or Settings > Azure), or set Azure.Subscription in your config.' `
+            -Fix 'Choose one: vmm azure -Save   (or Settings > Azure), or set Azure.Subscription in your config.' `
             -Category InvalidOperation -ErrorId 'VmmAzNoSubscription')
     }
 }

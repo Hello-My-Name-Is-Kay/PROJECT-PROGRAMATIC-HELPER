@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-32 | Overview:33-51 | At a glance:52-68 | Quick start:69-92 | Adding machines external dat:93-115 | Media repository:116-144 | Server inventory:145-178 | Snapshot terminal first hand:179-194 | Hands-on staging over RDP RD:195-217 | Extractor the program on the:218-250 | Console UI:251-292 | CLI:293-354 | GitHub integration:355-371 | OS policy:372-386 | Workflow per host:387-400 | Directory tree:401-431 | Where your data lives never:432-448 | Testing:449-461 | Errors:462-475 | Future your work AI model wi:476-485 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Console UI:252-293 | CLI:294-355 | GitHub integration:356-372 | OS policy:373-387 | Workflow per host:388-401 | Directory tree:402-435 | Where your data lives never:436-452 | Testing:453-466 | Errors:467-481 | Future your work AI model wi:482-491 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.13.0 &nbsp;|&nbsp; **This file:** 2026-11-15
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.14.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-15
 
 ## TL;DR
 
@@ -28,7 +28,8 @@
 - **Never stored:** usernames, passwords, tokens. Fleet data is encrypted on this laptop for your Windows account only.
 - **Never in this repo:** hosts, IPs, tenant/subscription IDs, company names. Run `.\Tools\Test-Sanitized.ps1` before every push.
 - **Updates:** `U` in the console (or `vmm update`): fetch, show changes, check GitHub results, smoke test, reinstall. GitHub CLI sign-in only; no token stored.
-- **Help:** `vmm help`, `Get-Help <Function> -Full`, [docs/USAGE.md](docs/USAGE.md).
+- **Help:** `vmm help`, `Get-Help <Function> -Full`, [docs/USAGE.md](docs/USAGE.md), [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+- **Status: alpha.** Tested offline only; nothing has run on a real host, Azure, VPN or SQL yet. For management: [docs/MANAGER-GUIDE.md](docs/MANAGER-GUIDE.md). Release checklist and known limitations: [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Overview
 
@@ -404,13 +405,16 @@ Details and the snapshot-after-each-step answer: [docs/WORKFLOW.md](docs/WORKFLO
 VmMaintenance\
   .github\workflows\ci.yml       GitHub checks (Windows, PS 5.1 + 7)
   Install.ps1 / Uninstall.ps1       per-user install, no admin
-  README.md  CHANGELOG.md  llms.txt  PROJECT.json
+  README.md  CHANGELOG.md  LICENSE  llms.txt  PROJECT.json
   docs\
     ARCHITECTURE.md                 modules, data flow, store format
     USAGE.md                        daily runbook
     SECURITY.md                     what is protected, how, honest limits, untested list
     WORKFLOW.md                     steps, time rules, checkpoints, prune
     AI.md                           optional AI providers, access request text, future MCP
+    MANAGER-GUIDE.md                for management: what it does, rules, credentials, data, limits
+    TROUBLESHOOTING.md              exit codes, common errors, recovery, where to look
+    RELEASE.md                      readiness checklist, known limitations, release steps
   VmMaintenance\                    the module
     VmMaintenance.psd1 / .psm1      manifest / loader
     Public\                         exported functions, one per file
@@ -424,7 +428,7 @@ VmMaintenance\
     servers.example.txt             list format
   Tools\
     Invoke-SmokeTest.ps1            offline smoke test
-    Test-Sanitized.ps1              pre-commit leak check
+    Test-Sanitized.ps1              leak check: files, -History for the whole git history
   tests\
     VmMaintenance.Tests.ps1         Pester 5
 ```
@@ -453,9 +457,10 @@ VmMaintenance\
 Install-Module Pester -MinimumVersion 5.5 -Scope CurrentUser -Force -SkipPublisherCheck
 Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1                                         # before every commit/push
+.\Tools\Test-Sanitized.ps1 -History                                # before a release: whole git history
 ```
 
-Status (2.13.0): the offline smoke test (278 checks) and Pester (99 tests) pass on GitHub's Windows runners in
+Status (2.14.0, alpha): the offline smoke test (278 checks) and Pester (99 tests) pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -472,6 +477,7 @@ ERROR: Could not copy the staging package.
 ```
 
 Colours: cyan info, green success, yellow warning, red error, dark grey skipped.
+Exit codes, common errors and recovery: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## Future: your work AI model with tools (MCP)
 

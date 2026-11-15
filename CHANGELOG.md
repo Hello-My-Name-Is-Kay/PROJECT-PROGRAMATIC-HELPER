@@ -1,5 +1,26 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.13.0 - 2026-11-15:4-33 | 2.12.0 - 2026-11-14:34-56 | 2.11.0 - 2026-11-14:57-75 | 2.10.0 - 2026-11-14:76-94 | 2.9.0 - 2026-11-14:95-107 | 2.8.0 - 2026-11-14:108-121 | 2.7.0 - 2026-11-14:122-139 | 2.6.0 - 2026-11-14:140-147 | 2.5.0 - 2026-11-14:148-160 | 2.4.0 - 2026-11-14:161-171 | 2.3.0 - 2026-11-14:172-186 | 2.2.1 - 2026-11-14:187-193 | 2.2.0 - 2026-11-14:194-201 | 2.1.0 - 2026-11-14:202-219 | 2.0.0 - 2026-11-14:220-225 | 1.0.0 - 2026-11-14:226-230 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.14.0 - 2026-11-15:4-24 | 2.13.0 - 2026-11-15:25-54 | 2.12.0 - 2026-11-14:55-77 | 2.11.0 - 2026-11-14:78-96 | 2.10.0 - 2026-11-14:97-115 | 2.9.0 - 2026-11-14:116-128 | 2.8.0 - 2026-11-14:129-142 | 2.7.0 - 2026-11-14:143-160 | 2.6.0 - 2026-11-14:161-168 | 2.5.0 - 2026-11-14:169-181 | 2.4.0 - 2026-11-14:182-192 | 2.3.0 - 2026-11-14:193-207 | 2.2.1 - 2026-11-14:208-214 | 2.2.0 - 2026-11-14:215-222 | 2.1.0 - 2026-11-14:223-240 | 2.0.0 - 2026-11-14:241-246 | 1.0.0 - 2026-11-14:247-251 -->
 # Changelog
+
+## 2.14.0 - 2026-11-15
+
+Release preparation. Still **alpha**: the label is dropped only on Kay's go (see docs/RELEASE.md).
+
+- Marked as alpha: `Prerelease = 'alpha'` in the manifest, "(alpha)" in the README header, `stage` in PROJECT.json.
+- Leak scan (`Tools\Test-Sanitized.ps1`) now also finds e-mail addresses, tokens (GitHub, OpenAI, AWS, Slack,
+  Google, Hugging Face, Groq, JWT), private keys, storage keys and SAS signatures, passwords in connection strings
+  and Azure resource IDs, and checks the media share, VPN profile and VPN probe host from your config. Known test
+  fixtures are allow-listed. New `-History` switch scans every line ever added on every branch and every commit
+  message; works on Windows and other platforms.
+- CI checks out the full history and runs the leak scan with `-History` on every pull request and push to main.
+- Full scan of the repository and its history for this release: no host names, IPs, tenant/subscription IDs,
+  e-mail addresses, tokens or passwords found.
+- New docs: `docs/MANAGER-GUIDE.md` (what the tool does and the rules it enforces, for management),
+  `docs/TROUBLESHOOTING.md` (exit codes, common errors, encrypted file recovery, where to look),
+  `docs/RELEASE.md` (readiness checklist, known limitations, first run on real hosts, release steps).
+- `LICENSE`: proprietary, internal use, all rights reserved (to confirm).
+- `.gitignore`: also `.rdp`, `.rdg`, certificates, `.env`, CI test results.
+- Fix: Azure sign-in errors pointed at `vmm azure pick`, which does not exist; they now say `vmm azure -Save`.
+- SECURITY.md: Pester is no longer listed as untested (it runs in CI).
 
 ## 2.13.0 - 2026-11-15
 

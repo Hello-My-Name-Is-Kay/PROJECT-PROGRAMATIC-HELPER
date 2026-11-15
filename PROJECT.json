@@ -1,7 +1,8 @@
 {
   "name": "VmMaintenance",
-  "version": "2.13.0",
-  "license": "private",
+  "version": "2.14.0",
+  "stage": "alpha",
+  "license": "proprietary, internal use (LICENSE)",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
   "platform": {
     "laptop": "Windows, PowerShell 5.1 and 7",
@@ -29,7 +30,7 @@
     "stored_credentials": false,
     "store": "AES-256-CBC + HMAC-SHA256, key under DPAPI CurrentUser",
     "agent_results": "RSA-3072 OAEP + AES-256-CBC + HMAC-SHA256",
-    "repo_leak_check": "Tools/Test-Sanitized.ps1"
+    "repo_leak_check": "Tools/Test-Sanitized.ps1 (-History for the whole git history)"
   },
   "integrations": {
     "azure": "Az.Accounts, Az.Compute, Az.ResourceGraph",
@@ -292,6 +293,10 @@
     "docs/USAGE.md",
     "docs/SECURITY.md",
     "docs/AI.md",
+    "docs/MANAGER-GUIDE.md",
+    "docs/TROUBLESHOOTING.md",
+    "docs/RELEASE.md",
+    "LICENSE",
     "llms.txt"
   ],
   "tests": [
