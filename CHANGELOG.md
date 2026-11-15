@@ -1,5 +1,35 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.12.0 - 2026-11-14:4-26 | 2.11.0 - 2026-11-14:27-45 | 2.10.0 - 2026-11-14:46-64 | 2.9.0 - 2026-11-14:65-77 | 2.8.0 - 2026-11-14:78-91 | 2.7.0 - 2026-11-14:92-109 | 2.6.0 - 2026-11-14:110-117 | 2.5.0 - 2026-11-14:118-130 | 2.4.0 - 2026-11-14:131-141 | 2.3.0 - 2026-11-14:142-156 | 2.2.1 - 2026-11-14:157-163 | 2.2.0 - 2026-11-14:164-171 | 2.1.0 - 2026-11-14:172-189 | 2.0.0 - 2026-11-14:190-195 | 1.0.0 - 2026-11-14:196-200 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.13.0 - 2026-11-15:4-33 | 2.12.0 - 2026-11-14:34-56 | 2.11.0 - 2026-11-14:57-75 | 2.10.0 - 2026-11-14:76-94 | 2.9.0 - 2026-11-14:95-107 | 2.8.0 - 2026-11-14:108-121 | 2.7.0 - 2026-11-14:122-139 | 2.6.0 - 2026-11-14:140-147 | 2.5.0 - 2026-11-14:148-160 | 2.4.0 - 2026-11-14:161-171 | 2.3.0 - 2026-11-14:172-186 | 2.2.1 - 2026-11-14:187-193 | 2.2.0 - 2026-11-14:194-201 | 2.1.0 - 2026-11-14:202-219 | 2.0.0 - 2026-11-14:220-225 | 1.0.0 - 2026-11-14:226-230 -->
 # Changelog
+
+## 2.13.0 - 2026-11-15
+
+- Hands-on staging over remote desktop, with checks. When the Stage step cannot copy to a host from the terminal
+  (admin share closed, access denied, broken copy), it offers to go on by hand (`Handoff.Offer = Ask | Always |
+  Never`). Not offered when RDP cannot help: files missing on the share, share or VPN down, credential prompt
+  cancelled, or nobody at the keyboard. Also on its own: `T` on a host or on the Stage guide, `vmm handoff -HostName x`.
+- The handoff asks which client to use: **RDP** (mstsc with a one-off `.rdp` file: clipboard on, only the needed
+  drive shared), **RDM** (Devolutions Remote Desktop Manager quick connect, `/Template:RDP /Host:<host>`,
+  `Handoff.RdmTemplate`, optional `Handoff.RdmDataSource`), **RDCMan** (a one-off `.rdg`) or none. Clients are
+  found in App Paths, Program Files and PATH, or set with `Handoff.RdmPath` / `Handoff.RdcManPath`; a missing one
+  is listed with the reason. No user name or password is passed to any client or saved.
+- It puts a short script on the clipboard for the host (PowerShell 2.0+). The script writes only in
+  `Staging.TargetFolder` (`C:\Temp`): creates it, copies each missing file from the share, else from this laptop
+  over `\\tsclient` (optional outbox, `Handoff.Outbox`), reads size and SHA256 on the host and puts a one-line
+  `VMMSTAGE1` report on the clipboard. It lists every file with size and SHA256 for copying by hand.
+- Back in vmm, `V` verifies: the `VMMSTAGE1` report (clipboard or `P`), else WinRM (hash read on the host), the admin
+  share, then WMI (size only). Stage becomes `Success` only when every file is right, with a note saying it was done
+  by hand and how it was verified; otherwise it says which file is missing or wrong and nothing is recorded. A known
+  SHA256 must be read on the host unless `Handoff.AcceptSizeOnly = $true`. `vmm handoff -VerifyOnly` or `-Report`
+  checks later without a session.
+- Same rules as Stage: client OS refused without an order, and in business hours only into `C:\Temp`. Every step,
+  answer and per-file result goes to the day log.
+- `vmm rdp -HostName x` opens RDP / RDM / RDCMan for a host (`L` on the host and guide screens now asks which);
+  `vmm rdp -List` shows which clients this laptop has. Client OS hosts are refused without an order.
+- The `.rdp` / `.rdg` files and the host script are removed when the handoff ends; `vmm maint -Action CleanTemp`
+  also empties leftover handoff files and vmm's own outbox after a day.
+- Settings screen and `config.example.psd1`: new `Handoff` section. README, USAGE, WORKFLOW and SECURITY updated.
+- Tests: smoke section 8 (`.rdp` / `.rdg` text, client detection, `VMMSTAGE1` parsing and comparison, the host
+  script run end to end on a temp folder) and Pester `RDP / RDM handoff`.
 
 ## 2.12.0 - 2026-11-14
 
@@ -197,4 +227,4 @@
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-14 19:26 UTC_
+_Last updated: 2026-11-15 22:00 UTC_

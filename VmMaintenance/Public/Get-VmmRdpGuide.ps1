@@ -14,7 +14,7 @@ function Get-VmmRdpGuide {
     $h = $HostName.ToUpper()
     $rec = try { Get-VmmHostRecord -Store (Read-VmmStore) -Name $HostName } catch { $null }
     $pk = if ($Step -in 'Stage', 'Upgrade') { try { @(Get-VmmStagingPackage -Record $rec) } catch { @() } } else { @() }
-    $open = [pscustomobject]@{ Text = "Connect to $h in RDM, or with RDP:"; Command = "mstsc /v:$h" }
+    $open = [pscustomobject]@{ Text = "Connect to $h with RDP, RDM or RDCMan (L on this screen asks which, or run the command):"; Command = "vmm rdp -HostName $h" }
     $ps   = [pscustomobject]@{ Text = 'Open Windows PowerShell as Administrator (right-click > Run as administrator).'; Command = $null }
 
     $items = switch ($Step) {
@@ -31,6 +31,7 @@ function Get-VmmRdpGuide {
             [pscustomobject]@{ Text = "Back on the laptop: press P on this host's screen (or run: vmm collect -Step $Step) to record the result."; Command = $null }
         }
         'Stage' {
+            [pscustomobject]@{ Text = "EASIEST: T on this screen (or the command) opens RDP/RDM for you, puts a copy-and-check script on the clipboard, and verifies size and SHA256 on the host before Stage is marked done. The steps below are the same thing by hand."; Command = "vmm handoff -HostName $h" }
             $open
             [pscustomobject]@{ Text = "Create $target if it is missing:"; Command = "New-Item -ItemType Directory -Path '$target' -Force" }
             if (-not $pk) { [pscustomobject]@{ Text = 'Nothing resolved: check the media repository (vmm media) and that the host has been checked (its install language picks the image).'; Command = $null } }

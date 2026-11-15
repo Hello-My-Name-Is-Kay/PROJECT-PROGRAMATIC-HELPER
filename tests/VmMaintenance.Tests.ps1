@@ -672,3 +672,46 @@ Describe 'Encrypted store' -Skip:(-not (($PSVersionTable.PSEdition -eq 'Desktop'
         $raw | Should -Not -Match '(?i)pester-host'
     }
 }
+
+Describe 'RDP / RDM handoff' {
+    It 'the .rdp file carries no account and shares only the drives asked for' {
+        $t = InModuleScope VmMaintenance { Get-VmmRdpFileText -Address 'srv01' -Drive 'C', 'd:' }
+        $t | Should -Match '(?m)^full address:s:srv01$'
+        $t | Should -Match '(?m)^drivestoredirect:s:C:\;D:\;$'
+        $t | Should -Not -Match '(?im)^(username|password|domain)'
+        { InModuleScope VmMaintenance { Get-VmmRdpFileText -Address 'srv01;x' } } | Should -Throw
+    }
+    It 'the RDCMan file is valid XML' {
+        ([xml](InModuleScope VmMaintenance { Get-VmmRdgFileText -Address 'srv01' })).RDCMan.file.server.properties.name | Should -Be 'srv01'
+    }
+    It 'reads a VMMSTAGE1 report and judges every file' {
+        $r = InModuleScope VmMaintenance {
+            $exp = @([pscustomobject]@{ DestName = 'a.iso'; Size = 10; Sha256 = 'AA' }, [pscustomobject]@{ DestName = 'b.exe'; Size = 5; Sha256 = 'BB' })
+            $rep = @(ConvertFrom-VmmHandoffReport -Text 'VMMSTAGE1|SRV01|a.iso*10*aa|b.exe*4*BB' -HostName 'srv01')
+            (Compare-VmmHandoffFile -Expected $exp -Reported $rep | ForEach-Object Status) -join ','
+        }
+        $r | Should -Be 'OK,SizeMismatch'
+    }
+    It 'the host script writes only into the target and reports what it copied' {
+        $src = Join-Path $TestDrive 'pkg.bin'; [IO.File]::WriteAllBytes($src, [byte[]](1..64))
+        $sha = (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash
+        $dest = Join-Path $TestDrive 'host'
+        $text = InModuleScope VmMaintenance -Parameters @{ S = $src; H = $sha; D = $dest } {
+            Get-VmmHandoffScript -HostName 'srv01' -Target $D -Items @([pscustomobject]@{ DestName = 'pkg.bin'; Size = 64; Sha256 = $H; Sources = @($S) })
+        }
+        $text | Should -Not -Match 'Remove-Item|Start-Process|Invoke-Expression'
+        $out = (& ([scriptblock]::Create(($text -replace '\$R \| clip\.exe', '$null = $R'))) 6>&1 | ForEach-Object { "$_" }) -join "`n"
+        Join-Path $dest 'pkg.bin' | Should -Exist
+        $out | Should -Match ('VMMSTAGE1\|SRV01\|pkg\.bin\*64\*' + $sha)
+    }
+    It 'Stage keeps the terminal copy first and records a handoff only when verified' {
+        $t = [IO.File]::ReadAllText((Join-Path $repo 'VmMaintenance\Public\Invoke-VmmWorkflowStep.ps1'))
+        $t.IndexOf('Copy-VmmStagingPackage -HostName $name') | Should -BeLessThan $t.IndexOf('Start-VmmRemoteHandoff -HostName')
+        $t | Should -Match 'if \(-not \$h\.Verified\) \{ throw \$copyErr \}'
+    }
+    It 'the CLI has handoff and rdp' {
+        $t = [IO.File]::ReadAllText((Join-Path $repo 'VmMaintenance\Public\Invoke-VmmCli.ps1'))
+        $t | Should -Match "'handoff'\s*=\s*@\{ F = 'Start-VmmRemoteHandoff'"
+        $t | Should -Match "'rdp'\s*=\s*@\{ F = 'Start-VmmRemoteSession'"
+    }
+}

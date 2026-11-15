@@ -15,6 +15,7 @@ function Show-VmmHelpScreen {
         'WORKFLOW per host: 1 Precheck > 2 Stage > 3 PreSnapshot > 4 ExpandDisk > 5 Upgrade > 6 Verify; prune at the end.'
         '  Checkpoint snapshot after each successful changing step on Azure VMs (Workflow.SnapshotAfter).'
         '  Can''t reach a host? G opens the RDP/RDM guide; P pastes the collector result back.'
+        '  Terminal copy failed? T (or: vmm handoff) opens RDP / RDM / RDCMan, lists the files, then verifies size + SHA256 on the host.'
         '  Missing access? B writes a report for your manager (you send it from Outlook) and you move on.'
         ''
         'TARGET: Target.MachinesPerDay (default 10). Counted when Stage or Verify succeeds that day.'

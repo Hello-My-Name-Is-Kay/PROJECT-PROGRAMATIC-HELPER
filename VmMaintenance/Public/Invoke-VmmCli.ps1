@@ -47,6 +47,8 @@ function Invoke-VmmCli {
         'next'     = @{ F = 'Invoke-VmmNextStep';         D = 'run next auto step     [-HostName x | -All]' }
         'step'     = @{ F = 'Invoke-VmmWorkflowStep';     D = 'run one step           -HostName x -Step Precheck|Stage|PreSnapshot|ExpandDisk|Upgrade|Verify [-Confirmed] [-Override -OverrideReason ".."]' }
         'guide'    = @{ F = 'Get-VmmRdpGuide';            D = 'RDP/RDM checklist      -HostName x -Step y' }
+        'rdp'      = @{ F = 'Start-VmmRemoteSession';     D = 'open RDP / RDM / RDCMan -HostName x [-Client Ask|Rdp|Rdm|RdcMan] | -List (clients found)' }
+        'handoff'  = @{ F = 'Start-VmmRemoteHandoff';     D = 'stage by hand over RDP/RDM, then verify -HostName x [-Client ..] [-Outbox Ask|Always|Never] | -VerifyOnly | -Report "VMMSTAGE1|.."' }
         'agent'    = @{ F = 'Export-VmmHostAgent';        D = 'same as extractor (old name)' }
         'collect'  = @{ F = 'Import-VmmCollectorResult';  D = 'record host result     [-Path VMM_x.vmm | -Line "VMM2|..."] (default: clipboard)' }
         'inbox'    = @{ F = 'Import-VmmResultInbox';      D = 'import all VMM_*.vmm result files from Desktop/Downloads [-Path dir]' }
@@ -94,7 +96,7 @@ function Invoke-VmmCli {
     $fn = $map[$Command].F
     # One vmm at a time: every command that can change something takes the lock first, so a second window
     # stops here instead of overwriting the first one's work. Read-only commands run beside a busy vmm.
-    $readOnly = 'log', 'status', 'plan', 'time', 'progress', 'vpn', 'guide', 'agents', 'media', 'github', 'policy', 'inventory', 'config', 'stage'
+    $readOnly = 'log', 'status', 'plan', 'time', 'progress', 'vpn', 'guide', 'agents', 'media', 'github', 'policy', 'inventory', 'config', 'stage', 'rdp'
     $locked = $false
     if ($Command -notin $readOnly) { $locked = Enter-VmmInstanceLock -Owner "vmm $Command" }
     if ($Command -eq 'ui') { try { & $fn @p } finally { if ($locked) { Exit-VmmInstanceLock } }; return }

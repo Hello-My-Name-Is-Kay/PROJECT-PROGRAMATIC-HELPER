@@ -10,6 +10,8 @@
        placeholders, PSD1 round trip, error hints, log masking).
     6. Encrypt/decrypt round trip and tamper detection in a throw-away data folder
        (creates a temporary DPAPI key; the folder is deleted at the end).
+    7. One vmm at a time and the CLI log.
+    8. RDP / RDM handoff: .rdp/.rdg text, clients, VMMSTAGE1 report, the host script run on a temp folder.
     Exit code 0 = all passed, 1 = at least one failure.
 .EXAMPLE
     .\Tools\Invoke-SmokeTest.ps1
@@ -451,6 +453,91 @@ try {
 } finally {
     & $m { param($c) Exit-VmmInstanceLock; $script:VmmConfig = $c } $savedLock
     Remove-Item -LiteralPath $tmpLock -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host '8. RDP / RDM handoff (temporary folders, no host, no client started)' -ForegroundColor Cyan
+$tmpHand = Join-Path ([IO.Path]::GetTempPath()) ('vmm-smoke-hand-' + [guid]::NewGuid().ToString('N'))
+[void](New-Item -ItemType Directory -Path (Join-Path $tmpHand 'src'))
+$savedHand = & $m { $script:VmmConfig }
+try {
+    & $m { param($r) $script:VmmNonInteractive = $true; $script:VmmConfig = @{ Log = @{ ToFile = $false }; Paths = @{ DataDir = (Join-Path $r 'data'); ReportDir = (Join-Path $r 'reports') }
+                                                     Handoff = @{ RdmPath = (Join-Path $r 'nope\RemoteDesktopManager.exe'); Client = 'Ask' } } } $tmpHand
+    Test-Step '.rdp file: host, clipboard on, only the asked drive shared, no account in it' {
+        $t = & $m { Get-VmmRdpFileText -Address 'srv01.corp.example' -Drive 'c' }
+        foreach ($want in '(?m)^full address:s:srv01\.corp\.example$', '(?m)^redirectclipboard:i:1$', '(?m)^drivestoredirect:s:C:\;$', '(?m)^prompt for credentials:i:1$') {
+            if ($t -notmatch $want) { throw "no line matching $want" }
+        }
+        if ($t -match '(?im)^(username|password|domain)') { throw 'account data in the .rdp file' }
+        if ((& $m { Get-VmmRdpFileText -Address 'srv01' }) -notmatch '(?m)^drivestoredirect:s:$') { throw 'drives shared without -Drive' }
+        $true
+    }
+    Test-Step '.rdp file: an address with spaces or switches is refused' {
+        $id = ''
+        try { & $m { Get-VmmRdpFileText -Address 'srv01 /admin' } | Out-Null } catch { $id = "$($_.FullyQualifiedErrorId)" }
+        if ($id -notlike 'VmmRdpAddress*') { throw "error id '$id'" }
+        $true
+    }
+    Test-Step '.rdg file is valid XML with the server name escaped' {
+        $x = [xml](& $m { Get-VmmRdgFileText -Address 'srv01' -DisplayName 'A&B' })
+        Assert-Equal $x.RDCMan.file.server.properties.name 'srv01' 'server'
+        Assert-Equal $x.RDCMan.file.server.properties.displayName 'A&B' 'display name'
+    }
+    Test-Step '\\tsclient path for a local file, none for UNC' {
+        Assert-Equal (& $m { ConvertTo-VmmTsClientPath 'c:\Users\me\outbox\a.iso' }) '\\tsclient\C\Users\me\outbox\a.iso' 'tsclient'
+        $null -eq (& $m { ConvertTo-VmmTsClientPath '\\srv\share\a.iso' })
+    }
+    Test-Step 'Clients: three rows; a wrong Handoff.RdmPath is reported, not used' {
+        $c = @(& $m { Get-VmmRemoteClient })
+        Assert-Equal (($c | ForEach-Object Name) -join ',') 'Rdp,Rdm,RdcMan' 'clients'
+        $rdm = $c | Where-Object Name -eq 'Rdm'
+        if ($rdm.Available -or $rdm.Why -notmatch 'Handoff\.RdmPath') { throw "Rdm: $($rdm.Available) / $($rdm.Why)" }
+        $true
+    }
+    Test-Step 'Client choice: None = connect yourself; Ask without a person does not prompt' {
+        if ($null -ne (& $m { Select-VmmRemoteClient -Client None })) { throw 'None returned a client' }
+        $r = & $m { Select-VmmRemoteClient -Client Ask }
+        if ($r -and -not $r.Available) { throw 'picked a missing client' }
+        $true
+    }
+    Test-Step 'Report: parse VMMSTAGE1, compare size and SHA256 per file' {
+        $exp = @([pscustomobject]@{ DestName = 'a.iso'; Size = 10; Sha256 = 'AA' }, [pscustomobject]@{ DestName = 'b.exe'; Size = 5; Sha256 = '' },
+                 [pscustomobject]@{ DestName = 'c.exe'; Size = 7; Sha256 = 'CC' }, [pscustomobject]@{ DestName = 'd.exe'; Size = 9; Sha256 = '' })
+        $rep = @(& $m { ConvertFrom-VmmHandoffReport -Text "noise`nVMMSTAGE1|OTHER|a.iso*10*AA`nVMMSTAGE1|SMOKE-HOST|a.iso*10*aa|b.exe*5*11|c.exe*7*DD|d.exe*-1*" -HostName 'smoke-host' })
+        Assert-Equal $rep.Count 4 'rows'
+        $rows = @(& $m { param($e, $r) Compare-VmmHandoffFile -Expected $e -Reported $r -Method 'test' } $exp $rep)
+        Assert-Equal (($rows | ForEach-Object Status) -join ',') 'OK,OK,HashMismatch,Missing' 'status'
+        $rows = @(& $m { param($e) Compare-VmmHandoffFile -Expected $e -Reported @([pscustomobject]@{ DestName = 'a.iso'; Size = 10; Sha256 = '' }, [pscustomobject]@{ DestName = 'b.exe'; Size = 6; Sha256 = '' }) } $exp)
+        Assert-Equal (($rows | ForEach-Object Status) -join ',') 'NotHashed,SizeMismatch,Missing,Missing' 'status (size only)'
+    }
+    Test-Step 'Host script: copies into the target only, checks SHA256, report verifies' {
+        $src = Join-Path $tmpHand 'src\pkg.bin'
+        [IO.File]::WriteAllBytes($src, [byte[]](1..200))
+        $sha = (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash
+        $items = @([pscustomobject]@{ DestName = 'pkg.bin'; Size = 200; Sha256 = $sha; Sources = @((Join-Path $tmpHand 'missing\pkg.bin'), $src) })
+        $dest = Join-Path $tmpHand 'host-temp'
+        $text = & $m { param($t, $i) Get-VmmHandoffScript -HostName 'smoke-host' -Target $t -Items $i } $dest $items
+        $tok = $null; $err = $null
+        [void][System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$tok, [ref]$err)
+        if ($err.Count) { throw "script does not parse: $($err[0].Message)" }
+        if ($text -match 'Remove-Item|Start-Process|Invoke-Expression|iex |Set-ItemProperty|New-Service') { throw 'script does more than copy and read' }
+        $text = $text -replace '\$R \| clip\.exe', '$null = $R'   # keep the clipboard of whoever runs the test
+        $out = (& ([scriptblock]::Create($text)) 6>&1 | ForEach-Object { "$_" }) -join "`n"
+        if (-not (Test-Path -LiteralPath (Join-Path $dest 'pkg.bin'))) { throw 'file not copied' }
+        $rec = [pscustomobject]@{ Name = 'SMOKE-HOST' }
+        $ev = & $m { param($r, $i, $t, $o) Get-VmmHandoffEvidence -Record $r -Items $i -Target $t -Pasted $o -NoNetwork } $rec $items $dest $out
+        if (-not $ev.Verified) { throw "not verified: $(($ev.Rows | ForEach-Object { "$($_.File)=$($_.Status)" }) -join ', ') / $out" }
+        Assert-Equal $ev.Method 'host report (VMMSTAGE1)' 'method'
+    }
+    Test-Step 'Stage offers the handoff only when RDP can help, and records only verified files' {
+        $t = [IO.File]::ReadAllText((Join-Path $repo 'VmMaintenance\Public\Invoke-VmmWorkflowStep.ps1'))
+        foreach ($want in 'VmmStagingGate\|VmmShareUnreachable\|VmmVpnDown', 'Test-VmmInteractive', 'Start-VmmRemoteHandoff -HostName \$name -Reason \$why -NoMarkStep', 'if \(-not \$h\.Verified\) \{ throw \$copyErr \}') {
+            if ($t -notmatch $want) { throw "Invoke-VmmWorkflowStep: no match for $want" }
+        }
+        $true
+    }
+} finally {
+    & $m { param($c) $script:VmmNonInteractive = $null; $script:VmmConfig = $c } $savedHand
+    Remove-Item -LiteralPath $tmpHand -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ---------------------------------------------------------------- Result

@@ -1,6 +1,6 @@
 function Show-VmmHostScreen {
     # One host: facts + the six workflow steps. Run steps, open the RDP guide, paste collector output,
-    # raise a blocker and move on, launch mstsc, hold/unhold.
+    # raise a blocker and move on, open RDP/RDM/RDCMan, stage by hand with checks (T), hold/unhold.
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$HostName)
     $sel = 0; $status = ''
@@ -37,8 +37,8 @@ function Show-VmmHostScreen {
         $open = @($rec.Blockers | Where-Object { -not $_.Resolved })
         if ($open) { $status = "Open blocker: $($open[-1].Step) - $($open[-1].Summary) (contact: $($open[-1].Contact))" }
         $r = Invoke-VmmListView -Title $facts -ColumnHeader ('   {0,-12} {1,-10} {2,-7} {3,-8} {4}' -f 'Step', 'Status', 'Mode', 'Allowed', 'Note') `
-             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X', 'I', 'A', 'S') `
-             -Help 'Enter run | S snapshot (terminal first) | G guide | X extractor | Y confirm | P import result | B blocker | R resolve | L mstsc | H hold | C check | I inventory | A agents | Esc'
+             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X', 'I', 'A', 'S', 'T') `
+             -Help 'Enter run | S snapshot (terminal first) | G guide | X extractor | Y confirm | P import result | B blocker | R resolve | L remote desktop | T stage by hand (RDP/RDM) | H hold | C check | I inventory | A agents | Esc'
         $sel = $r.Index; $status = ''
         $step = $steps[$r.Index].Name
         switch ($r.Action) {
@@ -59,7 +59,8 @@ function Show-VmmHostScreen {
                           $m = Read-VmmPrompt 'Exact error or what is missing (paste it)'
                           if ($m) { New-VmmBlockerReport -HostName $HostName -Step $step -Message $m | Out-Null } }); return }
             'R'     { [void](Invoke-VmmTuiAction -Title 'Resolve blockers' -Action { Resolve-VmmBlocker -HostName $HostName }) }
-            'L'     { $t = if ($rec.PSObject.Properties['Fqdn'] -and $rec.Fqdn) { $rec.Fqdn } else { $HostName }; Start-Process mstsc.exe -ArgumentList "/v:$t"; $status = "mstsc started for $t (or open it in RDM)" }
+            'L'     { [void](Invoke-VmmTuiAction -Title "Remote desktop - $HostName" -Action { Start-VmmRemoteSession -HostName $HostName -Client Ask }) }
+            'T'     { [void](Invoke-VmmTuiAction -Title "Stage by hand over remote desktop - $HostName" -Action { Start-VmmRemoteHandoff -HostName $HostName | Select-Object HostName, Client, Verified, VerifiedBy }) }
             'H'     { $rec.Hold = -not $rec.Hold; Save-VmmStore -Store $store; $status = "Hold = $($rec.Hold)" }
             'S'     { [void](Invoke-VmmTuiAction -Title "Snapshot $HostName (terminal first)" -Action { Invoke-VmmSnapshot -Name $HostName }) }
             'C'     { [void](Invoke-VmmTuiAction -Title "Check $HostName" -Action { Invoke-VmmFleetCheck -Name $HostName }) }

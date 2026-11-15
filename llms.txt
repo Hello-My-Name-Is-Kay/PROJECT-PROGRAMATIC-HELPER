@@ -25,6 +25,7 @@ Rules an assistant must keep when changing this code:
 - [Scripts/vmm.ps1](Scripts/vmm.ps1): CLI/TUI entry, global flags, exit codes
 - [VmMaintenance/Public/Invoke-VmmCli.ps1](VmMaintenance/Public/Invoke-VmmCli.ps1): command map
 - [VmMaintenance/Public/Invoke-VmmWorkflowStep.ps1](VmMaintenance/Public/Invoke-VmmWorkflowStep.ps1): step engine
+- [VmMaintenance/Public/Start-VmmRemoteHandoff.ps1](VmMaintenance/Public/Start-VmmRemoteHandoff.ps1): hands-on staging over RDP/RDM/RDCMan with verification (Get-VmmHandoffEvidence)
 - [VmMaintenance/Resources/VmmHostAgent.ps1](VmMaintenance/Resources/VmmHostAgent.ps1): program 2 (remote host)
 - [VmMaintenance/Private/Add-VmmLogEntry.ps1](VmMaintenance/Private/Add-VmmLogEntry.ps1): every log line (live pane buffer + encrypted day log)
 - [VmMaintenance/Public/Invoke-VmmMaintenance.ps1](VmMaintenance/Public/Invoke-VmmMaintenance.ps1): maintenance of vmm itself
