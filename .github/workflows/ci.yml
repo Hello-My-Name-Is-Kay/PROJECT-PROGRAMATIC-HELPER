@@ -28,12 +28,14 @@ jobs:
         shell: ${{ matrix.shell }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for the leak scan
 
       - name: Versions
         run: $PSVersionTable | Format-Table -AutoSize
 
-      - name: Leak scan (GUIDs, IPv4)
-        run: .\Tools\Test-Sanitized.ps1
+      - name: Leak scan (files and full git history)
+        run: .\Tools\Test-Sanitized.ps1 -History
 
       - name: Smoke test
         run: .\Tools\Invoke-SmokeTest.ps1

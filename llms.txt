@@ -20,6 +20,9 @@ Rules an assistant must keep when changing this code:
 - [Usage](docs/USAGE.md): daily runbook
 - [Security](docs/SECURITY.md): protections, honest limits, untested list
 - [AI](docs/AI.md): optional assistant providers, access request, future MCP
+- [Manager guide](docs/MANAGER-GUIDE.md): for management: what it does, enforced rules, credentials, data, limits
+- [Troubleshooting](docs/TROUBLESHOOTING.md): exit codes, common errors, encrypted file recovery
+- [Release](docs/RELEASE.md): readiness checklist, known limitations, release steps (stage: alpha)
 
 ## Code entry points
 - [Scripts/vmm.ps1](Scripts/vmm.ps1): CLI/TUI entry, global flags, exit codes
