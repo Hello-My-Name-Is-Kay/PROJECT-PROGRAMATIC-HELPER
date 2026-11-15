@@ -16,7 +16,7 @@ host; Stage and change steps only on hosts in scope.
 | # | Step | Class | Mode | What happens |
 |---|---|---|---|---|
 | 1 | Precheck | ReadOnly | Auto | Ping, ports, CIM: OS/SP, SQL version, C: free, pending reboot, watched software. Baseline saved on first success |
-| 2 | Stage | Staging | Auto | Copies from the media repository (`Staging.SourceShare`) to `C:\Temp` on the host (folder created if missing): the Windows Server image for `Staging.OsMediaVersion` in the host's install language, every file in `<share>\<HOST>\`, and any `Staging.Packages`; SHA256 verified when a hash is known |
+| 2 | Stage | Staging | Auto | Copies from the media repository (`Staging.SourceShare`) to `C:\Temp` on the host (folder created if missing): the Windows Server image for `Staging.OsMediaVersion` in the host's install language, every file in `<share>\<HOST>\`, and any `Staging.Packages`; SHA256 verified when a hash is known. If the copy fails, vmm offers the hands-on copy over RDP / RDM / RDCMan (`vmm handoff`) and records Stage only when the files are verified on the host |
 | 3 | PreSnapshot | Change | Hybrid | Azure: snapshot of all disks. Other platforms: you confirm a backup/snapshot was taken in their console |
 | 4 | ExpandDisk | Change | Hybrid | Azure: grow OS disk to the next tier and extend C: when free space is under `Lansweeper.OkGB`. Otherwise guided. `NotNeeded` when space is fine |
 | 5 | Upgrade | Change | Guided | You run setup in RDP/RDM with the checklist. `Upgrade.Mode = RunCommand` launches it remotely on Azure VMs |
@@ -119,4 +119,4 @@ Change steps need the window or an override (typed `OVERRIDE` + reason), and the
 confirmation. The export carries every logged event; the laptop adds them to the host history and
 records host-side overrides in the daily report.
 
-_Last updated: 2026-11-14 13:18 UTC_
+_Last updated: 2026-11-15 22:00 UTC_

@@ -12,6 +12,9 @@ function Invoke-VmmWorkflowStep {
           (Workflow.SnapshotAfter = ChangingSteps | EveryStep | Off).
         - Access errors produce a blocker report and mark the step Blocked (-Contact answers the
           manager-contact question up front).
+        - Stage: when the terminal copy fails (admin share closed, access denied, copy broken), vmm offers
+          the hands-on handoff over RDP / RDM / RDCMan (Start-VmmRemoteHandoff) and records the step only
+          when the files are verified on the host. -Handoff Ask | Always | Never (default Handoff.Offer).
     .EXAMPLE
         Invoke-VmmWorkflowStep -HostName srv01 -Step Precheck
     .EXAMPLE
@@ -24,7 +27,8 @@ function Invoke-VmmWorkflowStep {
         [switch]$Confirmed,
         [switch]$Override,
         [string]$OverrideReason,
-        [ValidateSet('Sent', 'Later', 'Bypass')][string]$Contact
+        [ValidateSet('Sent', 'Later', 'Bypass')][string]$Contact,
+        [ValidateSet('Ask', 'Always', 'Never')][string]$Handoff
     )
     $def   = Get-VmmWorkflowDefinition
     $sd    = $def | Where-Object Name -eq $Step
@@ -77,9 +81,28 @@ function Invoke-VmmWorkflowStep {
                 if ($r.PendingReboot -eq 'Yes') { $note += ' - REBOOT PENDING: reboot in the maintenance window before upgrading' }
             }
             'Stage' {
-                $files = @(Copy-VmmStagingPackage -HostName $name)
+                $via = ''
+                try { $files = @(Copy-VmmStagingPackage -HostName $name) }
+                catch {
+                    # Terminal copy failed: offer the hands-on handoff, except when RDP cannot help (files
+                    # missing on the share, share or VPN down, setting missing) or nobody is at the keyboard.
+                    $copyErr = $_
+                    $offer = if ($Handoff) { $Handoff } else { "$(Get-VmmSetting 'Handoff.Offer' -Default 'Ask')" }
+                    $noHelp = "$($copyErr.FullyQualifiedErrorId)" -match 'VmmStagingGate|VmmShareUnreachable|VmmVpnDown|VmmSettingMissing|VmmInstanceLocked|VmmCredCancelled'
+                    if ($noHelp -or $offer -eq 'Never' -or -not (Test-VmmInteractive)) { throw }
+                    $why = (("$($copyErr.Exception.Message)" -split "`r?`n")[0]).Trim()
+                    Write-VmmLog "[$name] the terminal copy failed: $why" -Level Error
+                    if ($offer -ne 'Always') {
+                        $a = Read-VmmPrompt 'Continue by hand over remote desktop (RDP / RDM / RDCMan)? vmm opens it, lists the files and verifies them on the host (y/N)'
+                        if ("$a" -notmatch '^[yY]') { Write-VmmLog "[$name] hands-on staging declined." -Level Muted -FileOnly; throw $copyErr }
+                    }
+                    $h = @(Start-VmmRemoteHandoff -HostName $name -Reason $why -NoMarkStep) | Select-Object -Last 1
+                    if (-not $h.Verified) { throw $copyErr }
+                    $files = @($h.Files)
+                    $via = " - by hand over $($h.Client), verified by $($h.VerifiedBy)"
+                }
                 $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
-                $note = "Staged: $($files -join ', ')"
+                $note = "Staged: $($files -join ', ')$via"
             }
             'PreSnapshot' {
                 if ($isAzure) {
@@ -136,7 +159,7 @@ function Invoke-VmmWorkflowStep {
         Set-VmmStepState -Record $rec -Step $Step -Status 'Failed' -Note $msg
         Save-VmmStore -Store $store
         Write-VmmLog "[$name] $Step FAILED: $msg" -Level Error
-        Write-VmmLog "Options: retry, follow the RDP guide (vmm guide -HostName $name -Step $Step), or raise a blocker report and move on." -Level Info
+        Write-VmmLog "Options: retry, follow the RDP guide (vmm guide -HostName $name -Step $Step)$(if ($Step -eq 'Stage') { ", copy by hand with checks (vmm handoff -HostName $name)" }), or raise a blocker report and move on." -Level Info
         return
     }
 

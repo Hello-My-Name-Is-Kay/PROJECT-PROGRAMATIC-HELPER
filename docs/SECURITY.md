@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-44 | Honest limits:45-64 | Untested:65-74 -->
+<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-44 | Honest limits:45-69 | Untested:70-81 -->
 # Security
 
 Rules this project follows, how each is implemented, and the honest limits.
@@ -59,6 +59,11 @@ or server lists appears in a tracked file.
   Windows clipboard history (Win+V) on the laptop may keep a copy if you have it turned on.
 - **ExecutionPolicy Bypass** is used by the `vmm` launcher and to start the agent on hosts (process scope
   only). If Group Policy enforces AllSigned, sign the scripts with your code-signing certificate.
+- **RDP / RDM handoff**: the `VMMSTAGE1` report pasted back from a host is not authenticated (anyone at that
+  clipboard could type one); it only says which files are in `C:\Temp` with which size and SHA256, and you
+  produced it yourself in the session. The `.rdp` / `.rdg` files and the host script hold the host name and share
+  paths (never an account) and are deleted when the handoff ends (else after an hour). Only the drive holding the
+  outbox is shared with the RDP session, and only when you choose the outbox.
 - **Reports** are plaintext by design.
 - **Override** is a typed confirmation plus a reason, logged; it is not an approval workflow.
 
@@ -69,6 +74,8 @@ import and exports, C# console helper compile, time rules, OS policy, PSD1 round
 store, tamper detection, host agent encryption to the laptop key, Pester tests.
 Not verified: mouse input in Windows Terminal and the interactive UI; `Update-AzConfig -LoginExperienceV2`; `Invoke-AzVMRunCommand -ScriptString`;
 `Set-Clipboard -Path`; `vpncli.exe` output parsing on your Cisco Secure Client version; Foundry Local's
-port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the `icacls` ACL; Pester 5 tests.
+port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the `icacls` ACL; Pester 5 tests;
+launching mstsc / Remote Desktop Manager (`/Template:RDP /Host:`) / RDCMan with the generated files, `drivestoredirect`
+through company RDP policy, the handoff script on PowerShell 2.0, and verification over WinRM / admin share / WMI on real hosts.
 
-_Last updated: 2026-11-14 13:18 UTC_
+_Last updated: 2026-11-15 22:00 UTC_

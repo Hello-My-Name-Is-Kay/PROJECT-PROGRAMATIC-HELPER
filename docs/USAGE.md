@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | SQL Server updates:19-24 | Every morning business hours:25-42 | Evening weekend all steps:43-50 | Problems:51-62 | End of day:63-67 | Updates and GitHub:68-72 | Tests:73-81 -->
+<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | SQL Server updates:19-24 | Every morning business hours:25-42 | Evening weekend all steps:43-50 | Problems:51-63 | End of day:64-68 | Updates and GitHub:69-73 | Tests:74-82 -->
 # Usage - daily runbook
 
 ## Once
@@ -53,6 +53,7 @@ downloaded twice. One-time setup: `Install-Module dbatools -Scope CurrentUser`.
 | Situation | Do |
 |---|---|
 | Access denied / no rights | `B` on the host: report is written and copied to the clipboard; answer Sent / Later / Bypass; queue moves on. `R` once access is granted |
+| Stage cannot copy to a host (admin share closed, access denied) | Answer `y` when Stage offers the hands-on copy, or `T` on the host / `vmm handoff -HostName x`: pick RDP, RDM or RDCMan, paste the script on the host, back in vmm press `V`. Stage is recorded only when size and SHA256 are verified on the host |
 | Change needed in business hours | Only with agreement: `OVERRIDE` + reason (logged, in the daily report) |
 | Azure sign-in stuck on the tenant picker | `5` Azure (picker is turned off for the process); or `vmm azure -DeviceCode` |
 | VPN up but hosts time out | `vmm vpn` shows Degraded when the probe host does not answer: DNS / split tunnel |
@@ -78,4 +79,4 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1      # before any commit or push
 ```
 
-_Last updated: 2026-11-14 13:18 UTC_
+_Last updated: 2026-11-15 22:00 UTC_

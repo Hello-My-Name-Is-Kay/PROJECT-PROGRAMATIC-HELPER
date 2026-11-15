@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-31 | Overview:32-50 | At a glance:51-67 | Quick start:68-91 | Adding machines external dat:92-114 | Media repository:115-143 | Server inventory:144-177 | Snapshot terminal first hand:178-193 | Extractor the program on the:194-226 | Console UI:227-268 | CLI:269-328 | GitHub integration:329-345 | OS policy:346-360 | Workflow per host:361-374 | Directory tree:375-405 | Where your data lives never:406-422 | Testing:423-435 | Errors:436-449 | Future your work AI model wi:450-459 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-32 | Overview:33-51 | At a glance:52-68 | Quick start:69-92 | Adding machines external dat:93-115 | Media repository:116-144 | Server inventory:145-178 | Snapshot terminal first hand:179-194 | Hands-on staging over RDP RD:195-217 | Extractor the program on the:218-250 | Console UI:251-292 | CLI:293-354 | GitHub integration:355-371 | OS policy:372-386 | Workflow per host:387-400 | Directory tree:401-431 | Where your data lives never:432-448 | Testing:449-461 | Errors:462-475 | Future your work AI model wi:476-485 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.12.0 &nbsp;|&nbsp; **This file:** 2026-11-14
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.13.0 &nbsp;|&nbsp; **This file:** 2026-11-15
 
 ## TL;DR
 
@@ -10,10 +10,11 @@
 - **Business hours, Mon-Fri 08:00-17:00 Lisbon:** read-only checks and staging into `C:\Temp` only. Changes off-hours and weekends.
 - **Disk expansion** (Azure) is after hours only, no override: the VM is shut down, the disk resized, the VM started.
 - **Install:** `Get-ChildItem -Recurse . | Unblock-File` then `powershell -ExecutionPolicy Bypass -File .\Install.ps1`, then `vmm` or the **VM Maintenance** desktop shortcut. Runs from any folder; the installed copy does not depend on it.
-- **Test first:** `.\Tools\Invoke-SmokeTest.ps1`. GitHub checks pass on Windows PowerShell 5.1 and 7 (255 smoke checks, 93 Pester tests); real hosts, Azure, VPN and the UI are not tested yet.
+- **Test first:** `.\Tools\Invoke-SmokeTest.ps1`. GitHub checks pass on Windows PowerShell 5.1 and 7 (278 smoke checks, 99 Pester tests); real hosts, Azure, VPN and the UI are not tested yet.
 - **New machines:** a CSV with three columns, *hostname or FQDN, domain, IP* (`,` or `;`, header optional). `0` in the menu (drag the file, or Enter to browse; preview, then confirm) or `vmm import -Path hosts.csv`. The check then connects by FQDN, or by IP when the name does not resolve.
 - **Media repository** (`Staging.SourceShare`): Windows Server images at the root (`Win_Server_2019_FR_FR.iso`), one folder per host for its own files (SQL Server updates). Each host gets the 2019 image **in its install language** plus its folder. `vmm media` shows what is there and what is missing.
 - **Snapshot, terminal first:** `vmm snapshot` reads every host from the laptop (DCOM, then WinRM, then WinRM-SSL), read-only. Only hosts where every route fails need hands-on: vmm then builds the Extractor, which is snapshot-only and writes one encrypted file on the host desktop, nothing else. `vmm access` shows the route per host.
+- **Terminal copy failed? Hands-on with checks:** when Stage cannot copy to a host (admin share closed, access denied), vmm offers to continue over **RDP, RDM (Devolutions Remote Desktop Manager) or RDCMan**: it opens the client you pick, puts a copy-and-check script on the clipboard, lists every file for `C:\Temp` with size and SHA256, and when you come back (`V`) **verifies the files on the host** before Stage is marked done. `T` on a host, or `vmm handoff -HostName x`; `vmm rdp -HostName x` just opens a session. No account or password is passed to the client or saved.
 - **Look:** deep iceberg blue: blue-black background, ice-tinted text, deep iceberg top bar, key bar and selected row, iceberg titles; green, orange and red only for statuses (a small block in front of each row, the text stays neutral). 24-bit colour where the console takes it, 16 colours otherwise (`UI.TrueColor`), `--no-color` for none, `UI.DeepBackground = $false` for a black background.
 - **One vmm at a time:** a second vmm that could change something stops and says which process is running; read-only commands (`vmm log -Follow`, `vmm status`, `vmm plan`) still work beside it.
 - **Agent health:** Qualys, CrowdStrike, Zabbix, Ivanti and Lansweeper agents are reported as OK / WARN / FAIL with version and reason (stopped, start type, driver, port, silent log, old version), by the fleet check and by the Extractor. `vmm agents -Problems`, `A` on a host, and the inventory columns.
@@ -191,6 +192,29 @@ Nothing is written, started, stopped or configured on a host, and nothing is rec
 (no TrustedHosts edit, no firewall change). The Windows licence read wakes the Software Protection service
 on the host for a moment; `Fleet.WindowsLicence = $false` skips it.
 
+## Hands-on staging over RDP / RDM
+
+When vmm cannot copy the staging files to a host from the terminal (the admin share `\\host\C$` is closed,
+access is denied, the copy breaks) and the alternatives already failed, the Stage step offers to go on by hand
+(`Handoff.Offer = Ask`). You can also start it yourself: `T` on a host or on the Stage guide, or
+`vmm handoff -HostName x`. Policy and time rules are the same as Stage: client OS only with an order, and in
+business hours only into `C:\Temp`.
+
+| # | Who | What |
+|---|---|---|
+| 1 | vmm | Builds the file list (same as the terminal copy; the staging gate applies), and asks whether to copy the files to this laptop first (**outbox**, for hosts that cannot open the share: the host then takes them from `\\tsclient\C\...`) |
+| 2 | vmm | Puts a short script on the clipboard and asks **RDP**, **RDM**, **RDCMan** or **none** (you open the session yourself). Missing clients are shown with the reason |
+| 3 | vmm | Opens the client: RDP with a one-off `.rdp` file (clipboard on, only the outbox drive shared), RDM with a quick connect (`/Template:RDP /Host:<host>`), RDCMan with a one-off `.rdg`. You sign in: vmm passes and keeps no account |
+| 4 | You, on the host | PowerShell > paste. The script writes only in `C:\Temp`: copies each missing file (from the share, else from the laptop), reads size and SHA256 on the host and puts one `VMMSTAGE1\|...` line on the clipboard. Or copy the listed files by hand (Explorer, RDM file transfer) |
+| 5 | You, in vmm | `V` verifies: the `VMMSTAGE1` report (clipboard, or `P` to paste it), else WinRM (hash read on the host), the admin share, WMI (size). `C` copies the script again, `O` reopens the session, `S` shows the steps, `Q` stops |
+| 6 | vmm | Every file right (size, and SHA256 when one is known) = Stage `Success` with a note saying it was done by hand and how it was verified. Anything else = nothing recorded, and it says which file is missing or wrong |
+
+Later, without a session: `vmm handoff -HostName x -VerifyOnly` (reads the host) or `-Report "VMMSTAGE1|..."`.
+Settings: `Handoff.Client` (default client), `Handoff.Outbox`, `Handoff.RdmPath` / `Handoff.RdcManPath` (when not
+found by themselves), `Handoff.RdmTemplate`, `Handoff.AcceptSizeOnly` (default `$false`: a known SHA256 must be read
+on the host). `vmm rdp -List` shows which clients this laptop has. Everything goes to the day log; the `.rdp` /
+`.rdg` files and the host script are deleted at the end, the outbox by `vmm maint -Action CleanTemp` after a day.
+
 ## Extractor (the program on the remote host)
 
 Only for hosts the terminal cannot read (no WMI/RPC, no WinRM, other domain, RDP-only). It is **snapshot
@@ -253,7 +277,7 @@ and today's progress bar with Azure context and credential state.
 | H / Q | Help / Quit (clears session credentials) |
 
 On a host screen: Enter run step, `G` RDP guide, `X` Extractor with this host's plan, `P` import result (clipboard, then Desktop/Downloads), `Y` confirm a
-guided step, `B` blocker report and move on, `R` resolve, `L` mstsc, `H` hold, `C` check, `I` inventory.
+guided step, `B` blocker report and move on, `R` resolve, `L` remote desktop (RDP / RDM / RDCMan), `T` stage by hand over remote desktop with checks, `H` hold, `C` check, `I` inventory.
 
 Arrows, PgUp/PgDn, Home/End move; Enter opens; Esc goes back; letters run the actions shown
 in the footer. Mouse: click selects, double-click opens, wheel scrolls (classic console and
@@ -282,6 +306,8 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm next [-HostName x] [-All]` | Run the next automatic step |
 | `vmm step -HostName x -Step Upgrade` | Run one step (`-Override -OverrideReason ".."` in business hours) |
 | `vmm guide -HostName x -Step Upgrade` | RDP/RDM checklist |
+| `vmm handoff -HostName x [-Client Rdp\|Rdm\|RdcMan\|None] [-Outbox Always]` | Stage by hand over remote desktop, then verify size and SHA256 on the host; `-VerifyOnly` or `-Report "VMMSTAGE1\|.."` to check later |
+| `vmm rdp -HostName x [-Client Ask\|Rdp\|Rdm\|RdcMan]` / `vmm rdp -List` | Open RDP / RDM / RDCMan for a host (no account passed) / which clients are installed |
 | `vmm collect [-Path VMM_x.vmm \| -Line "VMM2..."]` | Record one result (file, pasted line, or clipboard) |
 | `vmm inbox` | Import every `VMM_*.vmm` result file from Desktop/Downloads (also at start and with `E`) |
 | `vmm stage` | Staging gate: share reachable, files present, hashes |
@@ -429,7 +455,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1                                         # before every commit/push
 ```
 
-Status (2.12.0): the offline smoke test (255 checks) and Pester (93 tests) pass on GitHub's Windows runners in
+Status (2.13.0): the offline smoke test (278 checks) and Pester (99 tests) pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -456,4 +482,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-14 19:26 UTC_
+_Last updated: 2026-11-15 22:00 UTC_

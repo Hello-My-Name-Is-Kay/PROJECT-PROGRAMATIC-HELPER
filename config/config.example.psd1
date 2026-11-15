@@ -114,6 +114,22 @@
         )
     }
 
+    Handoff = @{
+        # Hands-on fallback when the terminal cannot copy files to a host (vmm handoff, T on a host, offered by Stage).
+        # vmm opens the client, puts a copy-and-check script on the clipboard and verifies size + SHA256 on the host.
+        # No user name or password is ever passed to the client or saved: you sign in each time.
+        Offer          = 'Ask'     # Ask = offer it when the Stage copy fails | Always = go straight to it | Never
+        Client         = 'Ask'     # Ask | Rdp (mstsc) | Rdm (Devolutions Remote Desktop Manager) | RdcMan (Sysinternals) | None
+        Outbox         = 'Ask'     # Ask | Always | Never: copy the files to this laptop first, share that drive with RDP (\\tsclient)
+        OutboxFolder   = ''        # '' = %LOCALAPPDATA%\VmMaintenance\outbox (vmm maint -Action CleanTemp empties it after a day)
+        RdmPath        = ''        # '' = search (App Paths, Program Files\Devolutions, PATH)
+        RdmTemplate    = 'RDP'     # RDM /Template: for the quick connect (RDP, or the id of your own RDP template)
+        RdmDataSource  = ''        # optional RDM /DataSource: id
+        RdcManPath     = ''        # '' = search (PATH, Program Files\Sysinternals)
+        AcceptSizeOnly = $false    # $false = when a SHA256 is known it must be read on the host (report, WinRM or share)
+        ShareHashMaxMB = 256       # verify over the admin share: hash files up to this size (bigger = over the network, slow)
+    }
+
     Collect = @{
         # Extractor result files (VMM_<HOST>_<time>.vmm) you copy back from the hosts are picked up here.
         InboxFolders = @('Desktop', 'Downloads')   # Desktop | Downloads | any folder path

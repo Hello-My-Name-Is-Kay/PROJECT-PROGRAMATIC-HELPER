@@ -10,7 +10,7 @@ function Invoke-VmmMaintenance {
         ListBackups  backups with date, size and host count
         Restore      puts a backup back (-BackupFile); the current store is kept as fleet.vmm.before-restore
         CleanLogs    deletes day logs older than Log.KeepDays (30); -All: every day except today
-        CleanTemp    old generated extractors, plaintext log exports, half-written files
+        CleanTemp    old generated extractors, plaintext log exports, half-written files, RDP handoff files and outbox copies
         ResetUi      clears the UI caches and the in-memory log (files are kept)
         Nothing here touches hosts or Azure. Backups stay encrypted with the same DPAPI-protected key.
     .EXAMPLE
@@ -147,6 +147,9 @@ function Invoke-VmmMaintenance {
             $files += @(Get-ChildItem -LiteralPath (Get-VmmPath -Name Agents) -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cut })
             $files += @(Get-ChildItem -LiteralPath (Join-Path (Get-VmmPath -Name Reports) 'Logs') -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cut })
             $files += @(Get-ChildItem -LiteralPath $dataDir -Filter '*.tmp' -File -ErrorAction SilentlyContinue)
+            $files += @(Get-ChildItem -LiteralPath (Get-VmmPath -Name Handoff) -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cut })
+            # the outbox only when it is vmm's own folder (a folder you chose in Handoff.OutboxFolder is left alone)
+            if (-not (Get-VmmSetting 'Handoff.OutboxFolder' -Default '')) { $files += @(Get-ChildItem -LiteralPath (Get-VmmPath -Name Outbox) -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cut }) }
             $files += @(Get-ChildItem -LiteralPath (Get-VmmPath -Name Logs) -Filter '*.old' -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) })
             if (-not $files) { Write-VmmLog 'Nothing to clean.' -Level Success; return }
             if ($PSCmdlet.ShouldProcess("$($files.Count) file(s)", 'Delete leftover temp files')) {
