@@ -162,3 +162,64 @@ Describe 'SQL instances in both registry views' {
         @($errs).Count | Should -Be 0
     }
 }
+
+Describe 'The repository template and Windows PowerShell 2.0' {
+    BeforeAll {
+        # Static scan: syntax and commands that Windows PowerShell 2.0 (Server 2008 R2) does not have. Returns one text per finding.
+        # Get-CimInstance is allowed only inside the two readers that use it when Get-WmiObject is missing.
+        function Get-Ps2Finding([string]$Code) {
+            $L = 'System.Management.Automation.Language.'
+            $ast = [System.Management.Automation.Language.Parser]::ParseInput($Code, [ref]$null, [ref]$null)
+            $found = @()
+            foreach ($n in $ast.FindAll({ $true }, $true)) {
+                $at = 'line ' + $n.Extent.StartLineNumber + ': '
+                if ($n -is [System.Management.Automation.Language.BinaryExpressionAst] -and ('' + $n.Operator) -in 'Iin', 'Inotin', 'Cin', 'Cnotin') { $found += $at + '-in/-notin' }
+                if ($n -is [System.Management.Automation.Language.ConvertExpressionAst] -and $n.Type.TypeName.Name -in 'ordered', 'pscustomobject') { $found += $at + '[' + $n.Type.TypeName.Name + ']' }
+                if ($n -is [System.Management.Automation.Language.InvokeMemberExpressionAst]) {
+                    $m = '' + $n.Member
+                    if ($m -in 'Where', 'ForEach', 'new', 'IsNullOrWhiteSpace', 'HasFlag', 'EnumerateFiles', 'ReadLines', 'CopyTo', 'TryParse') { $found += $at + '.' + $m + '()' }
+                }
+                if ($n -is [System.Management.Automation.Language.MemberExpressionAst] -and ('' + $n.Member) -in 'Is64BitOperatingSystem', 'Is64BitProcess') { $found += $at + '.NET 4 property ' + $n.Member }
+                if ($n -is [System.Management.Automation.Language.VariableExpressionAst] -and $n.VariablePath.UserPath -in 'PSScriptRoot', 'PSCommandPath') { $found += $at + '$' + $n.VariablePath.UserPath }
+                if ($n -is [System.Management.Automation.Language.TypeDefinitionAst]) { $found += $at + 'class/enum' }
+                if ($n -is [System.Management.Automation.Language.CommandAst]) {
+                    $c = '' + $n.GetCommandName()
+                    if ($c -in 'Get-CimInstance', 'New-CimSession', 'ConvertFrom-Json', 'ConvertTo-Json', 'Get-FileHash', 'Set-Clipboard', 'Get-Clipboard', 'Get-ItemPropertyValue', 'Invoke-RestMethod', 'Invoke-WebRequest', 'Write-Information', 'Get-NetAdapter', 'Get-NetIPAddress', 'Test-NetConnection') {
+                        $p = $n.Parent
+                        while ($p -and $p -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) { $p = $p.Parent }
+                        if (-not ($c -eq 'Get-CimInstance' -and $p -and $p.Name -in 'Get-Wmi', 'Get-InvProbe')) { $found += $at + $c }
+                    }
+                    $hasBlock = $false
+                    foreach ($el in $n.CommandElements) {
+                        if ($el -is [System.Management.Automation.Language.ScriptBlockExpressionAst]) { $hasBlock = $true }
+                        if ($el -is [System.Management.Automation.Language.CommandParameterAst] -and $el.ParameterName -in 'Raw', 'File', 'Directory', 'AdditionalChildPath', 'Depth') { $found += $at + $c + ' -' + $el.ParameterName }
+                    }
+                    if ($c -in 'Where-Object', 'ForEach-Object' -and -not $hasBlock) { $found += $at + $c + ' without a script block' }
+                }
+            }
+            $found
+        }
+    }
+    It 'the scan finds what Windows PowerShell 2.0 lacks (it is not blind)' {
+        $code = "`$a = 1 -in @(1)`n`$b = [ordered]@{}`n`$c = @(1).Where({ `$_ })`n`$d = Get-ChildItem -File`n`$e = Get-Item . | Where-Object Name`nGet-CimInstance Win32_BIOS`n"
+        @(Get-Ps2Finding $code).Count | Should -Be 6
+    }
+    It 'the Extractor code (steps code cut out, as in a snapshot build) has nothing Windows PowerShell 2.0 lacks' {
+        $t = [IO.File]::ReadAllText($script:agentPath)
+        $b = $t.IndexOf('# VMM-STEPS-BEGIN'); $e = $t.IndexOf('# VMM-STEPS-END')
+        $b | Should -BeGreaterThan 0
+        $e | Should -BeGreaterThan $b
+        $snapshot = $t.Substring(0, $b) + $t.Substring($e + '# VMM-STEPS-END'.Length)
+        @(Get-Ps2Finding $snapshot) | Should -BeNullOrEmpty
+    }
+    It 'the repository file is the generic template: empty plan card, no key, and no address, share, e-mail or id' {
+        $t = [IO.File]::ReadAllText($script:agentPath)
+        @([regex]::Matches($t, "(?m)^\`$CardText = '[^']*'")).Count | Should -Be 1
+        $t | Should -Match "(?m)^\`$CardText = ''   # VMM-CARD"
+        $t | Should -Not -Match 'RSAKeyValue|PRIVATE KEY'
+        $t | Should -Not -Match '\b(?:\d{1,3}\.){3}\d{1,3}\b'
+        $t | Should -Not -Match '\\\\[A-Za-z0-9][\w\.-]*\\'
+        $t | Should -Not -Match '[\w\.-]+@[\w\.-]+\.[A-Za-z]{2,}'
+        $t | Should -Not -Match '\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b'
+    }
+}
