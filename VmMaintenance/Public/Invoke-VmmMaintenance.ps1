@@ -60,6 +60,7 @@ function Invoke-VmmMaintenance {
             else { & $add 'Backups' 'WARN' 'none yet: maintenance B (vmm also makes one a day at start)' }
             $ldir = Get-VmmPath -Name Logs
             $lf = @(Get-ChildItem -LiteralPath $ldir -Filter 'vmm_*.log' -File -ErrorAction SilentlyContinue)
+            if ($script:VmmLogFileError) { & $add 'Log writes' 'FAIL' "this session's log file could not be written: $script:VmmLogFileError" }
             & $add 'Log files' 'OK' ("{0} day(s), {1}, encrypted: {2}, live view: {3}, kept {4} days" -f $lf.Count, (& $size $ldir), [bool](Get-VmmSetting 'Log.Encrypt' -Default $true), (Test-VmmLogLive), (Get-VmmSetting 'Log.KeepDays' -Default 30))
             $ef = Join-Path $ldir 'errors.log'
             if (Test-Path -LiteralPath $ef) {
@@ -103,7 +104,7 @@ function Invoke-VmmMaintenance {
             if (-not (Test-Path -LiteralPath $bdir)) { New-Item -ItemType Directory -Path $bdir -Force | Out-Null }
             $dest = Join-Path $bdir ('fleet_{0}.vmm' -f (Get-Date).ToString('yyyyMMdd_HHmmss'))
             if ($PSCmdlet.ShouldProcess($dest, 'Back up the encrypted fleet store')) {
-                Copy-Item -LiteralPath $store -Destination $dest -Force
+                Copy-Item -LiteralPath $store -Destination $dest -Force -ErrorAction Stop
                 $existing = @(Get-ChildItem -LiteralPath $bdir -Filter 'fleet_*.vmm' -File | Sort-Object LastWriteTime -Descending)
                 $existing | Select-Object -Skip $keep | Remove-Item -Force -ErrorAction SilentlyContinue
                 if (-not $Quiet) { Write-VmmLog "Backup: $dest (kept: $([math]::Min($existing.Count, $keep)))" -Level Success } else { Write-VmmLog "Backup: $dest" -Level Muted -FileOnly }
@@ -128,8 +129,9 @@ function Invoke-VmmMaintenance {
             if (-not (Test-Path -LiteralPath $src)) { throw (New-VmmErrorRecord -Activity 'Backup not found.' -Target $src -Fix 'vmm maint -Action ListBackups' -Category ObjectNotFound) }
             $s = & $testStore $src   # refuses a damaged or foreign file before anything changes
             if ($PSCmdlet.ShouldProcess($store, "Replace the fleet store with $([IO.Path]::GetFileName($src)) ($(@($s.Hosts).Count) hosts)")) {
-                if (Test-Path -LiteralPath $store) { Copy-Item -LiteralPath $store -Destination "$store.before-restore" -Force }
-                Copy-Item -LiteralPath $src -Destination $store -Force
+                # Stops before anything is replaced when the safety copy cannot be written
+                if (Test-Path -LiteralPath $store) { Copy-Item -LiteralPath $store -Destination "$store.before-restore" -Force -ErrorAction Stop }
+                Copy-Item -LiteralPath $src -Destination $store -Force -ErrorAction Stop
                 $script:VmmProgCache = $null
                 Write-VmmLog ("Restored {0} ({1} host(s)). The store it replaced: {2}.before-restore" -f [IO.Path]::GetFileName($src), @($s.Hosts).Count, $store) -Level Success
             }
@@ -153,7 +155,17 @@ function Invoke-VmmMaintenance {
             $files += @(Get-ChildItem -LiteralPath (Get-VmmPath -Name Logs) -Filter '*.old' -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) })
             if (-not $files) { Write-VmmLog 'Nothing to clean.' -Level Success; return }
             if ($PSCmdlet.ShouldProcess("$($files.Count) file(s)", 'Delete leftover temp files')) {
-                foreach ($f in $files) { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue; Write-VmmLog "deleted $($f.Name)" -Level Muted }
+                # Extractors and log exports hold host names in plaintext: a file that stays must be named, not counted as deleted
+                $left = @()
+                foreach ($f in $files) {
+                    try { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop; Write-VmmLog "deleted $($f.Name)" -Level Muted }
+                    catch { $left += $f.FullName; Write-VmmLog "NOT deleted: $($f.FullName) - $(("$($_.Exception.Message)" -split "`r?`n")[0])" -Level Error }
+                }
+                if ($left) {
+                    throw (New-VmmErrorRecord -Activity "$($left.Count) of $($files.Count) leftover file(s) could not be deleted." -Target ($left -join ', ') `
+                        -Cause 'A file is open in another program, or your account cannot delete it.' -Fix 'Close the program using it and run Clean temp again (maintenance T), or delete the files by hand.' `
+                        -Category WriteError -ErrorId 'VmmCleanIncomplete')
+                }
                 Write-VmmLog "$($files.Count) leftover file(s) deleted." -Level Success
             }
         }

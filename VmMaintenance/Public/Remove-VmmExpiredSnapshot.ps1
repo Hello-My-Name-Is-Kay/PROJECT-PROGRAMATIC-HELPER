@@ -86,4 +86,10 @@ function Remove-VmmExpiredSnapshot {
     $count = { param($a) @($results | Where-Object Action -eq $a).Count }
     Write-VmmLog ("Deleted {0} | Would delete {1} | Kept {2} | Skipped {3} | Failed {4}" -f (& $count 'Deleted'), (& $count 'WouldDelete'), (& $count 'Kept'), (& $count 'Skipped'), (& $count 'Failed')) -Level Info
     if ($PassThru) { $results }
+    $failedRows = @($results | Where-Object Action -eq 'Failed')
+    if ($failedRows) {
+        throw (New-VmmErrorRecord -Activity "$($failedRows.Count) expired snapshot(s) could not be deleted in $scope." -Target (@($failedRows | ForEach-Object Snapshot) -join ', ') `
+            -Cause (@($failedRows | Select-Object -First 3 | ForEach-Object Detail) -join ' | ') -Fix 'See the errors above (a lock or missing rights is the usual cause), then run the prune again.' `
+            -Category InvalidResult -ErrorId 'VmmPruneIncomplete')
+    }
 }

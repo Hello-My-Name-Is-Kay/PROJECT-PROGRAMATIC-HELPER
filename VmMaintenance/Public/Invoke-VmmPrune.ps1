@@ -26,5 +26,14 @@ function Invoke-VmmPrune {
     # Deleting snapshots removes rollback points: treated as a change (business hours = override only)
     Assert-VmmWindow -Class Change -Target "prune $($due.Count) snapshot(s)" -Override:$Override -OverrideReason $OverrideReason
     if (-not $PSCmdlet.ShouldProcess("$($due.Count) expired snapshot(s)", 'Delete permanently')) { Write-VmmLog 'Cancelled.' -Level Warn; return }
-    foreach ($s in $subs) { Remove-VmmExpiredSnapshot -Subscription $s -AllResourceGroups -Confirm:$false }
+    # Every subscription is pruned even when one fails; the failures are reported together at the end
+    $bad = @()
+    foreach ($s in $subs) {
+        try { Remove-VmmExpiredSnapshot -Subscription $s -AllResourceGroups -Confirm:$false }
+        catch { $bad += (("$($_.Exception.Message)" -split "`r?`n")[0]).Trim(); Write-VmmLog $_.Exception.Message -Level Error }
+    }
+    if ($bad) {
+        throw (New-VmmErrorRecord -Activity "Prune incomplete in $($bad.Count) of $($subs.Count) subscription(s)." -Target ($bad -join ' | ') `
+            -Fix 'See the errors above, then run the prune again (only expired snapshots are deleted).' -Category InvalidResult -ErrorId 'VmmPruneIncomplete')
+    }
 }

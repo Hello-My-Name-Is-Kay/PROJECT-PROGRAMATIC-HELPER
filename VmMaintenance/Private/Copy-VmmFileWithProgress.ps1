@@ -1,14 +1,20 @@
 function Copy-VmmFileWithProgress {
     # Copies one file in 4 MB blocks and logs progress (done/total, MB/s, time left) every
     # Log.HeartbeatSeconds, so a multi-GB ISO copy over the network never looks stuck.
-    # Writes to <dest>.part first and renames at the end: a broken copy never looks complete.
+    # Writes to <dest>.part first and renames at the end: a broken or interrupted copy (error or Ctrl+C) never
+    # looks complete, and its .part file is deleted so no half-copied ISO is left filling the host's C:.
+    # Source and Destination may be PowerShell paths (Stage writes through a temporary drive mapped to the
+    # host's admin share): they are resolved to file-system paths before .NET opens them.
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Source, [Parameter(Mandatory)][string]$Destination, [string]$Label = '')
     $beat = 5
     try { $beat = [math]::Max(2, [int](Get-VmmSetting 'Log.HeartbeatSeconds' -Default 5)) } catch { }
     if (-not $Label) { $Label = [IO.Path]::GetFileName($Source) }
-    $part = "$Destination.part"
-    $in = [IO.File]::Open($Source, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $src  = $PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Source)
+    $dest = $PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
+    $part = "$dest.part"
+    $done = $false
+    $in = [IO.File]::Open($src, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     try {
         $out = [IO.File]::Open($part, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
         try {
@@ -26,10 +32,12 @@ function Copy-VmmFileWithProgress {
                 }
             }
         } finally { $out.Dispose() }
-    } catch {
-        Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
-        throw
-    } finally { $in.Dispose(); Write-Progress -Activity "Copy $Label" -Completed }
-    Move-Item -LiteralPath $part -Destination $Destination -Force
+        Move-Item -LiteralPath $part -Destination $dest -Force -ErrorAction Stop
+        $done = $true
+    } finally {
+        $in.Dispose()
+        Write-Progress -Activity "Copy $Label" -Completed
+        if (-not $done) { Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue }
+    }
     Write-VmmLog ("{0}: copied {1:N0} MB in {2:N0} s" -f $Label, ($total / 1MB), $sw.Elapsed.TotalSeconds) -Level Trace
 }

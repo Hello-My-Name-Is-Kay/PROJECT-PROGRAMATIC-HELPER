@@ -96,6 +96,13 @@ function Start-VmmRemoteHandoff {
         Write-VmmLog "[$name] verifying staged files in $target (read-only)" -Level Info
         $ev = Get-VmmHandoffEvidence -Record $rec -Items $items -Target $target -Pasted $Report
         [void](& $finish $ev 'checked later')
+        # Unattended check: "not verified" is a failure (exit code 1); the Stage step (-NoMarkStep) reads $res itself
+        if (-not $res.Verified -and -not $NoMarkStep) {
+            throw (New-VmmErrorRecord -Activity "Staged files on $name are not verified." -Target "$name $target" `
+                -Cause $(if ($ev) { (@($ev.Rows | Where-Object Status -ne 'OK' | ForEach-Object { "$($_.File) $($_.Status)" }) -join ', ') } else { 'vmm could not read the host and no VMMSTAGE1 report was given' }) `
+                -Fix "Copy the missing files (vmm handoff -HostName $name), or paste the host script's report: vmm handoff -HostName $name -Report 'VMMSTAGE1|...'" `
+                -Category InvalidResult -ErrorId 'VmmHandoffNotVerified')
+        }
         return $res
     }
     if (-not (Test-VmmInteractive)) {

@@ -5,7 +5,8 @@ function Invoke-VmmCli {
     .DESCRIPTION
         Every command is logged to the encrypted day log (vmm log): the command line (option names, not
         values), every message, the tables it printed, live progress lines, then the result with its
-        duration, or the error. Only one vmm that can change things runs at a time (a second one stops with
+        duration, the error, or INTERRUPTED when Ctrl+C stopped it. Credentials asked during a command are
+        cleared from memory when it ends. Only one vmm that can change things runs at a time (a second one stops with
         VmmInstanceLocked, exit code 6); read-only commands such as log, status and plan always run.
         Long work prints time-stamped progress lines in the terminal (--no-log
         turns those off; the file is still written). A one-line footer shows the duration.
@@ -107,25 +108,32 @@ function Invoke-VmmCli {
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $failed = $null
     $out = $null
+    $ended = $false   # stays $false only when Ctrl+C stopped the command (catch blocks do not run then, finally does)
     try {
         if ($Command -eq 'config' -and -not $p.Count) { Import-VmmConfig }
         else { & $fn @p | Tee-Object -Variable out }
+        $ended = $true
     } catch {
         $failed = $_
+        $ended = $true
         throw
     } finally {
         $sw.Stop()
+        # [SEC] credentials asked for this command live only as long as it (vmm.ps1 may run inside an open PowerShell)
+        try { Clear-VmmSessionCredentialStore } catch { Write-Warning "Session credentials could not be cleared from memory ($($_.Exception.Message)): close this PowerShell window." }
         if ($locked) { Exit-VmmInstanceLock }
         # Objects the command returned (the console formats them itself): keep a copy in the log
         if ($out) {
             try {
                 $n = 0
                 foreach ($l in @(($out | Out-String -Width 200 -Stream) | Where-Object { $_.Trim() } | Select-Object -First 200)) { Add-VmmLogEntry -Text (Protect-VmmLogText $l.TrimEnd()) -Level Output; $n++ }
-            } catch { }
+            } catch { Add-VmmLogEntry -Text (Protect-VmmLogText "Command output not copied to the log: $($_.Exception.Message)") -Level Warn }
         }
         $secs = '{0:N1}' -f $sw.Elapsed.TotalSeconds
         if ($failed) {
             Add-VmmLogEntry -Text (Protect-VmmLogText ("$shown FAILED in $secs s: " + (("$($failed.Exception.Message)" -replace '\s+', ' ').Trim()) + " [$($failed.FullyQualifiedErrorId)]")) -Level Error
+        } elseif (-not $ended) {
+            Add-VmmLogEntry -Text "$shown INTERRUPTED (Ctrl+C) after $secs s: check what it changed before running it again" -Level Error
         } else {
             Add-VmmLogEntry -Text "$shown done in $secs s" -Level Muted
             if ((Test-VmmLogLive) -and $sw.Elapsed.TotalSeconds -ge 1) { Write-VmmColor "-- $Command done in $secs s | full log: vmm log --" -Role Muted }

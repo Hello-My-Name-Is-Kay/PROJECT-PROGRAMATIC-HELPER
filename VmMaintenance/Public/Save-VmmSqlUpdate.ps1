@@ -97,7 +97,11 @@ function Save-VmmSqlUpdate {
         }
     }
     $bad = @($todo | Where-Object { $_.Status -like 'failed*' })
-    if ($bad) { Write-VmmLog "$($bad.Count) of $($todo.Count) not done - see the lines above; run the fetch again later (finished downloads are kept)." -Level Warn }
-    else { Write-VmmLog 'All SQL updates are in the host folders. Stage (or copy by hand in RDP) as usual; installing them stays a manual step.' -Level Success }
+    if (-not $bad) { Write-VmmLog 'All SQL updates are in the host folders. Stage (or copy by hand in RDP) as usual; installing them stays a manual step.' -Level Success }
     if ($PassThru) { $rows }
+    if ($bad) {
+        throw (New-VmmErrorRecord -Activity "$($bad.Count) of $($todo.Count) SQL update file(s) not in their host folders." -Target (@($bad | ForEach-Object { "$($_.Host) $($_.Kb)" }) -join ', ') `
+            -Cause (@($bad | Select-Object -First 3 | ForEach-Object Status) -join ' | ') -Fix 'Run the fetch again later: finished downloads are kept in the cache.' `
+            -Category InvalidResult -ErrorId 'VmmFetchIncomplete')
+    }
 }

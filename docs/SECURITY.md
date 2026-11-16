@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-45 | Honest limits:46-70 | Untested:71-82 -->
+<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-47 | Honest limits:48-72 | Untested:73-84 -->
 # Security
 
 Rules this project follows, how each is implemented, and the honest limits.
@@ -15,7 +15,7 @@ Rules this project follows, how each is implemented, and the honest limits.
 
 | Data | Where | Protection |
 |---|---|---|
-| Host credentials, SQL login | Process memory | `PSCredential` (SecureString), asked once per session, disposed on quit. Never logged, exported or written. `Set-VmmSetting` refuses credential-like keys |
+| Host credentials, SQL login | Process memory | `PSCredential` (SecureString), asked once per session, disposed when the command, entry script or console ends (also after Ctrl+C) and when the module is unloaded. Never logged, exported or written. `Set-VmmSetting` refuses credential-like keys |
 | VPN credentials | VPN client only | Typed into Cisco Secure Client / Windows dialog; never pass through vmm |
 | GitHub sign-in | GitHub CLI (Windows Credential Manager) | vmm never reads the token (`gh auth token` is never called); issue/PR text is masked and previewed; PRs only after the leak scan |
 | Azure sign-in | Az.Accounts token cache | Microsoft's own cache; vmm stores no tokens. AI tokens are fetched per request and dropped |
@@ -33,10 +33,12 @@ Rules this project follows, how each is implemented, and the honest limits.
 Input from hosts is untrusted: result lines are size-limited, MAC-checked, field-validated,
 length-capped and accepted only for hosts already in your fleet.
 
-Errors: every function throws a structured error (what, target, cause, fix). The CLI catches
-everything at the top, prints only the sanitized message, writes the sanitized log line and returns a
-specific exit code. The console catches per action and returns to the menu. The Extractor never shows
-stack traces.
+Errors: every function throws a structured error (what, target, cause, fix). The CLI and the entry scripts
+catch everything at the top, print only the sanitized message, write the sanitized log line and return a
+specific exit code (one table for both). Ctrl+C is logged as INTERRUPTED. The console catches per action and
+returns to the menu. Where a log write, the credential clean-up or the power-state recovery itself fails, that is
+logged or shown as a warning, never swallowed. The Extractor never shows stack traces. Text that leaves the laptop (AI
+assistant, GitHub issue) is masked first, and nothing is sent when the masking cannot be complete.
 
 Repository: `.gitignore` excludes configs, lists, data, keys, reports and agents;
 `Tools\Test-Sanitized.ps1` fails the commit/push if a GUID, IPv4, e-mail address, token, key, password,
@@ -79,4 +81,4 @@ port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the 
 launching mstsc / Remote Desktop Manager (`/Template:RDP /Host:`) / RDCMan with the generated files, `drivestoredirect`
 through company RDP policy, the handoff script on PowerShell 2.0, and verification over WinRM / admin share / WMI on real hosts.
 
-_Last updated: 2026-11-15 22:00 UTC_
+_Last updated: 2026-11-16 04:02 UTC_

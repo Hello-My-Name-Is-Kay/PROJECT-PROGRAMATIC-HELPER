@@ -58,7 +58,7 @@ function Export-VmmDailyReport {
     [pscustomobject]@{
         Date = $date; Zone = $w.ZoneLabel; GeneratedAt = $w.ZoneTime.ToString('yyyy-MM-dd HH:mm')
         Progress = $prog; Hosts = $rows; Today = $todayEvents; OpenBlockers = $blockers; Overrides = $overrides
-    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$base.json" -Encoding UTF8
+    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$base.json" -Encoding UTF8 -ErrorAction Stop
 
     # HTML status page
     $enc = { param($s) [System.Net.WebUtility]::HtmlEncode("$s") }
@@ -108,7 +108,7 @@ document.querySelectorAll('th').forEach(function(th){th.onclick=function(){var t
 [].slice.call(b.rows).sort(function(x,y){var p=x.cells[i].textContent,q=y.cells[i].textContent,n=parseFloat(p)-parseFloat(q);var c=isNaN(n)?p.localeCompare(q):n;return d=='a'?c:-c}).forEach(function(r){b.appendChild(r)})}})
 </script></body></html>
 "@
-    Set-Content -LiteralPath "$base.html" -Value $html -Encoding UTF8
+    Set-Content -LiteralPath "$base.html" -Value $html -Encoding UTF8 -ErrorAction Stop
     if (-not $Quiet) {
         Write-VmmLog "Daily report: $base.html | .csv | .json" -Level Success
         if (Get-VmmSetting 'Inventory.ExportWithDaily' -Default $true) {

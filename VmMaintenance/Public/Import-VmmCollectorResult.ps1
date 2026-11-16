@@ -23,7 +23,7 @@ function Import-VmmCollectorResult {
     if ($Path) {
         if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw (New-VmmErrorRecord -Activity "Result file not found: $Path" -Category ObjectNotFound -ErrorId 'VmmResultFile') }
         if ((Get-Item -LiteralPath $Path).Length -gt 6MB) { throw (New-VmmErrorRecord -Activity 'Result file too large.' -Target $Path -Category InvalidData -ErrorId 'VmmCollectorSize') }
-        $Line = [IO.File]::ReadAllText($Path)
+        $Line = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $Path).ProviderPath)   # .NET reads relative paths from the process folder, not the PowerShell one
     }
     if (-not $Line) { $Line = try { (Get-Clipboard) -join '' } catch { '' } }
     $Line = "$Line".Trim()

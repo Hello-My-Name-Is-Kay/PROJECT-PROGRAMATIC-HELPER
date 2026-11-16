@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance optional AI assistant: Microsoft account/Copilot answer, providers, setup, data sent, access request text, future MCP. SECTIONS: Can my Microsoft account / C:8-20 | Setup:21-39 | What is sent and what is not:40-48 | Access request copy fill in :49-73 | Future MCP with your work AI:74-87 -->
+<!-- SUMMARY: VmMaintenance optional AI assistant: Microsoft account/Copilot answer, providers, setup, data sent, access request text, future MCP. SECTIONS: Can my Microsoft account / C:8-20 | Setup:21-39 | What is sent and what is not:40-51 | Access request copy fill in :52-76 | Future MCP with your work AI:77-90 -->
 # AI assistant (optional)
 
 Off by default (`Features.Ai = $false`). When on, it is **advisory only**: it explains an error,
@@ -40,8 +40,11 @@ vmm ai -Prompt 'Explain: The WinRM client cannot process the request...'
 ## What is sent, and what is not
 
 1. Your question and, with `-IncludeFleet`, a short fleet summary (counts, step states, open blockers).
-2. Before sending: passwords/tokens, IPs, UNC paths, e-mail addresses, `DOMAIN\user` accounts and your
-   user name are masked; host names become `HOST01`, `HOST02`... (`Ai.SendHostNames = $false`).
+2. Before sending: passwords/tokens, IPs, UNC paths, e-mail addresses, `DOMAIN\user` accounts, your user name,
+   GUIDs (tenant and subscription ids), Azure resource ids, the values of the settings that name your environment
+   (Azure, SQL instance, share, VPN, tags, manager), and the domains, resource groups and VM names in the fleet
+   store are masked; host names become `HOST01`, `HOST02`... (`Ai.SendHostNames = $false`). When the fleet store
+   cannot be read, nothing is sent (`VmmAiUnsafe`). The same masking applies to `vmm issue`.
 3. With `Ai.ConfirmEachSend = $true` (default) you see the exact text and must type `y`.
 4. Nothing is stored. Real names are restored only in the answer shown on your screen.
 5. `Local` refuses any endpoint that is not on the laptop (loopback only).
@@ -84,4 +87,4 @@ Not built yet. The plan:
 - Client: a Copilot Studio or Azure AI Foundry agent your organisation approves, or a local client,
   signed in with your work account.
 
-_Last updated: 2026-11-14 03:48 UTC_
+_Last updated: 2026-11-16 04:00 UTC_

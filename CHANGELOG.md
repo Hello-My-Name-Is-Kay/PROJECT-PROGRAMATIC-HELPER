@@ -1,5 +1,63 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.14.0 - 2026-11-15:4-24 | 2.13.0 - 2026-11-15:25-54 | 2.12.0 - 2026-11-14:55-77 | 2.11.0 - 2026-11-14:78-96 | 2.10.0 - 2026-11-14:97-115 | 2.9.0 - 2026-11-14:116-128 | 2.8.0 - 2026-11-14:129-142 | 2.7.0 - 2026-11-14:143-160 | 2.6.0 - 2026-11-14:161-168 | 2.5.0 - 2026-11-14:169-181 | 2.4.0 - 2026-11-14:182-192 | 2.3.0 - 2026-11-14:193-207 | 2.2.1 - 2026-11-14:208-214 | 2.2.0 - 2026-11-14:215-222 | 2.1.0 - 2026-11-14:223-240 | 2.0.0 - 2026-11-14:241-246 | 1.0.0 - 2026-11-14:247-251 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.15.0 - 2026-11-16:4-61 | 2.14.0 - 2026-11-15:62-82 | 2.13.0 - 2026-11-15:83-112 | 2.12.0 - 2026-11-14:113-135 | 2.11.0 - 2026-11-14:136-154 | 2.10.0 - 2026-11-14:155-173 | 2.9.0 - 2026-11-14:174-186 | 2.8.0 - 2026-11-14:187-200 | 2.7.0 - 2026-11-14:201-218 | 2.6.0 - 2026-11-14:219-226 | 2.5.0 - 2026-11-14:227-239 | 2.4.0 - 2026-11-14:240-250 | 2.3.0 - 2026-11-14:251-265 | 2.2.1 - 2026-11-14:266-272 | 2.2.0 - 2026-11-14:273-280 | 2.1.0 - 2026-11-14:281-298 | 2.0.0 - 2026-11-14:299-304 | 1.0.0 - 2026-11-14:305-309 -->
 # Changelog
+
+## 2.15.0 - 2026-11-16
+
+Exits, error handling and logging checked end to end, every test suite run again. Still **alpha**.
+
+- **Stage copies from the terminal again.** Since 2.7.0 the copy to the host went through the temporary drive
+  that maps its admin share with a .NET call that does not know PowerShell drives, so it failed on every host.
+  Paths are resolved first now, and a test copies through a drive the way Stage maps it.
+- **Disk expansion never leaves a VM down.** An unexpected error or Ctrl+C after the VMs were switched off left
+  them deallocated. A recovery now waits for the Azure operations already sent, starts every VM that was running,
+  switches off again the ones that were off, writes the results CSV and names any VM to fix in the Azure portal.
+- **Exit codes tell the truth.** A failed or blocked step, and `vmm next` with failed hosts, ended with exit
+  code 0. They are recorded first, then end with `VmmStepFailed`, `VmmStepBlocked` or `VmmNextStepFailed`
+  (exit code 1); VPN down, the lock and security errors keep their own codes (4, 6, 5). Batch commands finish
+  every item, then fail naming the ones that did not work: media mount and dismount (`VmmMediaIncomplete`),
+  prune (`VmmPruneIncomplete`), disk from snapshot (`VmmRestoreDiskIncomplete`), SQL update fetch
+  (`VmmFetchIncomplete`), the extractor inbox (`VmmInboxFailed`, or exit code 5 when a file failed its integrity
+  check), handoff verify (`VmmHandoffNotVerified`), disk expansion (`VmmExpandIncomplete`), snapshots
+  (`VmmSnapshotIncomplete`: PreSnapshot is no longer recorded as Success when a disk was missed), and
+  `vmm connect` when the VPN did not come up (`VmmVpnDown`, exit code 4).
+- **The entry scripts (`Scripts\*.ps1`) use the same exit codes as vmm** (one table, `Get-VmmExitCode`), log
+  `done`, `FAILED, exit code N` or `INTERRUPTED` with the duration, and clear the session credentials.
+- **Ctrl+C is logged.** The CLI, the console actions, the entry scripts and the workflow steps write
+  `INTERRUPTED (Ctrl+C)` with the duration. A change step stopped that way is recorded as `Failed` ("check the
+  host before running it again"), so the store never shows the state from before as the truth.
+- **Credentials leave memory after every command,** not only when the console closes: after each vmm command,
+  entry script and console session, after Ctrl+C, and when the module is unloaded.
+- Stage: a file of the right size but with the wrong SHA256 on the host is copied again (before, Stage failed on
+  every run); a copy that fails the SHA256 check is deleted; a broken or interrupted copy leaves no `.part` file.
+- Only a real lock conflict says "vmm is already running"; any other problem with the lock file is
+  `VmmInstanceLockFile` with the path.
+- Text sent to the AI assistant or a GitHub issue now also masks GUIDs (tenant and subscription ids), Azure
+  resource ids, the values of the settings that name your environment, domains, resource groups and VM names,
+  and fails closed (`VmmAiUnsafe`, nothing sent) when the fleet store cannot be read.
+- Log: a line logged while another was being written (config load, key creation) was dropped; it is written after
+  it now. A log file that cannot be written is shown once as a warning, stays in the on-screen log, and
+  `vmm maint -Action Diagnose` reports it.
+- Backup, restore, clean temp, settings, blocker reports, the daily report and `vmm import -RemoveSource` could
+  report success after a failed write or delete; they fail with the reason now (`VmmCleanIncomplete`,
+  `VmmSourceNotRemoved`, ...).
+- Extractor: `-Finish` said "Host clean" with files left; `-Finish` and `-Extract` exit 1 when they did not
+  finish and name what is left.
+- Leak scan: `-History` passed when git failed, when run outside a clone, or on a shallow clone; it fails now.
+  A git warning on stderr can no longer stop it in Windows PowerShell with `$ErrorActionPreference = 'Stop'`.
+- No silent `catch { }` left where an exit, the recovery or a log write can fail: the power-state recovery logs a
+  wait or a power-state read that failed, a step whose `Failed` record cannot be saved says so in the day log,
+  an `errors.log` write that fails is logged, the "stopped half way" line of a disk expansion no longer depends on
+  the results CSV being writable, credentials that cannot be cleared give a warning, an unreadable exit-code table
+  gives exit code 1, and the entry scripts print the error masked, like vmm.
+- Small fixes: a relative result file path is read from the PowerShell folder, the SQL password copy is disposed
+  after use, a staging setting that cannot be saved is shown, `vmm disconnect` checks the VPN client's exit code,
+  a console that cannot load its config says so.
+- Tests: new `tests\Exits.Tests.ps1` (29 Pester tests: exit codes from new PowerShell processes, Ctrl+C
+  simulated in a separate runspace on a step, a copy and a disk expansion, failed and blocked steps, `vmm next`,
+  Stage through a drive with the SHA256 re-copy, the power-state recovery, prune and inbox failures, AI masking,
+  lock and log failures) and smoke test section 9 (10 checks). 28 of the 29 new tests fail on 2.14.0.
+- Docs: README, TROUBLESHOOTING (exit codes and the error each command ends with), AI, WORKFLOW, SECURITY,
+  MANAGER-GUIDE, RELEASE.
 
 ## 2.14.0 - 2026-11-15
 
@@ -248,4 +306,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-15 22:00 UTC_
+_Last updated: 2026-11-16 04:02 UTC_

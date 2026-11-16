@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance troubleshooting: first steps, exit codes, common errors by id, encrypted file recovery, log locations. SECTIONS: First steps:7-18 | Exit codes (CLI):19-30 | Common problems:31-57 | Encrypted files:58-68 | Where to look:69-78 -->
+<!-- SUMMARY: VmMaintenance troubleshooting: first steps, exit codes, common errors by id, encrypted file recovery, log locations. SECTIONS: First steps:7-18 | Exit codes (vmm and the entry scripts):19-52 | Common problems:53-80 | Encrypted files:81-91 | Where to look:92-101 -->
 # Troubleshooting
 
 Every error vmm raises has the same shape: what failed, on which target, the raw error, the likely cause and the
@@ -16,7 +16,7 @@ fix. Start with the fix it prints. This page is for when that is not enough.
 
 Run with `--debug-errors` to see the file and line of an unexpected (non-vmm) error.
 
-## Exit codes (CLI)
+## Exit codes (vmm and the entry scripts)
 
 | Code | Meaning | What to do |
 |---|---|---|
@@ -27,6 +27,28 @@ Run with `--debug-errors` to see the file and line of an unexpected (non-vmm) er
 | 4 | VPN down | `vmm connect`, or `Vpn.RequireForHostWork = $false` if the hosts do not need the VPN |
 | 5 | Security check failed (store or result file damaged or modified) | See "Encrypted files" below |
 | 6 | Another vmm is running | Close the other window; read-only commands still work |
+
+The scripts in `Scripts\` return the same codes. 0 means everything asked was done. A command that works on
+several items finishes all of them, then ends with the error below when any failed; the items that worked are
+recorded. Ctrl+C is logged as `INTERRUPTED`; a change step stopped that way is recorded as `Failed`: check the
+host before running it again.
+
+| Error id | Exit | From | What to do |
+|---|---|---|---|
+| `VmmStepFailed`, `VmmStepBlocked` | 1 | `vmm step`, console step keys | The result is recorded on the host; retry, follow the guide, or send the blocker report |
+| `VmmNextStepFailed` | 1 | `vmm next` | Every failed or blocked host is named and recorded; `vmm plan` shows them |
+| `VmmSnapshotIncomplete` | 1 | `CreateSnapshots.ps1`, PreSnapshot | A VM or disk has no snapshot (listed); run it again |
+| `VmmExpandIncomplete` | 1 | `Expand-AzOsDisk.ps1`, ExpandDisk | `Results_<time>.csv`: ExtendCheck = extend C: by hand; power state differs = fix it in the Azure portal |
+| `VmmMediaIncomplete` | 1 | `AzureMountISO.ps1`, `AzureUnmountISO.ps1` | The table names the VMs; run again for those |
+| `VmmPruneIncomplete` | 1 | `vmm prune -Apply`, `Remove-ExpiredSnapshots.ps1` | Only expired snapshots are deleted; fix the cause (often ScopeLocked) and run again |
+| `VmmRestoreDiskIncomplete` | 1 | `Snapshot2Disk.ps1` | Rows marked Failed: no snapshot found, or the disk could not be created |
+| `VmmFetchIncomplete` | 1 | `vmm fetch` | The downloads or copies that failed are listed |
+| `VmmInboxFailed` | 1 | `vmm inbox` | The file stays where it is; build a fresh extractor for that host. A file that failed its integrity check gives `VmmAgentResultRejected` (exit 5) |
+| `VmmHandoffNotVerified` | 1 | `vmm handoff -VerifyOnly`, `-Report` | A file is missing or wrong on the host (named) |
+| `VmmVpnDown` | 4 | `vmm connect`, any host work | Finish the sign-in in the VPN client, then `vmm vpn` |
+| `VmmCleanIncomplete`, `VmmSourceNotRemoved` | 1 | `vmm maint -Action CleanTemp`, `vmm import -RemoveSource` | The files that could not be deleted are named; close what holds them |
+| `VmmInstanceLockFile` | 1 | any command that changes something | The lock file cannot be opened (data folder missing or not writable): `vmm maint -Action Diagnose` |
+| `VmmAiUnsafe` | 1 | `vmm ai`, `vmm issue` | Nothing was sent: the fleet store could not be read to mask host names. `vmm maint -Action CheckStore` |
 
 ## Common problems
 
@@ -44,7 +66,8 @@ Run with `--debug-errors` to see the file and line of an unexpected (non-vmm) er
 | `VmmStepOrder` | The previous step is not done | Run the step it names first |
 | `VmmPolicy` | Client OS, Server 2008 non-R2 or physical machine | Client OS: `vmm order -HostName x -Reason ".."` only with an order. 2008 / physical: `vmm policy -Notice` for management |
 | `VmmStagingGate`, `VmmShareUnreachable` | Files missing on the media share, or share not reachable | `vmm media` lists the exact file names and paths; open the share in Explorer to test access |
-| `VmmHashMismatch`, handoff verify fails | File damaged in the copy, or a different file on the host | Run the handoff again; it names the file that is wrong |
+| `VmmHashMismatch`, handoff verify fails | File damaged in the copy, or a different file on the host | The damaged copy is deleted; run Stage (or the handoff) again; it names the file that is wrong |
+| Warning `vmm could not write its log file` | Logs folder not writable, disk full, or the data key unreadable | The work goes on and the session stays in the on-screen log; `vmm maint -Action Diagnose` (row `Log writes`) |
 | `VmmRemoteClientMissing` | RDM / RDCMan not found | `vmm rdp -List`; set `Handoff.RdmPath` / `Handoff.RdcManPath`, or pick RDP |
 | `VmmAzLogin`, `VmmAzNoSubscription`, AADSTS errors | Wrong tenant, MFA not completed, no subscription chosen | `vmm azure` (or `-DeviceCode`), `-Save` to keep the subscription |
 | AuthorizationFailed | Missing Azure role on the resource group | Virtual Machine Contributor + Disk Snapshot Contributor (or Contributor) on the RG |
@@ -75,4 +98,4 @@ Run with `--debug-errors` to see the file and line of an unexpected (non-vmm) er
 | `%APPDATA%\VmMaintenance\config.psd1` | Your settings (`vmm config`) |
 | `%LOCALAPPDATA%\VmMaintenance\data\` | Encrypted store, keys, backups, `vmm.lock` |
 
-_Last updated: 2026-11-15 22:30 UTC_
+_Last updated: 2026-11-16 04:00 UTC_

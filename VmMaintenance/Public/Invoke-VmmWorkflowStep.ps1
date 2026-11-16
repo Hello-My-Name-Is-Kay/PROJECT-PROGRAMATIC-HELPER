@@ -12,6 +12,10 @@ function Invoke-VmmWorkflowStep {
           (Workflow.SnapshotAfter = ChangingSteps | EveryStep | Off).
         - Access errors produce a blocker report and mark the step Blocked (-Contact answers the
           manager-contact question up front).
+        - A failed or blocked step is recorded first, then raised as an error (VmmStepFailed / VmmStepBlocked,
+          exit code 1; VPN down, lock and security errors keep their own exit codes). A change step stopped
+          with Ctrl+C is recorded as Failed (INTERRUPTED) so nobody takes the old state for the truth.
+          Every result is logged with its duration.
         - Stage: when the terminal copy fails (admin share closed, access denied, copy broken), vmm offers
           the hands-on handoff over RDP / RDM / RDCMan (Start-VmmRemoteHandoff) and records the step only
           when the files are verified on the host. -Handoff Ask | Always | Never (default Handoff.Offer).
@@ -70,118 +74,160 @@ function Invoke-VmmWorkflowStep {
 
     Write-VmmLog "[$name] $Step - $($sd.Title)" -Level Info
     $status = 'Success'; $note = ''; $snap = $null
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $phase = 'run'        # run -> checkpoint -> record
+    $recorded = $false    # the result is in the store
+    $ended = $false       # stays $false only when Ctrl+C stopped the step (catch blocks do not run then, finally does)
     try {
-        switch ($Step) {
-            'Precheck' {
-                $r = @(Invoke-VmmFleetCheck -Name $name -Azure:([bool](Get-VmmSetting 'Azure.TenantId')) -PassThru -Quiet)[0]
-                $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
-                if ($r.Reachable -ne 'Yes') { throw "Host not reachable over WMI: $($r.Error)" }
-                if (-not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $r.OS; Lang = $r.Lang; Build = $r.Build; Sql = $r.Sql } }
-                $note = "$($r.OS) build $($r.Build), C: $($r.CFreeGB) GB free, SQL: $($r.Sql), reboot pending: $($r.PendingReboot)"
-                if ($r.PendingReboot -eq 'Yes') { $note += ' - REBOOT PENDING: reboot in the maintenance window before upgrading' }
-            }
-            'Stage' {
-                $via = ''
-                try { $files = @(Copy-VmmStagingPackage -HostName $name) }
-                catch {
-                    # Terminal copy failed: offer the hands-on handoff, except when RDP cannot help (files
-                    # missing on the share, share or VPN down, setting missing) or nobody is at the keyboard.
-                    $copyErr = $_
-                    $offer = if ($Handoff) { $Handoff } else { "$(Get-VmmSetting 'Handoff.Offer' -Default 'Ask')" }
-                    $noHelp = "$($copyErr.FullyQualifiedErrorId)" -match 'VmmStagingGate|VmmShareUnreachable|VmmVpnDown|VmmSettingMissing|VmmInstanceLocked|VmmCredCancelled'
-                    if ($noHelp -or $offer -eq 'Never' -or -not (Test-VmmInteractive)) { throw }
-                    $why = (("$($copyErr.Exception.Message)" -split "`r?`n")[0]).Trim()
-                    Write-VmmLog "[$name] the terminal copy failed: $why" -Level Error
-                    if ($offer -ne 'Always') {
-                        $a = Read-VmmPrompt 'Continue by hand over remote desktop (RDP / RDM / RDCMan)? vmm opens it, lists the files and verifies them on the host (y/N)'
-                        if ("$a" -notmatch '^[yY]') { Write-VmmLog "[$name] hands-on staging declined." -Level Muted -FileOnly; throw $copyErr }
-                    }
-                    $h = @(Start-VmmRemoteHandoff -HostName $name -Reason $why -NoMarkStep) | Select-Object -Last 1
-                    if (-not $h.Verified) { throw $copyErr }
-                    $files = @($h.Files)
-                    $via = " - by hand over $($h.Client), verified by $($h.VerifiedBy)"
-                }
-                $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
-                $note = "Staged: $($files -join ', ')$via"
-            }
-            'PreSnapshot' {
-                if ($isAzure) {
-                    $s = @(New-VmmSnapshot -VMName $rec.Azure.VMName -Subscription $rec.Azure.SubscriptionId -Label 'pre' -PassThru -Confirm:$false)
-                    if (-not $s) { throw 'No snapshot was created - see the errors above.' }
-                    $snap = ($s | ForEach-Object { $_.Snapshot }) -join ', '
-                    $note = "$($s.Count) disk snapshot(s)"
-                } else { $note = "Backup/snapshot confirmed by operator on $($rec.Platform)" }
-                $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
-            }
-            'ExpandDisk' {
-                $ok = [double](Get-VmmSetting 'Lansweeper.OkGB' -Default 40)
-                $free = if ($rec.Check) { [double]$rec.Check.CFreeGB } else { $null }
-                if ($null -ne $free -and $free -ge $ok) { $status = 'NotNeeded'; $note = "C: has $free GB free (>= $ok GB)" }
-                elseif ($isAzure) {
-                    $res = @(Expand-VmmOsDisk -ComputerName $rec.Azure.VMName -Apply -Confirm:$false -PassThru -Override:$Override -OverrideReason $OverrideReason)
-                    $row = $res | Select-Object -First 1
-                    if (-not $row -or $row.Status -ne 'Complete') { throw "Disk expansion ended as '$($row.Status)': $($row.Notes)" }
-                    $note = "OS disk $($row.CurrentGB)->$($row.NewGB) GB, C: $($row.CBeforeGB)->$($row.CAfterGB) GB"
-                } else { $note = 'Grown and extended by operator (guided)' }
-                $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
-            }
-            'Upgrade' {
-                if ($guided) { $note = 'Upgrade run by operator in RDP/RDM (guided)' }
-                else {
-                    $cmd = Get-VmmSetting 'Upgrade.CommandLine' -Required
-                    $script = "Start-Process -FilePath cmd.exe -ArgumentList '/c $($cmd -replace "'", "''")' -WindowStyle Hidden; 'LAUNCHED'"
-                    Set-VmmSubscription -Subscription $rec.Azure.SubscriptionId
-                    $out = Invoke-AzVMRunCommand -ResourceGroupName $rec.Azure.ResourceGroup -VMName $rec.Azure.VMName -CommandId 'RunPowerShellScript' -ScriptString $script -ErrorAction Stop
-                    if (($out.Value | ForEach-Object Message) -notmatch 'LAUNCHED') { throw 'Run Command did not confirm the launch.' }
-                    $status = 'Launched'; $note = 'Upgrade launched via Run Command; run Verify when the VM is back'
-                }
-            }
-            'Verify' {
-                $r = @(Invoke-VmmFleetCheck -Name $name -PassThru -Quiet)[0]
-                $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
-                if ($r.Reachable -ne 'Yes') { throw "Host not reachable after the change: $($r.Error)" }
-                $expect = Get-VmmSetting 'Upgrade.ExpectedOs' -Default (Get-VmmSetting 'Policy.TargetOs' -Default '*Server 2019*')
-                if ($expect -and $r.OS -notlike $expect) { throw "OS is '$($r.OS)', expected '$expect'. Upgrade not finished or rolled back." }
-                if (-not $expect -and $rec.Baseline -and $r.Build -eq $rec.Baseline.Build) { $note = 'WARNING: build unchanged since Precheck. ' }
-                $note += "$($r.OS) build $($r.Build), C: $($r.CFreeGB) GB free, SQL: $($r.Sql)"
-            }
-        }
-    } catch {
-        $msg = Protect-VmmLogText (($_.Exception.Message -replace '\s+', ' ').Trim())
-        $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
-        if (Get-VmmAccessRequirement -Message $msg -Target $name) {
-            Write-VmmLog "[$name] $Step blocked by missing access: $msg" -Level Error
-            $p = @{ HostName = $name; Step = $Step; Message = $msg }
-            if ($Contact) { $p.Contact = $Contact }
-            [void](New-VmmBlockerReport @p)
-            return
-        }
-        Set-VmmStepState -Record $rec -Step $Step -Status 'Failed' -Note $msg
-        Save-VmmStore -Store $store
-        Write-VmmLog "[$name] $Step FAILED: $msg" -Level Error
-        Write-VmmLog "Options: retry, follow the RDP guide (vmm guide -HostName $name -Step $Step)$(if ($Step -eq 'Stage') { ", copy by hand with checks (vmm handoff -HostName $name)" }), or raise a blocker report and move on." -Level Info
-        return
-    }
-
-    # Checkpoint snapshot after a successful step (Azure VMs only)
-    $policy = Get-VmmSetting 'Workflow.SnapshotAfter' -Default 'ChangingSteps'
-    $wantCp = $status -eq 'Success' -and $isAzure -and $Step -ne 'PreSnapshot' -and
-              (($policy -eq 'EveryStep') -or ($policy -eq 'ChangingSteps' -and $sd.Changes))
-    if ($wantCp) {
         try {
-            $days = [string](Get-VmmSetting 'Workflow.CheckpointRetentionDays' -Default 7)
-            $cp = @(New-VmmSnapshot -VMName $rec.Azure.VMName -Subscription $rec.Azure.SubscriptionId -Label "cp-$Step" `
-                    -ExtraTags @{ Checkpoint = $Step; RetentionDays = $days } -PassThru -Confirm:$false)
-            if ($cp) { $snap = ($cp | ForEach-Object { $_.Snapshot }) -join ', '; $note += " | checkpoint: $($cp.Count) snapshot(s)" }
-            else { $note += ' | CHECKPOINT FAILED - see log' }
-        } catch { $note += " | CHECKPOINT FAILED: $($_.Exception.Message.Split([Environment]::NewLine)[0])" }
-        $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
-    } elseif ($status -eq 'Success' -and -not $isAzure -and $sd.Changes -and $policy -ne 'Off') {
-        $note += ' | no automatic checkpoint (not Azure) - take one in the platform console if needed'
-    }
+            switch ($Step) {
+                'Precheck' {
+                    $r = @(Invoke-VmmFleetCheck -Name $name -Azure:([bool](Get-VmmSetting 'Azure.TenantId')) -PassThru -Quiet)[0]
+                    $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+                    if ($r.Reachable -ne 'Yes') { throw "Host not reachable over WMI: $($r.Error)" }
+                    if (-not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $r.OS; Lang = $r.Lang; Build = $r.Build; Sql = $r.Sql } }
+                    $note = "$($r.OS) build $($r.Build), C: $($r.CFreeGB) GB free, SQL: $($r.Sql), reboot pending: $($r.PendingReboot)"
+                    if ($r.PendingReboot -eq 'Yes') { $note += ' - REBOOT PENDING: reboot in the maintenance window before upgrading' }
+                }
+                'Stage' {
+                    $via = ''
+                    try { $files = @(Copy-VmmStagingPackage -HostName $name) }
+                    catch {
+                        # Terminal copy failed: offer the hands-on handoff, except when RDP cannot help (files
+                        # missing on the share, share or VPN down, setting missing) or nobody is at the keyboard.
+                        $copyErr = $_
+                        $offer = if ($Handoff) { $Handoff } else { "$(Get-VmmSetting 'Handoff.Offer' -Default 'Ask')" }
+                        $noHelp = "$($copyErr.FullyQualifiedErrorId)" -match 'VmmStagingGate|VmmShareUnreachable|VmmVpnDown|VmmSettingMissing|VmmInstanceLocked|VmmCredCancelled'
+                        if ($noHelp -or $offer -eq 'Never' -or -not (Test-VmmInteractive)) { throw }
+                        $why = (("$($copyErr.Exception.Message)" -split "`r?`n")[0]).Trim()
+                        Write-VmmLog "[$name] the terminal copy failed: $why" -Level Error
+                        if ($offer -ne 'Always') {
+                            $a = Read-VmmPrompt 'Continue by hand over remote desktop (RDP / RDM / RDCMan)? vmm opens it, lists the files and verifies them on the host (y/N)'
+                            if ("$a" -notmatch '^[yY]') { Write-VmmLog "[$name] hands-on staging declined." -Level Muted -FileOnly; throw $copyErr }
+                        }
+                        $h = @(Start-VmmRemoteHandoff -HostName $name -Reason $why -NoMarkStep) | Select-Object -Last 1
+                        if (-not $h.Verified) { throw $copyErr }
+                        $files = @($h.Files)
+                        $via = " - by hand over $($h.Client), verified by $($h.VerifiedBy)"
+                    }
+                    $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+                    $note = "Staged: $($files -join ', ')$via"
+                }
+                'PreSnapshot' {
+                    if ($isAzure) {
+                        $s = @(New-VmmSnapshot -VMName $rec.Azure.VMName -Subscription $rec.Azure.SubscriptionId -Label 'pre' -PassThru -Confirm:$false)
+                        if (-not $s) { throw 'No snapshot was created - see the errors above.' }
+                        $snap = ($s | ForEach-Object { $_.Snapshot }) -join ', '
+                        $note = "$($s.Count) disk snapshot(s)"
+                    } else { $note = "Backup/snapshot confirmed by operator on $($rec.Platform)" }
+                    $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+                }
+                'ExpandDisk' {
+                    $ok = [double](Get-VmmSetting 'Lansweeper.OkGB' -Default 40)
+                    $free = if ($rec.Check) { [double]$rec.Check.CFreeGB } else { $null }
+                    if ($null -ne $free -and $free -ge $ok) { $status = 'NotNeeded'; $note = "C: has $free GB free (>= $ok GB)" }
+                    elseif ($isAzure) {
+                        $res = @(Expand-VmmOsDisk -ComputerName $rec.Azure.VMName -Apply -Confirm:$false -PassThru -Override:$Override -OverrideReason $OverrideReason)
+                        $row = $res | Select-Object -First 1
+                        if (-not $row -or $row.Status -ne 'Complete') { throw "Disk expansion ended as '$($row.Status)': $($row.Notes)" }
+                        $note = "OS disk $($row.CurrentGB)->$($row.NewGB) GB, C: $($row.CBeforeGB)->$($row.CAfterGB) GB"
+                    } else { $note = 'Grown and extended by operator (guided)' }
+                    $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+                }
+                'Upgrade' {
+                    if ($guided) { $note = 'Upgrade run by operator in RDP/RDM (guided)' }
+                    else {
+                        $cmd = Get-VmmSetting 'Upgrade.CommandLine' -Required
+                        $script = "Start-Process -FilePath cmd.exe -ArgumentList '/c $($cmd -replace "'", "''")' -WindowStyle Hidden; 'LAUNCHED'"
+                        Set-VmmSubscription -Subscription $rec.Azure.SubscriptionId
+                        $out = Invoke-AzVMRunCommand -ResourceGroupName $rec.Azure.ResourceGroup -VMName $rec.Azure.VMName -CommandId 'RunPowerShellScript' -ScriptString $script -ErrorAction Stop
+                        if (($out.Value | ForEach-Object Message) -notmatch 'LAUNCHED') { throw 'Run Command did not confirm the launch.' }
+                        $status = 'Launched'; $note = 'Upgrade launched via Run Command; run Verify when the VM is back'
+                    }
+                }
+                'Verify' {
+                    $r = @(Invoke-VmmFleetCheck -Name $name -PassThru -Quiet)[0]
+                    $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+                    if ($r.Reachable -ne 'Yes') { throw "Host not reachable after the change: $($r.Error)" }
+                    $expect = Get-VmmSetting 'Upgrade.ExpectedOs' -Default (Get-VmmSetting 'Policy.TargetOs' -Default '*Server 2019*')
+                    if ($expect -and $r.OS -notlike $expect) { throw "OS is '$($r.OS)', expected '$expect'. Upgrade not finished or rolled back." }
+                    if (-not $expect -and $rec.Baseline -and $r.Build -eq $rec.Baseline.Build) { $note = 'WARNING: build unchanged since Precheck. ' }
+                    $note += "$($r.OS) build $($r.Build), C: $($r.CFreeGB) GB free, SQL: $($r.Sql)"
+                }
+            }
+        } catch {
+            $err = $_
+            $msg = Protect-VmmLogText (("$($err.Exception.Message)" -replace '\s+', ' ').Trim())
+            $secs = '{0:N0}' -f $sw.Elapsed.TotalSeconds
+            if (Get-VmmAccessRequirement -Message $msg -Target $name) {
+                Write-VmmLog "[$name] $Step = Blocked after $secs s (missing access): $msg" -Level Error
+                $p = @{ HostName = $name; Step = $Step; Message = $msg }
+                if ($Contact) { $p.Contact = $Contact }
+                $report = @(New-VmmBlockerReport @p) | Select-Object -Last 1
+                $recorded = $true
+                throw (New-VmmErrorRecord -Activity "$Step on $name is blocked by missing access (recorded as Blocked)." -Target $name -Cause $msg `
+                    -Fix "Send the blocker report to your manager ($([IO.Path]::GetFileName("$report"))) and move on to the next host. When access is granted: vmm resolve -HostName $name, then run $Step again." `
+                    -Category PermissionDenied -ErrorId 'VmmStepBlocked')
+            }
+            try {
+                $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+                Set-VmmStepState -Record $rec -Step $Step -Status 'Failed' -Note $msg
+                Save-VmmStore -Store $store
+                $recorded = $true
+            } catch { Write-VmmLog "[$name] $Step failed and the failure could not be saved: $($_.Exception.Message)" -Level Error }
+            Write-VmmLog "[$name] $Step = Failed after $secs s: $msg" -Level Error -FileOnly
+            # VPN down, another vmm running, security checks: their own exit codes and fixes
+            if ((Get-VmmExitCode -ErrorRecord $err) -ne 1) { throw $err }
+            $opt = "retry (vmm step -HostName $name -Step $Step), follow the RDP guide (vmm guide -HostName $name -Step $Step)$(if ($Step -eq 'Stage') { ", copy by hand with checks (vmm handoff -HostName $name)" }), or raise a blocker report and move on"
+            throw (New-VmmErrorRecord -Activity "$Step on $name FAILED (recorded as Failed)." -Target $name -Exception $err.Exception `
+                -Fix "Options: $opt." -Category $err.CategoryInfo.Category -ErrorId 'VmmStepFailed')
+        }
+        $phase = 'checkpoint'
 
-    Set-VmmStepState -Record $rec -Step $Step -Status $status -Note $note -Snapshot $snap
-    Save-VmmStore -Store $store
-    $lvl = if ($status -in 'Success', 'NotNeeded', 'Launched') { 'Success' } else { 'Warn' }
-    Write-VmmLog "[$name] $Step = $status. $note" -Level $lvl
+        # Checkpoint snapshot after a successful step (Azure VMs only)
+        $policy = Get-VmmSetting 'Workflow.SnapshotAfter' -Default 'ChangingSteps'
+        $wantCp = $status -eq 'Success' -and $isAzure -and $Step -ne 'PreSnapshot' -and
+                  (($policy -eq 'EveryStep') -or ($policy -eq 'ChangingSteps' -and $sd.Changes))
+        if ($wantCp) {
+            try {
+                $days = [string](Get-VmmSetting 'Workflow.CheckpointRetentionDays' -Default 7)
+                $cp = @(New-VmmSnapshot -VMName $rec.Azure.VMName -Subscription $rec.Azure.SubscriptionId -Label "cp-$Step" `
+                        -ExtraTags @{ Checkpoint = $Step; RetentionDays = $days } -PassThru -Confirm:$false)
+                if ($cp) { $snap = ($cp | ForEach-Object { $_.Snapshot }) -join ', '; $note += " | checkpoint: $($cp.Count) snapshot(s)" }
+                else { $note += ' | CHECKPOINT FAILED - see log' }
+            } catch { $note += " | CHECKPOINT FAILED: $($_.Exception.Message.Split([Environment]::NewLine)[0])" }
+            $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+        } elseif ($status -eq 'Success' -and -not $isAzure -and $sd.Changes -and $policy -ne 'Off') {
+            $note += ' | no automatic checkpoint (not Azure) - take one in the platform console if needed'
+        }
+
+        $phase = 'record'
+        Set-VmmStepState -Record $rec -Step $Step -Status $status -Note $note -Snapshot $snap
+        Save-VmmStore -Store $store
+        $recorded = $true
+        $lvl = if ($status -in 'Success', 'NotNeeded', 'Launched') { 'Success' } else { 'Warn' }
+        Write-VmmLog ("[{0}] {1} = {2} after {3:N0} s. {4}" -f $name, $Step, $status, $sw.Elapsed.TotalSeconds, $note) -Level $lvl
+        $ended = $true
+    } catch {
+        $ended = $true
+        throw
+    } finally {
+        if (-not $recorded) {
+            # Ctrl+C (or a store that could not be saved): an honest record instead of the state from before
+            $secs = '{0:N0}' -f $sw.Elapsed.TotalSeconds
+            $why = if ($ended) { 'the result could not be saved' } else { 'INTERRUPTED (Ctrl+C)' }
+            Add-VmmLogEntry -Text "[$name] $Step $why after $secs s: result not recorded" -Level Error
+            if ($phase -ne 'run' -or $sd.Class -ne 'ReadOnly') {
+                try {
+                    $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+                    if ($phase -eq 'run') {
+                        Set-VmmStepState -Record $rec -Step $Step -Status 'Failed' -Note "$why after $secs s, before the result was known: check the host before running $Step again"
+                    } else {
+                        Set-VmmStepState -Record $rec -Step $Step -Status $status -Note "$note | checkpoint snapshot $($why): check it in Azure" -Snapshot $snap
+                    }
+                    Save-VmmStore -Store $store
+                } catch { Add-VmmLogEntry -Text (Protect-VmmLogText "[$name] $($Step): this record could not be saved either ($($_.Exception.Message)): check the host and vmm plan") -Level Error }
+            }
+        }
+    }
 }

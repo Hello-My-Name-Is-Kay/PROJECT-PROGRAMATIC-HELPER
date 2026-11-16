@@ -9,6 +9,7 @@ function Connect-VmmVpn {
         Windows: 'rasphone -d <Vpn.Profile>' (Windows' own sign-in dialog).
         Probe: starts Vpn.ClientPath (for example the GlobalProtect or FortiClient app) and waits.
         [SEC] VPN credentials are typed into the VPN client only; this tool never reads, keeps or logs them.
+        Not connected after -WaitSeconds: error VmmVpnDown (exit code 4), so a script can stop there.
     .EXAMPLE
         Connect-VmmVpn
     #>
@@ -47,6 +48,7 @@ function Connect-VmmVpn {
         if ($s.State -eq 'Connected') { Write-VmmLog 'VPN connected.' -Level Success; return $s }
         Start-Sleep -Seconds 3
     } while ((Get-Date) -lt $deadline)
-    Write-VmmLog "VPN not connected after $WaitSeconds s (state: $($s.State)). $($s.Detail)" -Level Warn
-    $s
+    throw (New-VmmErrorRecord -Activity "VPN not connected after $WaitSeconds s." -Target "$($p.Provider): $($s.State)" `
+        -Cause $(if ($s.Detail) { $s.Detail } else { 'The sign-in did not finish, or the VPN client did not connect.' }) `
+        -Fix 'Finish the sign-in in the VPN client, then check with: vmm vpn' -Category ConnectionError -ErrorId 'VmmVpnDown')
 }

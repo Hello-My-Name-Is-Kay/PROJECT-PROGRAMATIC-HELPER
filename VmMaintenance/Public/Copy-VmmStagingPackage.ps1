@@ -47,14 +47,29 @@ function Copy-VmmStagingPackage {
             $dest = Join-Path $destDir $(if ($p.DestName) { $p.DestName } else { [IO.Path]::GetFileName($p.File) })
             $srcLen = (Get-Item -LiteralPath $p.File).Length
             $needCopy = $true
-            if (Test-Path -LiteralPath $dest) { if ((Get-Item -LiteralPath $dest).Length -eq $srcLen) { $needCopy = $false } }
-            if ($needCopy -and $PSCmdlet.ShouldProcess("$($rec.Name):$target", "Copy $($p.Name) ($($p.SizeMB) MB)")) {
+            # Already there: same size, and the same SHA256 when the share has one (a corrupt copy of the
+            # right size is copied again instead of failing the hash check on every run)
+            if ((Test-Path -LiteralPath $dest) -and (Get-Item -LiteralPath $dest).Length -eq $srcLen) {
+                $needCopy = $false
+                if ($p.Sha256 -and (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash -ne $p.Sha256) {
+                    Write-VmmLog "$($rec.Name): $($p.Name) on the host has the right size but the wrong SHA256: copying it again." -Level Warn
+                    $needCopy = $true
+                }
+            }
+            if ($needCopy) {
+                if (-not $PSCmdlet.ShouldProcess("$($rec.Name):$target", "Copy $($p.Name) ($($p.SizeMB) MB)")) { continue }
                 Write-VmmLog "$($rec.Name): copying $($p.Name) ($($p.SizeMB) MB)..." -Level Info
                 Copy-VmmFileWithProgress -Source $p.File -Destination $dest -Label "$($rec.Name): $($p.Name)"
-            }
-            if ($p.Sha256 -and (Test-Path -LiteralPath $dest)) {
-                $h = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
-                if ($h -ne $p.Sha256) { throw "Hash mismatch after copy on $($rec.Name): $dest (expected $($p.Sha256), got $h). Network copy corrupted - run Stage again." }
+                if ($p.Sha256) {
+                    $h = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
+                    if ($h -ne $p.Sha256) {
+                        # Never leave a corrupt installer behind: the next run copies it again
+                        Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
+                        throw (New-VmmErrorRecord -Activity "SHA256 mismatch after copying $($p.Name) to $($rec.Name); the corrupt copy was deleted." `
+                            -Target "$target\$([IO.Path]::GetFileName($dest))" -Cause "Expected $($p.Sha256), got $($h): the network copy was corrupted." `
+                            -Fix 'Run Stage again. If it keeps failing, check the file on the share against its .sha256.' -Category InvalidData -ErrorId 'VmmHashMismatch')
+                    }
+                }
             }
             if ($p.Note) { Write-VmmLog "$($rec.Name): $($p.Name) - $($p.Note)" -Level Warn }
             $copied += $p.Name

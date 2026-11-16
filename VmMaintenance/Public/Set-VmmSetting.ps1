@@ -49,9 +49,10 @@ function Set-VmmSetting {
     $node[$parts[-1]] = $Value
 
     if ($PSCmdlet.ShouldProcess($path, "Set $Name")) {
-        Copy-Item -LiteralPath $path -Destination "$path.bak" -Force
+        # Stops before writing when the .bak cannot be made, and on a failed write (no "saved" without a change)
+        Copy-Item -LiteralPath $path -Destination "$path.bak" -Force -ErrorAction Stop
         $header = "# VmMaintenance local settings - written by Set-VmmSetting $(Get-Date -Format 'yyyy-MM-dd HH:mm').`r`n# Comments for every key: config\config.example.psd1 in the repository. Never commit this file.`r`n"
-        Set-Content -LiteralPath $path -Value ($header + (ConvertTo-VmmPsd1 -InputObject $cfg)) -Encoding UTF8
+        Set-Content -LiteralPath $path -Value ($header + (ConvertTo-VmmPsd1 -InputObject $cfg)) -Encoding UTF8 -ErrorAction Stop
         try { Import-VmmConfig -Path $path | Out-Null }
         catch {
             Copy-Item -LiteralPath "$path.bak" -Destination $path -Force

@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Console UI:252-293 | CLI:294-355 | GitHub integration:356-372 | OS policy:373-387 | Workflow per host:388-401 | Directory tree:402-435 | Where your data lives never:436-452 | Testing:453-466 | Errors:467-481 | Future your work AI model wi:482-491 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Console UI:252-293 | CLI:294-360 | GitHub integration:361-377 | OS policy:378-392 | Workflow per host:393-406 | Directory tree:407-440 | Where your data lives never:441-457 | Testing:458-471 | Errors:472-486 | Future your work AI model wi:487-496 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.14.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-15
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.15.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-16
 
 ## TL;DR
 
@@ -339,10 +339,15 @@ Every UI action has a command. `vmm help` prints this list.
 
 Global flags: `--no-mouse`, `--no-color`, `--no-log`, `--config <file>`, `--debug-errors`, `--version`.
 Exit codes: 0 ok, 1 error, 2 usage, 3 blocked by the time window, 4 VPN down, 5 security check failed, 6 another vmm is running.
+The scripts in `Scripts\` use the same codes. 0 means everything asked was done: a failed or blocked step, or a batch
+with any item failed, ends with an error after the rest is finished (the error id per command is in
+[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)).
 
 **Logging.** Every command is written to the encrypted day log: the command line (option names, not values),
 each message, the tables it printed, progress lines, then the result with its duration or `FAILED` with the
-error, and the exit code. Read it with `vmm log`; `vmm log -Follow` in a second window shows it live.
+error, and the exit code; `INTERRUPTED` when Ctrl+C stopped it (a change step stopped that way is recorded as
+`Failed`: check the host before running it again). Credentials typed for a command are cleared from memory when it
+ends. Read the log with `vmm log`; `vmm log -Follow` in a second window shows it live.
 
 **One vmm at a time.** The console and every command that can change something hold a lock on the data
 folder. A second one stops (exit code 6) and names the process that holds it. Read-only commands run anyway:
@@ -460,7 +465,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1 -History                                # before a release: whole git history
 ```
 
-Status (2.14.0, alpha): the offline smoke test (278 checks) and Pester (99 tests) pass on GitHub's Windows runners in
+Status (2.15.0, alpha): the offline smoke test (291 checks) and Pester (128 tests) pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -488,4 +493,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-15 22:00 UTC_
+_Last updated: 2026-11-16 04:00 UTC_

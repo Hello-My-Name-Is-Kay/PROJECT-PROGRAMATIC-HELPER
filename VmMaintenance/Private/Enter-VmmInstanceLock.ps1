@@ -4,7 +4,8 @@ function Enter-VmmInstanceLock {
     # never leaves a stale lock. vmm.lock.txt beside it says who holds it: process id, start time, command
     # name (no host, no user).
     # Returns $true when this call took the lock, $false when this process already had it.
-    # Throws VmmInstanceLocked when another process holds it.
+    # Throws VmmInstanceLocked when another process holds it, VmmInstanceLockFile when the file cannot be
+    # opened for another reason (folder missing or not writable): that is not "vmm is already running".
     [CmdletBinding()]
     param([string]$Owner = 'vmm')
     if ($script:VmmInstanceLock) { return $false }
@@ -14,6 +15,16 @@ function Enter-VmmInstanceLock {
     try {
         $fs = New-Object System.IO.FileStream($file, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     } catch {
+        $x = $_.Exception
+        while ($x.InnerException) { $x = $x.InnerException }
+        # Held by another process: sharing/lock violation on Windows (32, 33); EAGAIN/EWOULDBLOCK elsewhere (tests)
+        $win = ($PSVersionTable.PSEdition -eq 'Desktop') -or $IsWindows
+        $codes = if ($win) { 32, 33 } else { 11, 35 }
+        if (-not (($x -is [IO.IOException]) -and (($x.HResult -band 0xFFFF) -in $codes))) {
+            throw (New-VmmErrorRecord -Activity 'Could not open the single-instance lock file.' -Target $file -Exception $x `
+                -Fix 'Check that the vmm data folder exists and your account can write to it: vmm maint -Action Diagnose' `
+                -Category OpenError -ErrorId 'VmmInstanceLockFile')
+        }
         $who = ''
         try { $who = ([IO.File]::ReadAllText("$file.txt")).Trim() } catch { }
         $desc = 'another vmm process'

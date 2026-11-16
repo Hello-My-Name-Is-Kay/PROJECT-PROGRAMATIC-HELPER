@@ -21,12 +21,4 @@ param(
 . (Join-Path $PSScriptRoot '_Bootstrap.ps1')
 [void]$PSBoundParameters.Remove('ConfigPath')
 
-try { Get-VmmServerPlatform @PSBoundParameters }
-catch {
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
-    try { & (Get-Module VmMaintenance) { param($e, $c) Write-VmmErrorLog -ErrorRecord $e -Command $c -DayLog } $_ ([IO.Path]::GetFileName($PSCommandPath)) } catch { }
-    if ($_.FullyQualifiedErrorId -notlike 'Vmm*') {
-        Write-Host "  At     : $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor DarkGray
-    }
-    exit 1
-}
+Invoke-VmmEntryScript -Command 'Get-VmmServerPlatform' -Parameters $PSBoundParameters -Name ([IO.Path]::GetFileName($PSCommandPath))

@@ -32,6 +32,10 @@ function Expand-VmmOsDisk {
           - A VM in a transitional state (starting, stopping, ...) is skipped. Re-run it later.
           - If any step fails for a VM, that VM still goes back to its original power state.
             A VM whose snapshot or resize failed and that was off is never started.
+          - If the run itself stops half way (an unexpected error or Ctrl+C), a recovery waits for the Azure
+            operations already sent and puts every VM back in its power state; running VMs are started again.
+          - When any VM is not Complete or not back in its power state, the run ends with an error naming them
+            (VmmExpandIncomplete, exit code 1) after the results CSV is written.
           - The snapshot is kept for rollback. Its RetentionDays tag tells cleanup when it can go.
 
         DOWNTIME
@@ -86,6 +90,8 @@ function Expand-VmmOsDisk {
 
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $transcribing = $false
+    $changing = $false   # from the first power change until the restore: the finally puts VMs back if the run stops
+    $work = @()
     try {
         Start-Transcript -Path (Join-Path $LogDir "OsDiskExpand_$stamp.log") -ErrorAction Stop | Out-Null
         $transcribing = $true
@@ -121,6 +127,7 @@ function Expand-VmmOsDisk {
             return
         }
         #endregion
+        $changing = $true
 
         if (-not $ExtendOnly) {
             #region 3. Deallocate (all VMs not already deallocated)
@@ -178,6 +185,7 @@ function Expand-VmmOsDisk {
 
         #region 8. Restore original power state
         Restore-VmmPowerState -Item $work
+        $changing = $false
         #endregion
 
         #region Results
@@ -201,9 +209,24 @@ function Expand-VmmOsDisk {
         else { Write-VmmLog "All $($work.Count) VM(s) complete and back in their original power state." -Level Success }
 
         if ($PassThru) { $plan | Select-Object * -ExcludeProperty Job, Started }
+        if ($bad) {
+            throw (New-VmmErrorRecord -Activity "OS disk expansion incomplete: $($bad.Count) of $($work.Count) VM(s) need a look." `
+                -Target (@($bad | ForEach-Object { "$($_.VMName): $($_.Status), $($_.FinalState) (was $($_.InitialState))" }) -join ' | ') `
+                -Cause (@($bad | Select-Object -First 3 | ForEach-Object { "$($_.VMName): $((("$($_.Notes)") -replace '\s+', ' ').Trim())" }) -join ' | ') `
+                -Fix "Details: Results_$stamp.csv and the transcript in $LogDir. ExtendCheck = disk grown, extend C: in Disk Management; Failed = see Notes; power state differs = fix it in the Azure portal." `
+                -Category InvalidResult -ErrorId 'VmmExpandIncomplete')
+        }
         #endregion
     }
     finally {
+        if ($changing) {
+            # [SAFETY] stopped between the first power change and the restore: no VM is left down or left running
+            try { Invoke-VmmPowerRecovery -Item $work } catch { Write-VmmLog "[Recovery] failed: $($_.Exception.Message). Check these VMs in the Azure portal: $(($work.VMName) -join ', ')" -Level Error }
+            # The day log first: it must not depend on the CSV being writable
+            Add-VmmLogEntry -Text ("Disk expansion stopped half way; results: " + (@($work | ForEach-Object { "$($_.VMName)=$($_.Status)/$($_.FinalState)" }) -join ', ')) -Level Error
+            try { Export-VmmCsv -InputObject @($plan | Select-Object * -ExcludeProperty Job, Started) -Path (Join-Path $LogDir "Results_$stamp.csv") }
+            catch { Add-VmmLogEntry -Text (Protect-VmmLogText "Results_$stamp.csv not written: $($_.Exception.Message)") -Level Error }
+        }
         if ($transcribing) { Stop-Transcript | Out-Null }
     }
 }

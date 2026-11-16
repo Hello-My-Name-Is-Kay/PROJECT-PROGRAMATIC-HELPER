@@ -32,9 +32,9 @@
     [SEC] Treat everything shown here as business data carried over the VPN: do not copy it anywhere
     other than the vmm Manager on your laptop.
 .PARAMETER Extract
-    No menu: take the snapshot, save the result file on the desktop, exit.
+    No menu: take the snapshot, save the result file on the desktop, exit (exit code 1 when it was not saved).
 .PARAMETER Finish
-    No menu: delete this file and its result files from the host.
+    No menu: delete this file and its result files from the host (exit code 1 when something stays behind).
 .PARAMETER NoClipboard
     Leave the host's clipboard alone (the result file is still saved).
 .PARAMETER NoColor
@@ -54,7 +54,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.14.0'
+$AgentVersion = '2.15.0'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
@@ -751,6 +751,7 @@ function Export-Result([switch]$Auto) {
     if ($Script:StepsMode) { try { Write-Event 'Export' 'Success' ('result exported (' + $out.Substring(0, 4) + ')') } catch { } }
     $file = $null
     try { $file = Save-ResultFile $out } catch { Warn (' Could not save the result file on the desktop: ' + (Protect-Text $_.Exception.Message)) }
+    $Script:LastResultFile = $file
     $clip = $false
     if (-not $NoClipboard) { try { $out | & clip.exe; $clip = $true } catch { } }
     Write-Host ''
@@ -783,7 +784,13 @@ function Invoke-Finish([switch]$Force) {
     }
     if (-not $NoClipboard) { try { & cmd.exe /c 'echo off | clip' } catch { } }
     $desk = [Environment]::GetFolderPath('Desktop')
-    if ($desk) { Get-ChildItem -LiteralPath $desk -Filter ('VMM_' + $env:COMPUTERNAME + '_*.vmm') -ErrorAction SilentlyContinue | ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force; Good ('Removed ' + $_.Name) } catch { } } }
+    if ($desk) {
+        foreach ($r in @(Get-ChildItem -LiteralPath $desk -Filter ('VMM_' + $env:COMPUTERNAME + '_*.vmm') -ErrorAction SilentlyContinue)) {
+            # A result file that stays must be named: it holds this host's facts (encrypted)
+            try { Remove-Item -LiteralPath $r.FullName -Force; Good ('Removed ' + $r.Name) }
+            catch { $ok = $false; Bad ('Could not remove ' + $r.Name + ': ' + (Protect-Text $_.Exception.Message) + ' - delete it by hand.') }
+        }
+    }
     if ($Script:SelfPath -and (Test-Path -LiteralPath $Script:SelfPath)) {
         try { Remove-Item -LiteralPath $Script:SelfPath -Force; Good 'Removed the extractor file.' }
         catch { $ok = $false; Bad 'Could not remove the extractor file; delete it from the desktop by hand.' }
@@ -849,8 +856,8 @@ function Pause-Agent { Write-Host ''; Read-Host ' Enter to continue' | Out-Null 
 
 # ============================================================== main
 try {
-    if ($Finish) { [void](Invoke-Finish -Force); return }
-    if ($Extract) { Export-Result -Auto; return }
+    if ($Finish) { if (-not (Invoke-Finish -Force)) { exit 1 }; return }
+    if ($Extract) { $Script:LastResultFile = $null; Export-Result -Auto; if (-not $Script:LastResultFile) { exit 1 }; return }
 
     # Snapshot straight away, so the result file is on the desktop before any key is pressed.
     Show-Header
