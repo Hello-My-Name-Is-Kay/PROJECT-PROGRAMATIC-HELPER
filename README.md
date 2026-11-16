@@ -428,7 +428,7 @@ VmMaintenance\
     VmMaintenance.psd1 / .psm1      manifest / loader
     Public\                         exported functions, one per file
     Private\                        helpers and TUI screens, one per file
-    Resources\                      VmmHostAgent.ps1 (program 2), VmmConsoleInput.cs, LansweeperDiskSpace.sql
+    Resources\                      VmmHostAgent.ps1 (program 2, the template: `vmm extractor` builds the host copy), VmmConsoleInput.cs, LansweeperDiskSpace.sql
   Scripts\
     vmm.ps1                         CLI/UI entry point
     _Bootstrap.ps1 + 10 classic task scripts

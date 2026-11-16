@@ -5,6 +5,10 @@
 .DESCRIPTION
     Use it only for hosts the laptop cannot read over its own terminal (vmm snapshot tries that first).
 
+    THIS FILE IN THE REPOSITORY IS THE TEMPLATE: it holds no laptop key, so it cannot save a result. Do not
+    copy it to a host. On the laptop, `vmm extractor` builds the copy to take to a host (one file for every
+    host) with the laptop's public key inside; that is the file to paste on the host.
+
     1. Paste this file on the host's desktop (the Manager put it on your clipboard).
     2. Right-click it > Run with PowerShell. (Or: powershell.exe -NoProfile -ExecutionPolicy Bypass -File <file>.
        Bypass applies to this one process only; nothing on the host is reconfigured.)

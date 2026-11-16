@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance troubleshooting: first steps, exit codes, common errors by id, encrypted file recovery, log locations. SECTIONS: First steps:7-18 | Exit codes (vmm and the entry scripts):19-52 | Common problems:53-85 | Encrypted files:86-96 | Where to look:97-106 -->
+<!-- SUMMARY: VmMaintenance troubleshooting: first steps, exit codes, common errors by id, encrypted file recovery, log locations. SECTIONS: First steps:7-18 | Exit codes (vmm and the entry scripts):19-52 | Common problems:53-86 | Encrypted files:87-97 | Where to look:98-107 -->
 # Troubleshooting
 
 Every error vmm raises has the same shape: what failed, on which target, the raw error, the likely cause and the
@@ -79,6 +79,7 @@ host before running it again.
 | Resize errors | OS disk resizes only while deallocated, never smaller | vmm deallocates first; check `Get-AzVM -Status` if it was interrupted |
 | Login failed for user / `VmmSqlConnect` | Lansweeper SQL login wrong or Windows-auth only | Test in SSMS; ask the DBA |
 | `VmmInstanceLocked` | Another vmm window holds the lock | Close it; the lock is released automatically when a process ends |
+| Extractor says "No laptop key in this file: nothing saved" | The file run on the host is the repository template (`VmMaintenance\Resources\VmmHostAgent.ps1`), which holds no key | Build the host copy on the laptop: `vmm extractor` (one file for every host, also on the clipboard; file in `%LOCALAPPDATA%\VmMaintenance\agents`). Copy that file to the host |
 | Extractor (`-Extract`) exits 2 | The result file is saved, but some reads on the host failed | Normal on a restricted host: the failed reads are `Problem=` lines in the result and the rest is complete. Exit 1 = nothing was saved |
 | `VmmAgentResult`, `VmmCollectorName` | Extractor result incomplete, from another laptop, or tampered | Run the Extractor again on the host and copy the whole file |
 | Scripts blocked by policy | Downloaded files still marked, or Group Policy enforces AllSigned | `Get-ChildItem -Recurse . \| Unblock-File`; for AllSigned, sign the scripts with your code-signing certificate |

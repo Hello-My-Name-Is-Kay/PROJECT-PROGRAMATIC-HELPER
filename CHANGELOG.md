@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.17.0 - 2026-11-16:4-34 | 2.15.1 - 2026-11-16:35-55 | 2.15.0 - 2026-11-16:56-113 | 2.14.0 - 2026-11-15:114-134 | 2.13.0 - 2026-11-15:135-164 | 2.12.0 - 2026-11-14:165-187 | 2.11.0 - 2026-11-14:188-206 | 2.10.0 - 2026-11-14:207-225 | 2.9.0 - 2026-11-14:226-238 | 2.8.0 - 2026-11-14:239-252 | 2.7.0 - 2026-11-14:253-270 | 2.6.0 - 2026-11-14:271-278 | 2.5.0 - 2026-11-14:279-291 | 2.4.0 - 2026-11-14:292-302 | 2.3.0 - 2026-11-14:303-317 | 2.2.1 - 2026-11-14:318-324 | 2.2.0 - 2026-11-14:325-332 | 2.1.0 - 2026-11-14:333-350 | 2.0.0 - 2026-11-14:351-356 | 1.0.0 - 2026-11-14:357-361 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.17.0 - 2026-11-16:4-34 | 2.15.2 - 2026-11-16:35-49 | 2.15.1 - 2026-11-16:50-70 | 2.15.0 - 2026-11-16:71-128 | 2.14.0 - 2026-11-15:129-149 | 2.13.0 - 2026-11-15:150-179 | 2.12.0 - 2026-11-14:180-202 | 2.11.0 - 2026-11-14:203-221 | 2.10.0 - 2026-11-14:222-240 | 2.9.0 - 2026-11-14:241-253 | 2.8.0 - 2026-11-14:254-267 | 2.7.0 - 2026-11-14:268-285 | 2.6.0 - 2026-11-14:286-293 | 2.5.0 - 2026-11-14:294-306 | 2.4.0 - 2026-11-14:307-317 | 2.3.0 - 2026-11-14:318-332 | 2.2.1 - 2026-11-14:333-339 | 2.2.0 - 2026-11-14:340-347 | 2.1.0 - 2026-11-14:348-365 | 2.0.0 - 2026-11-14:366-371 | 1.0.0 - 2026-11-14:372-376 -->
 # Changelog
 
 ## 2.17.0 - 2026-11-16
@@ -31,6 +31,21 @@ Still **alpha**.
   the host already passed is marked Skipped with a note. ManualCheck and SnapFinal stay to do.
 - The Extractor (host .ps1) shows SnapPreSql instead of PreSnapshot; the other points are done from the laptop.
 - Tests: smoke section 10 (10 checks) and `tests\SnapshotPoints.Tests.ps1` (12 Pester tests).
+
+## 2.15.2 - 2026-11-16
+
+The Extractor file in the repository checked and labelled as what it is: the template. Still **alpha**.
+
+- **The repository file is the template, not the host copy.** `Resources\VmmHostAgent.ps1` holds no laptop key, so it
+  cannot save a result (it says so and exits 1 with `-Extract`). `vmm extractor` builds the file to take to a host. The
+  file header and TROUBLESHOOTING now say so. Nothing environment-specific is committed: the key is per laptop and
+  its private half never leaves that laptop, so a committed ready-to-run build would be wrong.
+- **Tests that keep the template and the generator honest** (they run in CI on Windows PowerShell 5.1 and 7):
+  the template carries an empty plan card and no key, address, share, e-mail or id; the build equals the template
+  minus the steps code plus the plan card, line by line; a static scan shows nothing in the snapshot code that
+  Windows PowerShell 2.0 lacks (the only newer cmdlet, `Get-CimInstance`, is used only when `Get-WmiObject` is
+  missing).
+- Not tested: a real run on PowerShell 2.0 (Server 2008 R2) or on any real host.
 
 ## 2.15.1 - 2026-11-16
 
@@ -358,4 +373,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-16 05:07 UTC_
+_Last updated: 2026-11-16 09:01 UTC_
