@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, checkpoint snapshots and prune, blockers, daily target, Extractor steps. SECTIONS: OS policy:7-13 | Steps:14-32 | Time rules EuropeLisbon:33-53 | Snapshot after every success:54-82 | Blockers:83-95 | Daily target:96-101 | Inside the host the Extracto:102-122 -->
+<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, checkpoint snapshots and prune, blockers, daily target, Extractor steps. SECTIONS: OS policy:7-13 | Steps:14-36 | Time rules EuropeLisbon:37-57 | Snapshot after every success:58-86 | Blockers:87-99 | Daily target:100-105 | Inside the host the Extracto:106-126 -->
 # Workflow
 
 How one host moves from "imported" to "done", what the time rules allow, where snapshots
@@ -29,6 +29,10 @@ host; Stage and change steps only on hosts in scope.
 
 Each step records `Success`, `NotNeeded`, `Launched`, `Failed` or `Blocked`, a note, and any
 snapshot names, in the encrypted fleet store (last 200 history entries per host).
+A failed or blocked step is recorded first, then the command ends with an error (`VmmStepFailed` /
+`VmmStepBlocked`, exit code 1; VPN down keeps exit code 4). `vmm next` runs every queued host, then fails naming
+the ones that did not succeed. A change step stopped with Ctrl+C is recorded as `Failed` (INTERRUPTED): check the
+host before running it again. Every result is logged with its duration.
 
 ## Time rules (Europe/Lisbon)
 
@@ -119,4 +123,4 @@ Change steps need the window or an override (typed `OVERRIDE` + reason), and the
 confirmation. The export carries every logged event; the laptop adds them to the host history and
 records host-side overrides in the daily report.
 
-_Last updated: 2026-11-15 22:00 UTC_
+_Last updated: 2026-11-16 04:00 UTC_

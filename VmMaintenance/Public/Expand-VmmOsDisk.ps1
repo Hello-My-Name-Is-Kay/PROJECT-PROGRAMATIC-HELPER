@@ -222,10 +222,10 @@ function Expand-VmmOsDisk {
         if ($changing) {
             # [SAFETY] stopped between the first power change and the restore: no VM is left down or left running
             try { Invoke-VmmPowerRecovery -Item $work } catch { Write-VmmLog "[Recovery] failed: $($_.Exception.Message). Check these VMs in the Azure portal: $(($work.VMName) -join ', ')" -Level Error }
-            try {
-                Export-VmmCsv -InputObject @($plan | Select-Object * -ExcludeProperty Job, Started) -Path (Join-Path $LogDir "Results_$stamp.csv")
-                Add-VmmLogEntry -Text ("Disk expansion stopped half way; results: " + (@($work | ForEach-Object { "$($_.VMName)=$($_.Status)/$($_.FinalState)" }) -join ', ')) -Level Error
-            } catch { }
+            # The day log first: it must not depend on the CSV being writable
+            Add-VmmLogEntry -Text ("Disk expansion stopped half way; results: " + (@($work | ForEach-Object { "$($_.VMName)=$($_.Status)/$($_.FinalState)" }) -join ', ')) -Level Error
+            try { Export-VmmCsv -InputObject @($plan | Select-Object * -ExcludeProperty Job, Started) -Path (Join-Path $LogDir "Results_$stamp.csv") }
+            catch { Add-VmmLogEntry -Text (Protect-VmmLogText "Results_$stamp.csv not written: $($_.Exception.Message)") -Level Error }
         }
         if ($transcribing) { Stop-Transcript | Out-Null }
     }

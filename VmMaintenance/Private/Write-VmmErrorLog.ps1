@@ -18,5 +18,5 @@ function Write-VmmErrorLog {
         if ((Test-Path -LiteralPath $file) -and (Get-Item -LiteralPath $file).Length -gt 1MB) { Move-Item -LiteralPath $file -Destination "$file.old" -Force -ErrorAction Stop }
         $line = '{0} | {1} | {2} | {3} | {4}' -f (Get-Date).ToUniversalTime().ToString('o'), $Command, $ErrorRecord.FullyQualifiedErrorId, $where, $msg
         Add-Content -LiteralPath $file -Value $line -Encoding UTF8 -ErrorAction Stop
-    } catch { }
+    } catch { Add-VmmLogEntry -Text (Protect-VmmLogText "errors.log not written: $($_.Exception.Message)") -Level Warn }
 }

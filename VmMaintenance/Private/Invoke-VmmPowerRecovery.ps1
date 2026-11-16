@@ -14,10 +14,11 @@ function Invoke-VmmPowerRecovery {
     $jobs = @($items | Where-Object { $_.Job } | ForEach-Object { $_.Job })
     if ($jobs) {
         Write-VmmLog "[Recovery] waiting for $($jobs.Count) Azure operation(s) already sent (up to $([int]($WaitSeconds / 60)) min)..." -Level Info
-        try { $null = $jobs | Wait-Job -Timeout $WaitSeconds } catch { }
+        try { $null = $jobs | Wait-Job -Timeout $WaitSeconds }
+        catch { Write-VmmLog "[Recovery] waiting for the Azure operations failed ($($_.Exception.Message)): reading the power states anyway" -Level Warn }
         foreach ($p in @($items | Where-Object { $_.Job })) {
             if ($p.Job.State -in 'NotStarted', 'Running') { $p.Notes += 'RECOVERY: an Azure operation was still running; ' }
-            try { Remove-Job $p.Job -Force -ErrorAction Stop } catch { }
+            try { Remove-Job $p.Job -Force -ErrorAction Stop } catch { Write-VmmLog "[Recovery] $($p.VMName): Azure job not removed ($($_.Exception.Message))" -Level Trace }
             $p.Job = $null
         }
     }
@@ -25,7 +26,8 @@ function Invoke-VmmPowerRecovery {
     # 2. Live state, then start or switch off what differs from the state before the run
     foreach ($p in $items) {
         $now = 'unknown'
-        try { $now = Get-VmmPowerState -SubscriptionId $p.SubscriptionId -ResourceGroup $p.ResourceGroup -VMName $p.VMName } catch { }
+        try { $now = Get-VmmPowerState -SubscriptionId $p.SubscriptionId -ResourceGroup $p.ResourceGroup -VMName $p.VMName }
+        catch { Write-VmmLog "[Recovery] $($p.VMName): power state not readable ($($_.Exception.Message))" -Level Warn }
         try {
             if ($p.InitialState -eq 'running' -and $now -ne 'running') {
                 Write-VmmLog "[Recovery] $($p.VMName): $now, was running - starting it again" -Level Warn
@@ -47,9 +49,12 @@ function Invoke-VmmPowerRecovery {
     $wrong = @()
     foreach ($p in $items) {
         try { $p.FinalState = Get-VmmPowerState -SubscriptionId $p.SubscriptionId -ResourceGroup $p.ResourceGroup -VMName $p.VMName } catch { $p.FinalState = 'unknown' }
-        $p.Notes += 'RUN STOPPED: power state put back by recovery; '
         $back = ($p.FinalState -eq $p.InitialState) -or ($p.InitialState -ne 'running' -and $p.FinalState -in 'deallocated', 'stopped')
-        if (-not $back) { $wrong += "$($p.VMName) ($($p.FinalState), was $($p.InitialState))" }
+        if ($back) { $p.Notes += 'RUN STOPPED: recovery put the power state back; ' }
+        else {
+            $p.Notes += "RUN STOPPED: recovery could not put the power state back ($($p.FinalState), was $($p.InitialState)): fix it in the Azure portal; "
+            $wrong += "$($p.VMName) ($($p.FinalState), was $($p.InitialState))"
+        }
     }
     if ($wrong) { Write-VmmLog "[Recovery] put these back in the Azure portal NOW: $($wrong -join ', ')" -Level Error }
     else { Write-VmmLog '[Recovery] every VM is back in its power state from before the run (off ones may now be deallocated).' -Level Success }

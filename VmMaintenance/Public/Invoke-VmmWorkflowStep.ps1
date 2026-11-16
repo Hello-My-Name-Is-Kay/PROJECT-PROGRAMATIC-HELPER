@@ -226,7 +226,7 @@ function Invoke-VmmWorkflowStep {
                         Set-VmmStepState -Record $rec -Step $Step -Status $status -Note "$note | checkpoint snapshot $($why): check it in Azure" -Snapshot $snap
                     }
                     Save-VmmStore -Store $store
-                } catch { }
+                } catch { Add-VmmLogEntry -Text (Protect-VmmLogText "[$name] $($Step): this record could not be saved either ($($_.Exception.Message)): check the host and vmm plan") -Level Error }
             }
         }
     }

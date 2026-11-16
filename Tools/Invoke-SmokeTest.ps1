@@ -12,6 +12,8 @@
        (creates a temporary DPAPI key; the folder is deleted at the end).
     7. One vmm at a time and the CLI log.
     8. RDP / RDM handoff: .rdp/.rdg text, clients, VMMSTAGE1 report, the host script run on a temp folder.
+    9. Exits and failures: exit codes (also from new PowerShell processes), staging copy through a drive,
+       Ctrl+C on a step and on disk expansion, failed and blocked steps, AI masking, lock and log write failures.
     Exit code 0 = all passed, 1 = at least one failure.
 .EXAMPLE
     .\Tools\Invoke-SmokeTest.ps1
@@ -43,6 +45,60 @@ function Test-Step {
 
 function Assert-Equal($Actual, $Expected, [string]$What) {
     if ("$Actual" -ne "$Expected") { throw "$What : expected '$Expected', got '$Actual'" }
+}
+
+function New-SmokeConfigFile {
+    # Throw-away config for a new PowerShell process: data, logs and reports under $Root, plaintext day log
+    param([string]$Root)
+    foreach ($d in 'data', 'reports', 'work') { [void](New-Item -ItemType Directory -Path (Join-Path $Root $d) -Force) }
+    $q = { param($p) "'" + ("$p" -replace "'", "''") + "'" }
+    $file = Join-Path $Root 'smoke-config.psd1'
+    Set-Content -LiteralPath $file -Encoding ASCII -Value @(
+        '@{'
+        "    Paths = @{ DataDir = $(& $q (Join-Path $Root 'data')); ReportDir = $(& $q (Join-Path $Root 'reports')); WorkDir = $(& $q (Join-Path $Root 'work')) }"
+        '    Log   = @{ ToFile = $true; Encrypt = $false }'
+        '}'
+    )
+    $file
+}
+
+function Invoke-SmokeChild {
+    # Runs a script in a new PowerShell process (same edition and version) and returns its exit code and output
+    param([string]$File, [string[]]$ArgumentList = @())
+    $ErrorActionPreference = 'Continue'   # a line on stderr is output here, not a failure of the smoke test
+    $out = & ((Get-Process -Id $PID).Path) -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $File @ArgumentList 2>&1 | Out-String
+    [pscustomobject]@{ Code = $LASTEXITCODE; Out = $out }
+}
+
+function Invoke-SmokeStopped {
+    # Runs $Setup, then $Run, inside the module in a runspace of its own. $Setup puts a stand-in in place that sets
+    # $script:TestSync.Entered and waits; the run is stopped there the way Ctrl+C stops it (catch blocks are
+    # skipped, finally blocks run). Returns the run state, what $Inspect reports afterwards, and the shared table.
+    param([scriptblock]$Setup, [scriptblock]$Run, [scriptblock]$Inspect = { }, [string]$Root)
+    [void](New-Item -ItemType Directory -Path $Root -Force)
+    $sync = [hashtable]::Synchronized(@{ Entered = $false })
+    $ps = [powershell]::Create()
+    try {
+        # Script blocks travel as text: each runspace runs only its own script blocks
+        $null = $ps.AddScript({
+            param($Mod, $Root, $Sync, $SetupText, $RunText)
+            $mm = Import-Module $Mod -Force -PassThru
+            & $mm ([scriptblock]::Create($SetupText)) $Root $Sync
+            & $mm ([scriptblock]::Create($RunText)) $Root
+        }).AddArgument((Join-Path $repo 'VmMaintenance\VmMaintenance.psd1')).AddArgument($Root).AddArgument($sync).AddArgument("$Setup").AddArgument("$Run")
+        $h = $ps.BeginInvoke()
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        while (-not $sync.Entered -and -not $h.IsCompleted -and $sw.Elapsed.TotalSeconds -lt 120) { Start-Sleep -Milliseconds 50 }
+        if (-not $sync.Entered) {
+            $why = try { $null = $ps.EndInvoke($h); 'it ended first' } catch { $_.Exception.Message }
+            throw "the run never reached the point where the test stops it: $why"
+        }
+        $ps.Stop()
+        $state = "$($ps.InvocationStateInfo.State)"
+        $ps.Commands.Clear()
+        $null = $ps.AddScript({ param($t, $Root) & (Get-Module VmMaintenance) ([scriptblock]::Create($t)) $Root }).AddArgument("$Inspect").AddArgument($Root)
+        [pscustomobject]@{ State = $state; Result = @($ps.Invoke()); Sync = $sync }
+    } finally { $ps.Dispose() }
 }
 
 Write-Host ''
@@ -538,6 +594,204 @@ try {
 } finally {
     & $m { param($c) $script:VmmNonInteractive = $null; $script:VmmConfig = $c } $savedHand
     Remove-Item -LiteralPath $tmpHand -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# ---------------------------------------------------------------- 9. Exits, Ctrl+C, failures
+Write-Host '9. Exit codes, Ctrl+C and failures (temporary folders, new PowerShell processes, no host, no Azure)' -ForegroundColor Cyan
+$tmpExit = Join-Path ([IO.Path]::GetTempPath()) ('vmm-smoke-exit-' + [guid]::NewGuid().ToString('N'))
+[void](New-Item -ItemType Directory -Path (Join-Path $tmpExit 'hostC'))
+$savedExit = & $m { $script:VmmConfig }
+try {
+    & $m { param($r) Exit-VmmInstanceLock; $script:VmmConfig = @{ Log = @{ ToFile = $false }; Paths = @{ DataDir = (Join-Path $r 'data'); ReportDir = (Join-Path $r 'reports') } } } $tmpExit
+    Test-Step 'Exit codes: one table for vmm and the entry scripts (1 error, 2 usage, 3 time window, 4 VPN, 5 security, 6 busy)' {
+        $r = & $m { foreach ($id in 'VmmCliUnknown', 'VmmWindowBlocked', 'VmmVpnDown', 'VmmStoreIntegrity', 'VmmAgentResultRejected', 'VmmInstanceLocked', 'VmmStepFailed') { Get-VmmExitCode -ErrorRecord (New-VmmErrorRecord -Activity 'x' -ErrorId $id) } }
+        Assert-Equal ($r -join ',') '2,3,4,5,5,6,1' 'exit codes'
+    }
+    Test-Step 'New PowerShell process: vmm unknown command exits 2; an entry script exits 3 when blocked, 0 when done; all in the day log' {
+        $cfg = New-SmokeConfigFile -Root (Join-Path $tmpExit 'child')
+        $r = Invoke-SmokeChild -File (Join-Path $repo 'Scripts\vmm.ps1') -ArgumentList '--config', $cfg, '--no-color', 'nosuchcommand'
+        Assert-Equal $r.Code 2 'vmm nosuchcommand exit code'
+        $entry = Join-Path $tmpExit 'child\Smoke-Entry.ps1'
+        Set-Content -LiteralPath $entry -Encoding ASCII -Value @(
+            'param([switch]$Block)'
+            "`$ConfigPath = '$($cfg -replace "'", "''")'"
+            ". '$((Join-Path $repo 'Scripts\_Bootstrap.ps1') -replace "'", "''")'"
+            'function Test-SmokeEntry { param([switch]$Block) if ($Block) { throw (& (Get-Module VmMaintenance) { New-VmmErrorRecord -Activity ''Blocked by the smoke time window.'' -ErrorId ''VmmWindowBlocked'' }) } }'
+            'Invoke-VmmEntryScript -Command ''Test-SmokeEntry'' -Parameters $PSBoundParameters -Name ''Smoke-Entry.ps1'''
+        )
+        Assert-Equal (Invoke-SmokeChild -File $entry -ArgumentList '-Block').Code 3 'blocked entry script exit code'
+        Assert-Equal (Invoke-SmokeChild -File $entry).Code 0 'finished entry script exit code'
+        $log = (@(Get-ChildItem -LiteralPath (Join-Path $tmpExit 'child\logs') -Filter 'vmm_*.log' | ForEach-Object { [IO.File]::ReadAllText($_.FullName) }) -join "`n")
+        foreach ($want in '\|ERROR\|vmm nosuchcommand exit code 2', '\|ERROR\|Smoke-Entry\.ps1 FAILED, exit code 3 after', '\|MUTED\|Smoke-Entry\.ps1 done after') {
+            if ($log -notmatch $want) { throw "day log has no line matching '$want'" }
+        }
+        $true
+    }
+    Test-Step 'Staging copy through a PowerShell drive (as Stage maps the admin share): complete, no .part, nothing written elsewhere' {
+        $src = Join-Path $tmpExit 'src.bin'
+        [IO.File]::WriteAllBytes($src, [byte[]](1..250))
+        $cwd = [Environment]::CurrentDirectory
+        $before = @(Get-ChildItem -LiteralPath $cwd -Force | ForEach-Object Name)
+        & $m {
+            param($s, $root)
+            function Copy-SmokeThroughDrive { param($s, $root) New-PSDrive -Name VmmSmokeC -PSProvider FileSystem -Root $root | Out-Null; try { Copy-VmmFileWithProgress -Source $s -Destination 'VmmSmokeC:\copy.bin' } finally { Remove-PSDrive -Name VmmSmokeC -Force } }
+            Copy-SmokeThroughDrive $s $root
+        } $src (Join-Path $tmpExit 'hostC') 6>$null
+        $dest = Join-Path $tmpExit 'hostC\copy.bin'
+        if ((Get-FileHash -LiteralPath $dest).Hash -ne (Get-FileHash -LiteralPath $src).Hash) { throw 'copy differs from the source' }
+        if (Test-Path -LiteralPath "$dest.part") { throw '.part file left behind' }
+        $new = @(Get-ChildItem -LiteralPath $cwd -Force | ForEach-Object Name | Where-Object { $_ -notin $before })
+        if ($new) { throw "written into the process folder instead: $($new -join ', ')" }
+        $true
+    }
+    Test-Step 'Staging copy: a copy that fails at the end leaves no .part file' {
+        $dest = Join-Path $tmpExit 'fail.bin'
+        $msg = & $m {
+            param($s, $d)
+            function script:Move-Item { throw 'There is not enough space on the disk.' }
+            try { Copy-VmmFileWithProgress -Source $s -Destination $d; 'no error' } catch { $_.Exception.Message } finally { Remove-Item -LiteralPath function:Move-Item }
+        } (Join-Path $tmpExit 'src.bin') $dest
+        if ($msg -notmatch 'not enough space') { throw "the failure was not raised: $msg" }
+        if (Test-Path -LiteralPath "$dest.part") { throw '.part file left behind' }
+        $true
+    }
+    Test-Step 'Ctrl+C on vmm step: INTERRUPTED in the log, step recorded as Failed, lock released, credentials cleared' {
+        $r = Invoke-SmokeStopped -Root (Join-Path $tmpExit 'stop-step') -Setup {
+            param($Root, $Sync)
+            $script:VmmConfig = @{ Log = @{ ToFile = $false }; Paths = @{ DataDir = (Join-Path $Root 'data'); ReportDir = (Join-Path $Root 'reports') } }
+            $script:TestSync = $Sync
+            $rec = New-VmmHostRecord -Name 'smoke-stop'
+            Set-VmmStepState -Record $rec -Step 'Precheck' -Status 'Success'
+            $script:TestStore = [pscustomobject]@{ Updated = $null; Hosts = @($rec) }
+            function script:Read-VmmStore { $script:TestStore }
+            function script:Save-VmmStore { param($Store) }
+            function script:Assert-VmmWindow { }
+            function script:Get-VmmHostPolicy { param($Record) [pscustomobject]@{ Workable = $true; Warnings = @(); Scope = 'Server'; Os = 'test'; Why = '' } }
+            function script:Copy-VmmStagingPackage { param($HostName) $script:TestSync.Entered = $true; Start-Sleep -Seconds 120 }
+            $s = New-Object System.Security.SecureString; $s.AppendChar('x')
+            $script:VmmCredentials = @{ Windows = New-Object System.Management.Automation.PSCredential -ArgumentList 'test', $s }
+        } -Run {
+            Invoke-VmmCli -Command step -Arguments @('-HostName', 'smoke-stop', '-Step', 'Stage')
+        } -Inspect {
+            [pscustomobject]@{ Log = (@($script:VmmLogBuffer | ForEach-Object { "$($_.Level)|$($_.Text)" }) -join "`n"); Step = $script:TestStore.Hosts[0].Steps.Stage
+                               Lock = [bool]$script:VmmInstanceLock; Creds = @($script:VmmCredentials.Keys).Count }
+        }
+        Assert-Equal $r.State 'Stopped' 'run state'
+        $o = $r.Result[0]
+        foreach ($want in 'Error\|\[SMOKE-STOP\] Stage INTERRUPTED \(Ctrl\+C\)', 'Error\|vmm step -HostName -Step INTERRUPTED \(Ctrl\+C\)') { if ($o.Log -notmatch $want) { throw "log has no line matching '$want'" } }
+        Assert-Equal $o.Step.Status 'Failed' 'step status'
+        if ($o.Step.Note -notmatch 'INTERRUPTED') { throw "step note: $($o.Step.Note)" }
+        Assert-Equal $o.Lock $false 'lock held'
+        Assert-Equal $o.Creds 0 'credentials left in memory'
+    }
+    Test-Step 'Ctrl+C during disk expansion, after the VMs went down: the power-state recovery runs' {
+        $r = Invoke-SmokeStopped -Root (Join-Path $tmpExit 'stop-expand') -Setup {
+            param($Root, $Sync)
+            $script:VmmConfig = @{ Log = @{ ToFile = $false } }
+            $script:TestSync = $Sync
+            function script:Read-VmmServerList { 'srv-smoke' }
+            function script:Start-Transcript { }
+            function script:Stop-Transcript { }
+            function script:Assert-VmmModule { }
+            function script:Connect-VmmAzure { }
+            function script:Assert-VmmWindow { }
+            function script:Set-VmmSubscription { }
+            function script:New-VmmExpandPlan {
+                [pscustomobject]@{ ComputerName = 'srv-smoke'; VMName = 'vm-smoke'; MatchedBy = 'VM name'; SubscriptionId = 'sub'; ResourceGroup = 'rg'; InitialState = 'running'; Sku = 'Premium_LRS'
+                                   CurrentGB = 127; NewGB = 256; Action = 'Resize'; Status = 'Ready'; Notes = ''; Job = $null; Started = $false; Snapshot = $null; CBeforeGB = $null; CAfterGB = $null; FinalState = $null }
+            }
+            function script:Stop-AzVM { 'job' }
+            function script:Wait-VmmJob { param($Item, $Label) if ($Label -eq 'Deallocate') { $script:TestSync.Entered = $true; Start-Sleep -Seconds 120 } }
+            function script:Invoke-VmmPowerRecovery { param($Item) $script:TestSync.Recovered = (@($Item | ForEach-Object VMName) -join ',') }
+        } -Run {
+            param($Root)
+            $name = 'srv-smoke'
+            Expand-VmmOsDisk -ComputerName $name -Apply -Confirm:$false -TenantId 'test' -SnapshotTags @{ Purpose = 'test' } -LogDir (Join-Path $Root 'expand')
+        }
+        Assert-Equal $r.State 'Stopped' 'run state'
+        Assert-Equal $r.Sync.Recovered 'vm-smoke' 'VMs given to the recovery'
+        Assert-Equal @(Get-ChildItem -LiteralPath (Join-Path $tmpExit 'stop-expand\expand') -Filter 'Results_*.csv').Count 1 'results files'
+    }
+    Test-Step 'Failed step: recorded as Failed, raised as VmmStepFailed; missing access raised as VmmStepBlocked' {
+        & $m {
+            $saved = @{ R = ${function:Read-VmmStore}; S = ${function:Save-VmmStore}; W = ${function:Assert-VmmWindow}; C = ${function:Invoke-VmmFleetCheck}; B = ${function:New-VmmBlockerReport} }
+            $script:SmokeStore = [pscustomobject]@{ Updated = $null; Hosts = @(New-VmmHostRecord -Name 'smoke-step') }
+            function script:Read-VmmStore { $script:SmokeStore }
+            function script:Save-VmmStore { param($Store) }
+            function script:Assert-VmmWindow { }
+            function script:Invoke-VmmFleetCheck { throw $script:SmokeFail }
+            function script:New-VmmBlockerReport { 'Blockers\SMOKE-STEP_Precheck.txt' }
+            try {
+                $script:SmokeFail = 'WinRM timed out after 30 s'
+                $id = ''; try { Invoke-VmmWorkflowStep -HostName 'smoke-step' -Step Precheck 6>$null | Out-Null } catch { $id = "$($_.FullyQualifiedErrorId)" }
+                if ($id -notlike 'VmmStepFailed*') { throw "failed step: error id '$id'" }
+                if ($script:SmokeStore.Hosts[0].Steps.Precheck.Status -ne 'Failed') { throw 'failed step not recorded as Failed' }
+                $script:SmokeFail = 'Access is denied. (0x80070005)'
+                $id = ''; try { Invoke-VmmWorkflowStep -HostName 'smoke-step' -Step Precheck -Contact Later 6>$null | Out-Null } catch { $id = "$($_.FullyQualifiedErrorId)" }
+                if ($id -notlike 'VmmStepBlocked*') { throw "blocked step: error id '$id'" }
+            } finally {
+                Set-Item function:script:Read-VmmStore $saved.R; Set-Item function:script:Save-VmmStore $saved.S; Set-Item function:script:Assert-VmmWindow $saved.W
+                Set-Item function:script:Invoke-VmmFleetCheck $saved.C; Set-Item function:script:New-VmmBlockerReport $saved.B
+                Remove-Variable -Name SmokeStore, SmokeFail -Scope Script -ErrorAction SilentlyContinue
+            }
+            $true
+        }
+    }
+    Test-Step 'AI / issue text: ids, Azure ids, domains, resource groups, host names masked; fails closed when the store cannot be read' {
+        & $m {
+            $saved = ${function:Read-VmmStore}
+            try {
+                function script:Read-VmmStore { [pscustomobject]@{ Hosts = @([pscustomobject]@{ Name = 'SMOKEAI1'; Fqdn = 'smokeai1.smoke-corp.example'; Azure = [pscustomobject]@{ ResourceGroup = 'rg-smoke-app'; VMName = 'vm-smoke-ai'; SubscriptionId = 'x' } }) } }
+                $g = [guid]::NewGuid().ToString()
+                $t = (ConvertTo-VmmAiSafeText -Text "id $g on smokeai1.smoke-corp.example, vm-smoke-ai in rg-smoke-app, /subscriptions/$g/resourceGroups/rg-smoke-app, smoke-corp.example").Text
+                foreach ($leak in $g, 'smokeai1', 'smoke-corp', 'vm-smoke-ai', 'rg-smoke-app') { if ($t -match [regex]::Escape($leak)) { throw "'$leak' not masked: $t" } }
+                function script:Read-VmmStore { throw 'store unreadable' }
+                $id = ''; try { ConvertTo-VmmAiSafeText -Text 'smokeai1' | Out-Null } catch { $id = "$($_.FullyQualifiedErrorId)" }
+                if ($id -notlike 'VmmAiUnsafe*') { throw "store failure: error id '$id' (the text would have left with host names in it)" }
+            } finally { Set-Item function:script:Read-VmmStore $saved }
+            $true
+        }
+    }
+    Test-Step 'Lock file that cannot be opened: VmmInstanceLockFile, not "vmm is already running"' {
+        $bad = Join-Path $tmpExit 'lockbad'
+        [void](New-Item -ItemType Directory -Path (Join-Path $bad 'vmm.lock') -Force)   # a folder where the lock file belongs
+        $id = & $m {
+            param($d)
+            $c = $script:VmmConfig
+            $script:VmmConfig = @{ Log = @{ ToFile = $false }; Paths = @{ DataDir = $d; ReportDir = $d } }
+            try { Enter-VmmInstanceLock | Out-Null; 'no error' } catch { "$($_.FullyQualifiedErrorId)" } finally { Exit-VmmInstanceLock; $script:VmmConfig = $c }
+        } $bad
+        if ($id -notlike 'VmmInstanceLockFile*') { throw "error id '$id'" }
+        $true
+    }
+    Test-Step 'Log file that cannot be written: one warning, every line kept on screen; a nested line is written, not dropped' {
+        $r = & $m {
+            param($root)
+            $c = $script:VmmConfig; $e = $script:VmmLogFileError
+            [void](New-Item -ItemType Directory -Path (Join-Path $root 'logbad\data') -Force)
+            Set-Content -LiteralPath (Join-Path $root 'logbad\logs') -Value 'a file where the logs folder belongs'
+            try {
+                $script:VmmConfig = @{ Log = @{ ToFile = $true; Encrypt = $false }; Paths = @{ DataDir = (Join-Path $root 'logbad\data'); ReportDir = (Join-Path $root 'logbad\reports') } }
+                $script:VmmLogFileError = $null; $script:VmmLogBuffer = $null; $script:VmmLogPending = $null
+                $w = @(Add-VmmLogEntry -Text 'smoke line one' 3>&1) + @(Add-VmmLogEntry -Text 'smoke line two' 3>&1)
+                $warn = @($w | Where-Object { $_ -is [System.Management.Automation.WarningRecord] }).Count
+                $buf = (@($script:VmmLogBuffer | ForEach-Object Text) -join "`n")
+                $script:VmmConfig = @{ Log = @{ ToFile = $true; Encrypt = $false }; Paths = @{ DataDir = (Join-Path $root 'lognest\data'); ReportDir = (Join-Path $root 'lognest\reports') } }
+                $script:VmmLogFileError = $null; $script:VmmLogPending = $null
+                $script:VmmLogWriting = $true; Add-VmmLogEntry -Text 'smoke nested line'; $script:VmmLogWriting = $false
+                Add-VmmLogEntry -Text 'smoke outer line'
+                $file = (@(Get-ChildItem -LiteralPath (Join-Path $root 'lognest\logs') -Filter 'vmm_*.log' | ForEach-Object { [IO.File]::ReadAllText($_.FullName) }) -join "`n")
+                [pscustomobject]@{ Warnings = $warn; Buffer = $buf; File = $file }
+            } finally { $script:VmmConfig = $c; $script:VmmLogFileError = $e; $script:VmmLogWriting = $false; $script:VmmLogPending = $null }
+        } $tmpExit
+        Assert-Equal $r.Warnings 1 'warnings for a log file that cannot be written'
+        foreach ($want in 'smoke line one', 'smoke line two', 'Log file not written') { if ($r.Buffer -notmatch $want) { throw "on-screen log has no '$want'" } }
+        if ($r.File -notmatch '(?s)smoke nested line.*smoke outer line') { throw "nested line missing or out of order: $($r.File)" }
+        $true
+    }
+} finally {
+    & $m { param($c) Exit-VmmInstanceLock; $script:VmmConfig = $c } $savedExit
+    Remove-Item -LiteralPath $tmpExit -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ---------------------------------------------------------------- Result

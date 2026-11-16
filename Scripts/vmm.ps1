@@ -64,7 +64,7 @@ try {
     elseif ($id -notlike 'Vmm*') { Write-Host '  Details: logged to %LOCALAPPDATA%\VmMaintenance\logs\errors.log (run with --debug-errors to show the location).' -ForegroundColor DarkGray }
     # Same table for vmm and the entry scripts (Private\Get-VmmExitCode.ps1)
     $code = 1
-    try { $code = & $mod { param($e) Get-VmmExitCode -ErrorRecord $e } $_ } catch { }
+    try { $code = & $mod { param($e) Get-VmmExitCode -ErrorRecord $e } $_ } catch { $code = 1 }   # table not readable: plain error
     # The day log gets the exit code (and the error itself when it was raised before the command started)
     & $mod { param($c, $n, $m) Add-VmmLogEntry -Text "vmm $c exit code $n$(if ($m) { ': ' + $m })" -Level Error } $Command $code $(if ($id -like 'VmmCli*' -or $id -like 'VmmInstanceLocked*') { $msg } else { '' })
     exit $code

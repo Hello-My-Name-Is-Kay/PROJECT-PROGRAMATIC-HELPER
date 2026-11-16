@@ -18,8 +18,8 @@ foreach ($file in @($private + $public)) {
 
 # Unloading the module (also Import-Module -Force) disposes session credentials and releases the single-instance lock
 $ExecutionContext.SessionState.Module.OnRemove = {
-    try { Clear-VmmSessionCredentialStore } catch { }
-    try { Exit-VmmInstanceLock } catch { }
+    try { Clear-VmmSessionCredentialStore } catch { Write-Warning "VmMaintenance: session credentials could not be cleared from memory ($($_.Exception.Message)): close this PowerShell window." }
+    try { Exit-VmmInstanceLock } catch { Write-Warning "VmMaintenance: the single-instance lock was not released ($($_.Exception.Message)); closing this PowerShell window releases it." }
 }
 
 Export-ModuleMember -Function $public.BaseName

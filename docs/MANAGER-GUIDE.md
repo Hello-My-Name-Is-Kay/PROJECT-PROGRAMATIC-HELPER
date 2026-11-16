@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance guide for management: purpose, enforced rules, credentials, data protection, logging, RDP fallback, status/limits. SECTIONS: What it is:7-24 | Rules built into the tool:25-38 | Credentials:39-55 | Where the data is, and how it is protected:56-71 | Logging and accountability:72-80 | When the network route fails: remote desktop fallback:81-91 | Status and known limitations:92-104 | Who to ask:105-110 -->
+<!-- SUMMARY: VmMaintenance guide for management: purpose, enforced rules, credentials, data protection, logging, RDP fallback, status/limits. SECTIONS: What it is:7-24 | Rules built into the tool:25-38 | Credentials:39-55 | Where the data is, and how it is protected:56-71 | Logging and accountability:72-80 | When the network route fails: remote desktop fallback:81-91 | Status and known limitations:92-106 | Who to ask:107-112 -->
 # VmMaintenance - guide for management
 
 A two-page overview of what this tool is, what it is allowed to do, and how it protects company data.
@@ -91,8 +91,10 @@ encrypted data and the reports.
 
 ## Status and known limitations
 
-- **Version 2.14.0, alpha.** The tool has passed its automated tests (about 280 offline checks and 100 unit
-  tests) on Windows PowerShell 5.1 and PowerShell 7 on GitHub's Windows machines.
+- **Version 2.15.0, alpha.** The tool has passed its automated tests (about 290 offline checks and 130 unit
+  tests) on Windows PowerShell 5.1 and PowerShell 7 on GitHub's Windows machines. 2.15.0 checked how every
+  command ends: an unfinished or failed job is reported as failed, and a disk expansion that stops half way puts
+  the servers back in their power state.
 - **It has not yet been run against a real server, a real Azure subscription, the company VPN or the
   Lansweeper database.** The first runs should be read-only (`vmm snapshot`, `vmm stage`, `vmm plan`) on a
   few servers, during business hours, before any changing step is used.
@@ -107,4 +109,4 @@ encrypted data and the reports.
 The tool's author and operator: Kay. Problems are logged and can be reported as an issue in the private
 GitHub repository with `vmm issue -FromErrorLog` (the text is masked and shown for approval before it is sent).
 
-_Last updated: 2026-11-15 22:30 UTC_
+_Last updated: 2026-11-16 04:00 UTC_
