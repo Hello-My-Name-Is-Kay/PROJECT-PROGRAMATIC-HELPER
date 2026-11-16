@@ -1,5 +1,33 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.15.1 - 2026-11-16:4-24 | 2.15.0 - 2026-11-16:25-82 | 2.14.0 - 2026-11-15:83-103 | 2.13.0 - 2026-11-15:104-133 | 2.12.0 - 2026-11-14:134-156 | 2.11.0 - 2026-11-14:157-175 | 2.10.0 - 2026-11-14:176-194 | 2.9.0 - 2026-11-14:195-207 | 2.8.0 - 2026-11-14:208-221 | 2.7.0 - 2026-11-14:222-239 | 2.6.0 - 2026-11-14:240-247 | 2.5.0 - 2026-11-14:248-260 | 2.4.0 - 2026-11-14:261-271 | 2.3.0 - 2026-11-14:272-286 | 2.2.1 - 2026-11-14:287-293 | 2.2.0 - 2026-11-14:294-301 | 2.1.0 - 2026-11-14:302-319 | 2.0.0 - 2026-11-14:320-325 | 1.0.0 - 2026-11-14:326-330 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.16.0 - 2026-11-16:4-31 | 2.15.1 - 2026-11-16:32-52 | 2.15.0 - 2026-11-16:53-110 | 2.14.0 - 2026-11-15:111-131 | 2.13.0 - 2026-11-15:132-161 | 2.12.0 - 2026-11-14:162-184 | 2.11.0 - 2026-11-14:185-203 | 2.10.0 - 2026-11-14:204-222 | 2.9.0 - 2026-11-14:223-235 | 2.8.0 - 2026-11-14:236-249 | 2.7.0 - 2026-11-14:250-267 | 2.6.0 - 2026-11-14:268-275 | 2.5.0 - 2026-11-14:276-288 | 2.4.0 - 2026-11-14:289-299 | 2.3.0 - 2026-11-14:300-314 | 2.2.1 - 2026-11-14:315-321 | 2.2.0 - 2026-11-14:322-329 | 2.1.0 - 2026-11-14:330-347 | 2.0.0 - 2026-11-14:348-353 | 1.0.0 - 2026-11-14:354-358 -->
 # Changelog
+
+## 2.16.0 - 2026-11-16
+
+New: the **last fallback**, a standalone script for a host that neither vmm nor the Extractor can serve. Still **alpha**.
+
+- **`Resources\Fallback\VmmFallback.ps1`** needs no vmm, no laptop key and no network (Windows PowerShell 2.0 to 5.1,
+  PowerShell 7). It reads OS, build, edition, disks, pending reboot, patches, Windows Update, roles, domain controller,
+  cluster, IIS, Exchange, SQL instances (64 and 32-bit, level, CU, Always On, database backups over a local
+  shared-memory login), software, agents, legacy TLS, licence, .NET and recent event log errors. Each read stands
+  alone (`Problem=` lines).
+- **Guide with nine steps:** Snapshot, Precheck, WindowsPatch, SqlPatch, SqlUpgrade, OsUpgrade, Disk, Postcheck,
+  Finish. Each one shows its advice, then offers **R** run (automated: after hours, administrator, typed YES),
+  **G** guidance only (the manual instructions and the exact commands for this host, nothing changes) or **T** stage
+  media into `C:\Temp`. `-Step <Id> -Action Guide|Run|Stage` opens one step directly.
+- **Companion file `VmmFallback.psd1`:** settings, the OS upgrade path (2008 > 2012 > 2016 > 2019, 2008 R2 > 2012 R2
+  > 2019), the SQL support matrix for Windows Server 2019 and the in-place SQL upgrade paths (from Microsoft Learn,
+  checked 2026-11-16), agent wildcards, the steps and all advice text. Read as data only; `-Check` validates it and
+  every problem names its key (exit 2).
+- **Same rules as vmm:** target Windows Server 2019, client OS untouched without `-Order` (and never OS-upgraded),
+  warnings for 2008 non-R2, physical, DC, cluster, Exchange; Lisbon business hours = reads, guidance and staging
+  only; media from a local folder only; SQL changes need a fresh full backup and refuse clusters / Always On;
+  Azure OS upgrade asks for `SNAPSHOT TAKEN`; the script never reboots; the SQL product key is typed and never kept.
+- **Every exit is coded:** 0 done, 1 error, 2 usage/companion, 3 time window, 5 refused, 6 another copy, 7 partial
+  snapshot, 8 cancelled, 9 reboot needed, 10 needs administrator. One `exit` statement; Ctrl+C is logged.
+- **Result file** `VMMF_<HOST>_<kind>_<time>.txt` (`Format=VMMF1`, Key=Value, Extractor-compatible keys plus SQL,
+  disk, patch, feature, software and policy lines) and a sanitized log in `C:\Temp\VmmFallback`. Not encrypted;
+  a vmm import is not built yet.
+- Docs: `docs\FALLBACK.md`. Tests: `tests\Fallback.Tests.ps1` (Pester) and smoke section 10.
 
 ## 2.15.1 - 2026-11-16
 
@@ -327,4 +355,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-16 05:07 UTC_
+_Last updated: 2026-11-16 10:50 UTC_
