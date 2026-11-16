@@ -158,6 +158,7 @@ Describe 'Ctrl+C leaves an honest trace' {
             $script:TestSync = $Sync
             $rec = New-VmmHostRecord -Name 'stop-host'
             Set-VmmStepState -Record $rec -Step 'Precheck' -Status 'Success'
+            Set-VmmStepState -Record $rec -Step 'SnapStart' -Status 'NotNeeded'
             $script:TestStore = [pscustomobject]@{ Updated = $null; Hosts = @($rec) }
             function script:Read-VmmStore { $script:TestStore }
             function script:Save-VmmStore { param($Store) }
