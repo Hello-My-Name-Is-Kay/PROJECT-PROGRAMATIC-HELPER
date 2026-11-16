@@ -736,19 +736,19 @@ function Confirm-Phrase([string]$What, [string]$Phrase) {
     Mute ' Cancelled.'
     8
 }
-function Test-Gate([string]$StepId, [switch]$OsUpgrade, [switch]$NoWindow) {
+function Test-Gate([string]$StepId, [switch]$OsUpgrade, $Window, $IsAdmin) {
     # The checks every change goes through, in this order: policy (5), time window (3), administrator (10).
+    # -Window / -IsAdmin are only passed by the tests; on a host both are read here.
     $pol = $Script:Policy
     if (-not $pol.ChangeOk) { return New-Object PSObject -Property @{ Code = 5; Why = $pol.Why } }
     if ($OsUpgrade -and -not $pol.OsUpgradeOk) {
         $w = $pol.Why; if ($pol.Scope -eq 'InScope') { $w = 'OS upgrade is guidance only on this host: ' + (@($pol.Warnings) -join ' ') }
         return New-Object PSObject -Property @{ Code = 5; Why = $w }
     }
-    if (-not $NoWindow) {
-        $w = Get-Window $Script:Data['Settings'] ([DateTime]::UtcNow)
-        if (-not $w.ChangesAllowed) { return New-Object PSObject -Property @{ Code = 3; Why = $w.Why } }
-    }
-    if (-not (Test-Admin)) { return New-Object PSObject -Property @{ Code = 10; Why = 'Needs administrator rights: right-click PowerShell > Run as administrator.' } }
+    $w = $Window; if ($null -eq $w) { $w = Get-Window $Script:Data['Settings'] ([DateTime]::UtcNow) }
+    if (-not $w.ChangesAllowed) { return New-Object PSObject -Property @{ Code = 3; Why = $w.Why } }
+    $adm = $IsAdmin; if ($null -eq $adm) { $adm = Test-Admin }
+    if (-not $adm) { return New-Object PSObject -Property @{ Code = 10; Why = 'Needs administrator rights: right-click PowerShell > Run as administrator.' } }
     New-Object PSObject -Property @{ Code = 0; Why = '' }
 }
 function Invoke-Native([string]$Exe, [string]$Arguments) {

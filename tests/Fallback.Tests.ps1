@@ -234,36 +234,27 @@ Describe 'OS image, disk and native exit codes' {
 }
 
 Describe 'Change gate (policy 5, time window 3, administrator 10)' {
-    BeforeEach {
-        $script:Policy = Get-Policy (New-Facts 'Microsoft Windows Server 2016 Standard') $script:Data ''
-        function script:Get-Window { New-Object PSObject -Property @{ ChangesAllowed = $true; Why = 'open' } }
-        function script:Test-Admin { $true }
+    BeforeAll {
+        $script:Open = New-Object PSObject -Property @{ ChangesAllowed = $true; Why = 'open' }
+        $script:Closed = New-Object PSObject -Property @{ ChangesAllowed = $false; Why = 'Business hours' }
     }
-    AfterAll {
-        foreach ($fn in $script:fbAst.EndBlock.Statements) {
-            if ($fn -is [System.Management.Automation.Language.FunctionDefinitionAst] -and ($fn.Name -eq 'Get-Window' -or $fn.Name -eq 'Test-Admin')) { . ([scriptblock]::Create($fn.Extent.Text)) }
-        }
-    }
-    It 'all clear -> 0' { (Test-Gate 'x').Code | Should -Be 0 }
-    It 'client OS without order -> 5' {
+    BeforeEach { $script:Policy = Get-Policy (New-Facts 'Microsoft Windows Server 2016 Standard') $script:Data '' }
+    It 'all clear -> 0' { (Test-Gate 'x' -Window $script:Open -IsAdmin $true).Code | Should -Be 0 }
+    It 'client OS without order -> 5 (before the window and admin checks)' {
         $script:Policy = Get-Policy (New-Facts 'Microsoft Windows 11 Pro') $script:Data ''
-        (Test-Gate 'x').Code | Should -Be 5
+        (Test-Gate 'x' -Window $script:Closed -IsAdmin $false).Code | Should -Be 5
     }
     It 'OS upgrade on the target OS -> 5, patching still 0' {
         $script:Policy = Get-Policy (New-Facts 'Microsoft Windows Server 2019 Standard') $script:Data ''
-        (Test-Gate 'x' -OsUpgrade).Code | Should -Be 5
-        (Test-Gate 'x').Code | Should -Be 0
+        (Test-Gate 'x' -OsUpgrade -Window $script:Open -IsAdmin $true).Code | Should -Be 5
+        (Test-Gate 'x' -Window $script:Open -IsAdmin $true).Code | Should -Be 0
     }
     It 'business hours -> 3' {
-        function script:Get-Window { New-Object PSObject -Property @{ ChangesAllowed = $false; Why = 'Business hours' } }
-        $g = Test-Gate 'x'
+        $g = Test-Gate 'x' -Window $script:Closed -IsAdmin $true
         $g.Code | Should -Be 3
         $g.Why | Should -Match 'Business hours'
     }
-    It 'not administrator -> 10' {
-        function script:Test-Admin { $false }
-        (Test-Gate 'x').Code | Should -Be 10
-    }
+    It 'not administrator -> 10' { (Test-Gate 'x' -Window $script:Open -IsAdmin $false).Code | Should -Be 10 }
 }
 
 Describe 'Result file and sanitizing' {
@@ -307,7 +298,7 @@ Describe 'PowerShell 2.0 compatibility and exits (static)' {
         foreach ($bad in '\[pscustomobject\]', '\[ordered\]', '::new\(', '\$PSScriptRoot', 'ConvertTo-Json', 'ConvertFrom-Json', '-ErrorAction\s+Ignore', '\?\?', '\?\.') {
             $text | Should -Not -Match $bad -Because "$bad is not PowerShell 2.0"
         }
-        $ops = @($script:fbTokens | Where-Object { $_.Kind -in 'In', 'NotIn' })
+        $ops = @($script:fbTokens | Where-Object { $_.Text -eq '-in' -or $_.Text -eq '-notin' -or $_.Text -eq '-iin' -or $_.Text -eq '-inotin' -or $_.Text -eq '-cin' -or $_.Text -eq '-cnotin' })
         $ops.Count | Should -Be 0 -Because 'the -in / -notin operators need PowerShell 3'
     }
     It 'calls Get-CimInstance only inside Get-Wmi (PowerShell 7 fallback)' {
@@ -361,12 +352,12 @@ Describe 'Process exit codes' {
             $r.Text | Should -Match 'SchemaVersion must be 1'
         } finally { Remove-Item -LiteralPath $tmp -Recurse -Force }
     }
-    It 'Run without a console exits 2 (a person must type YES)' -Skip:(-not $script:OnWindows) {
+    It 'Run without a console exits 2 (a person must type YES)' -Skip:([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
         $wd = 'C:\Temp\VmmFallbackTest' + [guid]::NewGuid().ToString('N').Substring(0, 8)
         try { (Invoke-Fallback @('-Step', 'WindowsPatch', '-Action', 'Run', '-WorkDir', $wd)).Code | Should -Be 2 }
         finally { Remove-Item -LiteralPath $wd -Recurse -Force -ErrorAction SilentlyContinue }
     }
-    It 'snapshot on this machine exits 0 or 7 and saves a VMMF1 result' -Skip:(-not $script:OnWindows) {
+    It 'snapshot on this machine exits 0 or 7 and saves a VMMF1 result' -Skip:([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
         $wd = 'C:\Temp\VmmFallbackTest' + [guid]::NewGuid().ToString('N').Substring(0, 8)
         try {
             $r = Invoke-Fallback @('-Snapshot', '-NoColor', '-WorkDir', $wd)
@@ -380,7 +371,7 @@ Describe 'Process exit codes' {
             Test-Path -LiteralPath (Join-Path $wd 'fallback.lock') | Should -BeFalse
         } finally { Remove-Item -LiteralPath $wd -Recurse -Force -ErrorAction SilentlyContinue }
     }
-    It 'guidance-only steps change nothing and exit 0' -Skip:(-not $script:OnWindows) {
+    It 'guidance-only steps change nothing and exit 0' -Skip:([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
         $wd = 'C:\Temp\VmmFallbackTest' + [guid]::NewGuid().ToString('N').Substring(0, 8)
         try {
             foreach ($s in 'Precheck', 'SqlPatch', 'OsUpgrade', 'Disk', 'Finish') {
@@ -389,7 +380,7 @@ Describe 'Process exit codes' {
             }
         } finally { Remove-Item -LiteralPath $wd -Recurse -Force -ErrorAction SilentlyContinue }
     }
-    It 'a second copy exits 6 while the lock is held' -Skip:(-not $script:OnWindows) {
+    It 'a second copy exits 6 while the lock is held' -Skip:([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
         $wd = 'C:\Temp\VmmFallbackTest' + [guid]::NewGuid().ToString('N').Substring(0, 8)
         New-Item -ItemType Directory -Path $wd | Out-Null
         $lock = [IO.File]::Open((Join-Path $wd 'fallback.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
