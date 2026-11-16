@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Last fallback no vmm no lapt:252-263 | Console UI:264-305 | CLI:306-372 | GitHub integration:373-389 | OS policy:390-404 | Workflow per host:405-418 | Directory tree:419-452 | Where your data lives never:453-469 | Testing:470-483 | Errors:484-498 | Future your work AI model wi:499-508 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Last fallback no vmm no lapt:252-263 | Console UI:264-305 | CLI:306-372 | GitHub integration:373-389 | OS policy:390-404 | Workflow per host:405-418 | Directory tree:419-452 | Where your data lives never:453-469 | Testing:470-483 | Errors:484-498 | Public repository and licenc:499-512 | Future your work AI model wi:513-522 -->
 # VmMaintenance
 
 **Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.16.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-16
@@ -496,6 +496,20 @@ ERROR: Could not copy the staging package.
 Colours: cyan info, green success, yellow warning, red error, dark grey skipped.
 Exit codes, common errors and recovery: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
+## Public repository and licence
+
+This repository holds **no environment data**: no host names, IP addresses, tenant or subscription IDs, share
+paths, user names or passwords. Every real value lives only on the user's own machine
+(`%APPDATA%\VmMaintenance\config.psd1` and the server lists), and credentials are asked for each session and never
+stored. CI runs a leak scan over every file and the full git history on each push.
+
+VmMaintenance is **alpha** software for Windows Server maintenance (target Windows Server 2019, Azure VMs, SQL
+Server). It changes servers only inside the rules described above and only after a person confirms; read
+[docs/SECURITY.md](docs/SECURITY.md) and [docs/RELEASE.md](docs/RELEASE.md) before using it on real hosts. Use it at
+your own risk.
+
+Licensed under the [MIT License](LICENSE).
+
 ## Future: your work AI model with tools (MCP)
 
 Planned, not built. An MCP server inside the module would expose a small, allow-listed set of
@@ -505,4 +519,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-16 10:50 UTC_
+_Last updated: 2026-11-16 11:50 UTC_
