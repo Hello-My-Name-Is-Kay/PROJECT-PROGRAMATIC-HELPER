@@ -465,7 +465,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1 -History                                # before a release: whole git history
 ```
 
-Status (2.15.1, alpha): the offline smoke test (292 checks) and Pester (138 tests) pass on GitHub's Windows runners in
+Status (2.15.1, alpha): the offline smoke test (292 checks) and Pester (141 tests) pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -493,4 +493,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-16 04:59 UTC_
+_Last updated: 2026-11-16 05:07 UTC_

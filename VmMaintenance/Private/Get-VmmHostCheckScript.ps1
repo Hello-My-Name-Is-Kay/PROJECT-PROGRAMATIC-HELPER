@@ -113,18 +113,25 @@ try {
 
     # SQL Server instances: name, version (PatchLevel), edition
     & $say 'reading SQL instances and pending reboot (registry)'
-    $inst = & $reg 'EnumValues' @{ hDefKey = $hk; sSubKeyName = 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' }
-    if ($inst.ReturnValue -eq 0 -and $inst.sNames) {
-        $langs = @()
-        $r.Sql = (@(foreach ($n in $inst.sNames) {
-            $id = & $str 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL' $n
-            $ver = & $str "SOFTWARE\Microsoft\Microsoft SQL Server\$id\Setup" 'PatchLevel'
-            $ed  = & $str "SOFTWARE\Microsoft\Microsoft SQL Server\$id\Setup" 'Edition'
+    # 64-bit registry view first, then the 32-bit one (Wow6432Node, tagged "(32-bit)"); a name found in both is listed once
+    $sqlParts = @(); $langs = @(); $seenSql = @()
+    foreach ($root in @(@('SOFTWARE\Microsoft\Microsoft SQL Server', ''), @('SOFTWARE\Wow6432Node\Microsoft\Microsoft SQL Server', ' (32-bit)'))) {
+        $inst = & $reg 'EnumValues' @{ hDefKey = $hk; sSubKeyName = ($root[0] + '\Instance Names\SQL') }
+        if ($inst.ReturnValue -ne 0 -or -not $inst.sNames) { continue }
+        foreach ($n in $inst.sNames) {
+            if ($seenSql -contains $n) { continue }
+            $seenSql += $n
+            $id = & $str ($root[0] + '\Instance Names\SQL') $n
+            $ver = & $str ($root[0] + "\$id\Setup") 'PatchLevel'
+            $ed  = & $str ($root[0] + "\$id\Setup") 'Edition'
             # Install language (LCID): service packs before SQL 2017 come in one file per language
-            $lc = & $reg 'GetDWORDValue' @{ hDefKey = $hk; sSubKeyName = "SOFTWARE\Microsoft\Microsoft SQL Server\$id\Setup"; sValueName = 'Language' }
+            $lc = & $reg 'GetDWORDValue' @{ hDefKey = $hk; sSubKeyName = ($root[0] + "\$id\Setup"); sValueName = 'Language' }
             if ($lc.ReturnValue -eq 0 -and $lc.uValue) { $langs += "$n=$($lc.uValue)" }
-            "$n $ver $ed".Trim()
-        })) -join '; '
+            $sqlParts += ("$n $ver $ed".Trim() + $root[1])
+        }
+    }
+    if ($sqlParts.Count) {
+        $r.Sql = $sqlParts -join '; '
         $r.SqlLang = $langs -join '; '
     } else { $r.Sql = 'none' }
 

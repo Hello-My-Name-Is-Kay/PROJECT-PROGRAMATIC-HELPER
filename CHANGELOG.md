@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.15.1 - 2026-11-16:4-22 | 2.15.0 - 2026-11-16:23-80 | 2.14.0 - 2026-11-15:81-101 | 2.13.0 - 2026-11-15:102-131 | 2.12.0 - 2026-11-14:132-154 | 2.11.0 - 2026-11-14:155-173 | 2.10.0 - 2026-11-14:174-192 | 2.9.0 - 2026-11-14:193-205 | 2.8.0 - 2026-11-14:206-219 | 2.7.0 - 2026-11-14:220-237 | 2.6.0 - 2026-11-14:238-245 | 2.5.0 - 2026-11-14:246-258 | 2.4.0 - 2026-11-14:259-269 | 2.3.0 - 2026-11-14:270-284 | 2.2.1 - 2026-11-14:285-291 | 2.2.0 - 2026-11-14:292-299 | 2.1.0 - 2026-11-14:300-317 | 2.0.0 - 2026-11-14:318-323 | 1.0.0 - 2026-11-14:324-328 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.15.1 - 2026-11-16:4-24 | 2.15.0 - 2026-11-16:25-82 | 2.14.0 - 2026-11-15:83-103 | 2.13.0 - 2026-11-15:104-133 | 2.12.0 - 2026-11-14:134-156 | 2.11.0 - 2026-11-14:157-175 | 2.10.0 - 2026-11-14:176-194 | 2.9.0 - 2026-11-14:195-207 | 2.8.0 - 2026-11-14:208-221 | 2.7.0 - 2026-11-14:222-239 | 2.6.0 - 2026-11-14:240-247 | 2.5.0 - 2026-11-14:248-260 | 2.4.0 - 2026-11-14:261-271 | 2.3.0 - 2026-11-14:272-286 | 2.2.1 - 2026-11-14:287-293 | 2.2.0 - 2026-11-14:294-301 | 2.1.0 - 2026-11-14:302-319 | 2.0.0 - 2026-11-14:320-325 | 1.0.0 - 2026-11-14:326-330 -->
 # Changelog
 
 ## 2.15.1 - 2026-11-16
@@ -16,9 +16,11 @@ The Extractor (the .ps1 that is copied to a host and run there) reviewed end to 
   written; a full disk or no access lost the previous snapshot. The new file is written first now.
 - **`-Extract` has an exit code for failed reads:** 0 = saved and every read worked, 1 = not saved, 2 = saved but
   some reads failed (they are `Problem=` lines in the result). Before, 2 and 0 were both 0.
-- Not changed: 32-bit SQL instances (registered under Wow6432Node) are still not read.
-- Tests: new `tests\Extractor.Tests.ps1` (10 Pester tests: both WMI branches, the probe on both, no bare
-  `Get-WmiObject` left, the SQL names, the result file order and failure, the exit code).
+- **32-bit SQL instances are read.** Only the 64-bit registry view was read, so a 32-bit instance (registered under
+  Wow6432Node) was missing from the snapshot. The Extractor, the RDP collector and the laptop fleet check read both
+  views; a 32-bit instance is tagged `(32-bit)` after its edition, a name in both views is listed once.
+- Tests: new `tests\Extractor.Tests.ps1` (13 Pester tests: both WMI branches, the probe on both, no bare
+  `Get-WmiObject` left, the SQL names, both SQL registry views, the result file order and failure, the exit code).
 
 ## 2.15.0 - 2026-11-16
 
@@ -325,4 +327,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-16 04:59 UTC_
+_Last updated: 2026-11-16 05:07 UTC_

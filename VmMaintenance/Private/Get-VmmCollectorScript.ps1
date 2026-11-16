@@ -8,9 +8,13 @@ function Get-VmmCollectorScript {
 $ErrorActionPreference = 'SilentlyContinue'
 $os = Get-WmiObject Win32_OperatingSystem; $cs = Get-WmiObject Win32_ComputerSystem
 $c  = Get-WmiObject Win32_LogicalDisk -Filter "DeviceID='C:'"
-$sql = @(); $k = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL'
-if (Test-Path $k) { $p = Get-ItemProperty $k; foreach ($n in ($p.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' })) {
-    $s = Get-ItemProperty ("HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\" + $n.Value + "\Setup"); $sql += ($n.Name + ' ' + $s.PatchLevel + ' ' + $s.Edition) } }
+$sql = @(); $seenSql = @()
+foreach ($rt in @(@('HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server', ''), @('HKLM:\SOFTWARE\Wow6432Node\Microsoft\Microsoft SQL Server', ' (32-bit)'))) {
+    $k = $rt[0] + '\Instance Names\SQL'
+    if (Test-Path $k) { $p = Get-ItemProperty $k; foreach ($n in ($p.PSObject.Properties | Where-Object { @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider') -notcontains $_.Name })) {
+        if ($seenSql -contains $n.Name) { continue }; $seenSql += $n.Name
+        $s = Get-ItemProperty ($rt[0] + '\' + $n.Value + '\Setup'); $sql += ($n.Name + ' ' + $s.PatchLevel + ' ' + $s.Edition + $rt[1]) } }
+}
 $pend = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
 $lang = ''; try { $lang = (New-Object Globalization.CultureInfo([int]$os.OSLanguage)).Name } catch { }
 $plat = 'Physical'; if ($cs.Manufacturer -like '*VMware*') { $plat = 'VMware' } elseif ($cs.Model -like '*Virtual Machine*') { if (Get-Service WindowsAzureGuestAgent) { $plat = 'Azure' } else { $plat = 'Hyper-V' } }

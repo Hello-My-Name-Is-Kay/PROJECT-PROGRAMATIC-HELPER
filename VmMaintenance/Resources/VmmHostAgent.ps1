@@ -181,6 +181,25 @@ function Get-SqlInstanceNames($Props) {
     $own = @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider')
     foreach ($n in @($Props.PSObject.Properties)) { if ($own -notcontains $n.Name) { $n } }
 }
+function Get-SqlInstanceLines {
+    # 'Name Version Edition' for every SQL Server instance: the 64-bit registry view first, then the 32-bit one
+    # (Wow6432Node, tagged "(32-bit)"). A name found in both is listed once.
+    $roots = @(@{ Path = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server'; Tag = '' }, @{ Path = 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Microsoft SQL Server'; Tag = ' (32-bit)' })
+    $lines = @(); $seen = @()
+    foreach ($r in $roots) {
+        $k = $r.Path + '\Instance Names\SQL'
+        if (-not (Test-Path $k)) { continue }
+        foreach ($n in @(Get-SqlInstanceNames (Get-ItemProperty $k))) {
+            if ($seen -contains $n.Name) { continue }
+            $seen += $n.Name
+            try {
+                $s = Get-ItemProperty ($r.Path + '\' + $n.Value + '\Setup')
+                $lines += ($n.Name + ' ' + $s.PatchLevel + ' ' + $s.Edition + $r.Tag)
+            } catch { $lines += ($n.Name + ' (setup key unreadable)' + $r.Tag) }
+        }
+    }
+    $lines
+}
 function Get-ExtractExitCode($File, [int]$Problems) {
     # -Extract exit code: 0 saved and every read worked | 1 not saved | 2 saved, but some reads failed (Problem= lines)
     if (-not $File) { return 1 }
@@ -388,18 +407,7 @@ function Get-Facts {
         $f.CTotalGB = [math]::Round($c.Size / 1GB, 1); $f.CFreeGB = [math]::Round($c.FreeSpace / 1GB, 1)
     } catch { Add-Problem 'C: drive' $_ }
     try {
-        $sql = @()
-        $k = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL'
-        if (Test-Path $k) {
-            $props = Get-ItemProperty $k
-            foreach ($n in @(Get-SqlInstanceNames $props)) {
-                try {
-                    $s = Get-ItemProperty ('HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\' + $n.Value + '\Setup')
-                    $sql += ($n.Name + ' ' + $s.PatchLevel + ' ' + $s.Edition)
-                } catch { $sql += ($n.Name + ' (setup key unreadable)') }
-            }
-        }
-        $f.Sql = ($sql -join '; ')
+        $f.Sql = (@(Get-SqlInstanceLines) -join '; ')
     } catch { Add-Problem 'SQL instances' $_ }
     try {
         # Pending reboot: servicing, Windows Update, file renames queued for the next boot (same three as the laptop check)
