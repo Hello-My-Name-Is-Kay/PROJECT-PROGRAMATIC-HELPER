@@ -22,6 +22,7 @@ Rules an assistant must keep when changing this code:
 - [AI](docs/AI.md): optional assistant providers, access request, future MCP
 - [Manager guide](docs/MANAGER-GUIDE.md): for management: what it does, enforced rules, credentials, data, limits
 - [Troubleshooting](docs/TROUBLESHOOTING.md): exit codes, common errors, encrypted file recovery
+- [Fallback](docs/FALLBACK.md): VmmFallback.ps1, the standalone last fallback on a host (companion .psd1, steps, exit codes)
 - [Release](docs/RELEASE.md): readiness checklist, known limitations, release steps (stage: alpha)
 
 ## Code entry points
@@ -29,6 +30,7 @@ Rules an assistant must keep when changing this code:
 - [VmMaintenance/Public/Invoke-VmmCli.ps1](VmMaintenance/Public/Invoke-VmmCli.ps1): command map
 - [VmMaintenance/Public/Invoke-VmmWorkflowStep.ps1](VmMaintenance/Public/Invoke-VmmWorkflowStep.ps1): step engine
 - [VmMaintenance/Public/Start-VmmRemoteHandoff.ps1](VmMaintenance/Public/Start-VmmRemoteHandoff.ps1): hands-on staging over RDP/RDM/RDCMan with verification (Get-VmmHandoffEvidence)
+- [VmMaintenance/Resources/Fallback/VmmFallback.ps1](VmMaintenance/Resources/Fallback/VmmFallback.ps1): standalone last fallback on a host (no vmm, no key), data in VmmFallback.psd1
 - [VmMaintenance/Resources/VmmHostAgent.ps1](VmMaintenance/Resources/VmmHostAgent.ps1): program 2 (remote host)
 - [VmMaintenance/Private/Add-VmmLogEntry.ps1](VmMaintenance/Private/Add-VmmLogEntry.ps1): every log line (live pane buffer + encrypted day log)
 - [VmMaintenance/Public/Invoke-VmmMaintenance.ps1](VmMaintenance/Public/Invoke-VmmMaintenance.ps1): maintenance of vmm itself

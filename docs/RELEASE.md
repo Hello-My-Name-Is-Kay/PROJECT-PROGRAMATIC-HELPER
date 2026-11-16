@@ -30,7 +30,7 @@ the exact steps to make the release. Nothing here is done automatically: the rel
 | Versions | Manifest, Extractor, README, PROJECT.json and CHANGELOG agree | Done (a Pester test enforces it) |
 | Repository | `.gitignore` covers configs, lists, data, keys, logs, reports, agents, `.rdp`/`.rdg`, certificates | Done |
 | Repository | No dead files | Done: every private function is used, every public function exported |
-| Repository | Licence | **Open: decide.** `LICENSE` says proprietary, internal use, all rights reserved. Change it if your employer owns the code under other terms |
+| Repository | Licence | MIT (`LICENSE`), proposed so the repository can be public. **Open: Kay** confirms the employer agrees, and runs `Tools\Test-Sanitized.ps1 -History` on the laptop before switching to public |
 | Delivery | `VmMaintenance.zip` and folder in the project files match the release commit | **Open**: rebuild from the merge commit (`git archive`) after the merge |
 | Merge | PR #3 (2.15.0: exits, error handling, logging) merged 2026-11-16; PR #4 (2.15.1: Extractor fixes) merged 2026-11-16; PR for 2.15.2 (Extractor template checks) reviewed and merged | **Open: Kay** |
 

@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Console UI:252-293 | CLI:294-360 | GitHub integration:361-377 | OS policy:378-392 | Workflow per host:393-410 | Directory tree:411-444 | Where your data lives never:445-461 | Testing:462-475 | Errors:476-490 | Future your work AI model wi:491-500 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Last fallback no vmm no lapt:252-263 | Console UI:264-305 | CLI:306-372 | GitHub integration:373-389 | OS policy:390-404 | Workflow per host:405-422 | Directory tree:423-456 | Where your data lives never:457-473 | Testing:474-487 | Errors:488-502 | Public repository and licenc:503-516 | Future your work AI model wi:517-526 -->
 # VmMaintenance
 
 **Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.17.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-16
@@ -249,6 +249,18 @@ plan made for another host. The any-host Extractor never carries steps.
 
 The Extractor works on Windows PowerShell 2.0 to 5.1.
 
+## Last fallback (no vmm, no laptop, no network)
+
+When neither the terminal nor the Extractor can be used, copy `VmMaintenance\Resources\Fallback\VmmFallback.ps1`
+and its companion `VmmFallback.psd1` to the host and run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\VmmFallback.ps1`
+as administrator. It reads everything (OS, disks, patches, roles, SQL 64 and 32-bit with backups, software, agents),
+then guides nine steps (Snapshot, Precheck, WindowsPatch, SqlPatch, SqlUpgrade, OsUpgrade, Disk, Postcheck,
+Finish). Each step gives advice and offers **R** run (after hours, typed YES), **G** guidance only (manual
+commands, nothing changes) or **T** stage media. Media from a local folder only; it never reboots; result file
+`VMMF_<HOST>_...txt` (plain Key=Value, not encrypted) in `C:\Temp\VmmFallback`; exit codes 0-10.
+Everything it says and every rule it applies comes from the companion file (`-Check` validates it).
+Details: [docs/FALLBACK.md](docs/FALLBACK.md).
+
 ## Console UI
 
 Three header rows stay on screen: Lisbon clock and laptop clock; the current rule
@@ -487,6 +499,20 @@ ERROR: Could not copy the staging package.
 
 Colours: cyan info, green success, yellow warning, red error, dark grey skipped.
 Exit codes, common errors and recovery: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+## Public repository and licence
+
+This repository holds **no environment data**: no host names, IP addresses, tenant or subscription IDs, share
+paths, user names or passwords. Every real value lives only on the user's own machine
+(`%APPDATA%\VmMaintenance\config.psd1` and the server lists), and credentials are asked for each session and never
+stored. CI runs a leak scan over every file and the full git history on each push.
+
+VmMaintenance is **alpha** software for Windows Server maintenance (target Windows Server 2019, Azure VMs, SQL
+Server). It changes servers only inside the rules described above and only after a person confirms; read
+[docs/SECURITY.md](docs/SECURITY.md) and [docs/RELEASE.md](docs/RELEASE.md) before using it on real hosts. Use it at
+your own risk.
+
+Licensed under the [MIT License](LICENSE).
 
 ## Future: your work AI model with tools (MCP)
 
