@@ -37,7 +37,7 @@
         @{ Key = 'AssignedTechnician'; Header = 'Assigned Technician'; Source = 'Manual'; Required = $true
            Help = 'Technician doing the maintenance on this server. Usually you: set Inventory.Defaults.AssignedTechnician once (setup wizard, page Inventory).' }
         @{ Key = 'ActionsToExecute'; Header = 'Actions to be executed'; Source = 'Derived'; Required = $true
-           Help = 'Filled from the workflow: the steps still to do on this host (for example Stage, PreSnapshot, Upgrade to Windows Server 2019, Verify), or why nothing is needed. Overwrite it only to add actions outside vmm.' }
+           Help = 'Filled from the workflow: the steps still to do on this host (for example Stage, SnapPreSql, Upgrade to Windows Server 2019, Verify), or why nothing is needed. Overwrite it only to add actions outside vmm.' }
         @{ Key = 'ExecutionDate'; Header = 'Execution Date'; Source = 'Derived'; Required = $false
            Help = 'Date the upgrade was done (from the Upgrade step), or the planned date if you enter one (yyyy-MM-dd).' }
         @{ Key = 'WindowsLicense'; Header = 'Windows License'; Source = 'Auto'; Required = $true

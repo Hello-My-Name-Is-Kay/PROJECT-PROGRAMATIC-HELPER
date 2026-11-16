@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance troubleshooting: first steps, exit codes, common errors by id, encrypted file recovery, log locations. SECTIONS: First steps:7-18 | Exit codes (vmm and the entry scripts):19-52 | Common problems:53-82 | Encrypted files:83-93 | Where to look:94-103 -->
+<!-- SUMMARY: VmMaintenance troubleshooting: first steps, exit codes, common errors by id, encrypted file recovery, log locations. SECTIONS: First steps:7-18 | Exit codes (vmm and the entry scripts):19-52 | Common problems:53-86 | Encrypted files:87-97 | Where to look:98-107 -->
 # Troubleshooting
 
 Every error vmm raises has the same shape: what failed, on which target, the raw error, the likely cause and the
@@ -37,7 +37,7 @@ host before running it again.
 |---|---|---|---|
 | `VmmStepFailed`, `VmmStepBlocked` | 1 | `vmm step`, console step keys | The result is recorded on the host; retry, follow the guide, or send the blocker report |
 | `VmmNextStepFailed` | 1 | `vmm next` | Every failed or blocked host is named and recorded; `vmm plan` shows them |
-| `VmmSnapshotIncomplete` | 1 | `CreateSnapshots.ps1`, PreSnapshot | A VM or disk has no snapshot (listed); run it again |
+| `VmmSnapshotIncomplete` | 1 | `CreateSnapshots.ps1`, SnapStart, SnapPreSql, SnapPostSql, SnapFinal | A VM or disk has no snapshot (listed); run it again |
 | `VmmExpandIncomplete` | 1 | `Expand-AzOsDisk.ps1`, ExpandDisk | `Results_<time>.csv`: ExtendCheck = extend C: by hand; power state differs = fix it in the Azure portal |
 | `VmmMediaIncomplete` | 1 | `AzureMountISO.ps1`, `AzureUnmountISO.ps1` | The table names the VMs; run again for those |
 | `VmmPruneIncomplete` | 1 | `vmm prune -Apply`, `Remove-ExpiredSnapshots.ps1` | Only expired snapshots are deleted; fix the cause (often ScopeLocked) and run again |
@@ -64,6 +64,10 @@ host before running it again.
 | `VmmVpnDown`, `VmmVpnClient` | VPN not connected, or `vpncli.exe` not found | `vmm connect`; set `Vpn.ClientPath` or `Vpn.Provider = Probe` |
 | `VmmWindowBlocked` | Changing step during Mon-Fri 08:00-17:00 | Wait for the time shown, or override with a reason (not possible for disk expansion) |
 | `VmmStepOrder` | The previous step is not done | Run the step it names first |
+| `VmmStepOrder` on SnapPostSql, Upgrade `Launched` | Run Command started the upgrade; vmm cannot tell when it ended | When the host is back and setup is done: `vmm step -HostName x -Step Upgrade -Confirmed` |
+| `VmmGuided` on ManualCheck | The manual check needs your answer | Check the host, then `-Confirmed` (`Y`), or `-Bypass -BypassReason '..'` (`BYPASS`) |
+| `VmmBypassReason`, `VmmStepUsage` | Bypass reason under 10 characters; `-Decline` / `-Bypass` on the wrong step | `-Decline` is for SnapStart only, `-Bypass` for ManualCheck only |
+| `VmmSnapshotCheck` (warning) | vmm could not list the VM's recent snapshots | A full new set is taken instead; check the host's Azure mapping (`vmm azure`) |
 | `VmmPolicy` | Client OS, Server 2008 non-R2 or physical machine | Client OS: `vmm order -HostName x -Reason ".."` only with an order. 2008 / physical: `vmm policy -Notice` for management |
 | `VmmStagingGate`, `VmmShareUnreachable` | Files missing on the media share, or share not reachable | `vmm media` lists the exact file names and paths; open the share in Explorer to test access |
 | `VmmHashMismatch`, handoff verify fails | File damaged in the copy, or a different file on the host | The damaged copy is deleted; run Stage (or the handoff) again; it names the file that is wrong |
@@ -100,4 +104,4 @@ host before running it again.
 | `%APPDATA%\VmMaintenance\config.psd1` | Your settings (`vmm config`) |
 | `%LOCALAPPDATA%\VmMaintenance\data\` | Encrypted store, keys, backups, `vmm.lock` |
 
-_Last updated: 2026-11-16 09:01 UTC_
+_Last updated: 2026-11-16 12:30 UTC_

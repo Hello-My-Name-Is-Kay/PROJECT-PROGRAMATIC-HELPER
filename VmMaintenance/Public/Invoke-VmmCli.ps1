@@ -46,7 +46,7 @@ function Invoke-VmmCli {
         'remove'   = @{ F = 'Remove-VmmFleetHost';        D = 'remove hosts           -Name a,b' }
         'plan'     = @{ F = 'Get-VmmQueue';               D = 'work queue: next step per host, allowed now?' }
         'next'     = @{ F = 'Invoke-VmmNextStep';         D = 'run next auto step     [-HostName x | -All]' }
-        'step'     = @{ F = 'Invoke-VmmWorkflowStep';     D = 'run one step           -HostName x -Step Precheck|Stage|PreSnapshot|ExpandDisk|Upgrade|Verify [-Confirmed] [-Override -OverrideReason ".."]' }
+        'step'     = @{ F = 'Invoke-VmmWorkflowStep';     D = 'run one step           -HostName x -Step Precheck|SnapStart|Stage|SnapPreSql|ExpandDisk|Upgrade|SnapPostSql|Verify|ManualCheck|SnapFinal [-Confirmed] [-Decline] [-Bypass -BypassReason ".."] [-Override -OverrideReason ".."]' }
         'guide'    = @{ F = 'Get-VmmRdpGuide';            D = 'RDP/RDM checklist      -HostName x -Step y' }
         'rdp'      = @{ F = 'Start-VmmRemoteSession';     D = 'open RDP / RDM / RDCMan -HostName x [-Client Ask|Rdp|Rdm|RdcMan] | -List (clients found)' }
         'handoff'  = @{ F = 'Start-VmmRemoteHandoff';     D = 'stage by hand over RDP/RDM, then verify -HostName x [-Client ..] [-Outbox Ask|Always|Never] | -VerifyOnly | -Report "VMMSTAGE1|.."' }

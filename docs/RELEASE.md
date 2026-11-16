@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance release readiness: status, checklist, known limitations, first real run, release steps (Kay go only). SECTIONS: Status:7-15 | Readiness checklist (2.15.2):16-36 | Known limitations:37-51 | First run on real hosts (recommended before ending alpha):52-64 | Release steps (only after Kay says go):65-76 -->
+<!-- SUMMARY: VmMaintenance release readiness: status, checklist, known limitations, first real run, release steps (Kay go only). SECTIONS: Status:7-15 | Readiness checklist (2.15.2):16-36 | Known limitations:37-51 | First run on real hosts (recommended before ending alpha):52-65 | Release steps (only after Kay says go):66-77 -->
 # Release readiness
 
 What has to be true before VmMaintenance leaves **alpha**, what was checked for 2.15.2, what is still open, and
@@ -8,7 +8,7 @@ the exact steps to make the release. Nothing here is done automatically: the rel
 
 | | |
 |---|---|
-| Version | 2.15.2 |
+| Version | 2.17.0 |
 | Stage | **alpha** (`PrivateData.PSData.Prerelease = 'alpha'` in the manifest, "alpha" in the README header) |
 | Automated tests | GitHub checks on Windows PowerShell 5.1 and PowerShell 7: leak scan (files and full history), offline smoke test, Pester, script analyzer (errors) |
 | Real environment | **Not run yet** on a real host, Azure subscription, VPN, Lansweeper database or interactive console |
@@ -58,7 +58,8 @@ During business hours, read-only, two or three hosts the team knows well:
 3. `vmm snapshot -Name <a>,<b>`, `vmm access`, `vmm stage`, `vmm media`, `vmm plan`, `vmm policy`.
 4. `vmm report` and `vmm log -Export`: check that the report and the log hold nothing that should not be sent.
 5. One Stage (copy into `C:\Temp`) on one host; one handoff over RDP on one host where the admin share is closed.
-6. After hours, on one non-critical Azure VM with a snapshot: PreSnapshot, ExpandDisk, then Verify.
+6. After hours, on one non-critical Azure VM: SnapStart, Stage, SnapPreSql, ExpandDisk, Upgrade, SnapPostSql, Verify,
+   ManualCheck, SnapFinal; check the four snapshot sets (tag `SnapPoint`) in the Azure portal.
 
 Record the results in the CHANGELOG under the release that ends alpha.
 
@@ -73,4 +74,4 @@ Record the results in the CHANGELOG under the release that ends alpha.
    (`git archive --format=zip -o VmMaintenance.zip v<version>`).
 5. Send the manager the [manager guide](MANAGER-GUIDE.md) and the release link.
 
-_Last updated: 2026-11-16 09:01 UTC_
+_Last updated: 2026-11-16 12:30 UTC_

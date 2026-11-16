@@ -184,8 +184,9 @@
     }
 
     Workflow = @{
-        SnapshotAfter           = 'ChangingSteps'   # ChangingSteps | EveryStep | Off  (Azure VMs only)
-        CheckpointRetentionDays = 7                 # RetentionDays tag on checkpoint snapshots (prune uses it)
+        # Four Azure snapshot points per host (every disk): SnapStart, SnapPreSql, SnapPostSql, SnapFinal (docs\WORKFLOW.md)
+        StartSnapshotMaxAgeMinutes = 60   # SnapStart/SnapPreSql are skipped when every disk has a snapshot this recent (portal ones count)
+        SnapshotRetentionDays      = 7    # RetentionDays tag on snapshot-point snapshots (prune uses it)
     }
 
     Upgrade = @{
@@ -215,6 +216,7 @@
         WarnOsExcept       = @('*2008 R2*')                     # ...but 2008 R2 is fine
         WarnPhysical       = $true                              # warn management about physical machines
         ExpandDiskOverride = $false                             # disk expand deallocates the VM: no business-hours override
+        SnapStartInBusinessHours = $true                        # start snapshot (Azure, no downtime, guest untouched) allowed 08-17
     }
 
     # GitHub integration (GitHub CLI 'gh' and its own sign-in; vmm stores no token)

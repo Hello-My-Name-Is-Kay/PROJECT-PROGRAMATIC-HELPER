@@ -401,7 +401,7 @@ if (-not $isWin) {
             if ($null -ne $h.Check.CFreeGB) { throw 'empty C: value became a number' }
             $true
         }
-        Test-Step 'Host result claiming PreSnapshot done and an override: not applied while steps are off' {
+        Test-Step 'Host result claiming SnapPreSql done and an override: not applied while steps are off' {
             $agentPath = Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'
             $ast = [System.Management.Automation.Language.Parser]::ParseFile($agentPath, [ref]$null, [ref]$null)
             $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Protect-Result' }, $true) | Select-Object -First 1
@@ -409,14 +409,14 @@ if (-not $isWin) {
             $rsa = & $m { Get-VmmAgentKey }
             try { $Card = @{ PublicKey = $rsa.ToXmlString($false) } } finally { $rsa.Clear() }
             $before = @(& $m { (Read-VmmStore).Overrides }).Count
-            $line = Protect-Result ("Name=SMOKE-HOST`nOS=Microsoft Windows Server 2016 Standard`nBuild=14393`nCFreeGB=50`nEvent=2026-11-14T11:00:00Z|PreSnapshot|Success|forged`nEvent=2026-11-14T11:00:01Z|Upgrade|Override|forged reason text")
+            $line = Protect-Result ("Name=SMOKE-HOST`nOS=Microsoft Windows Server 2016 Standard`nBuild=14393`nCFreeGB=50`nEvent=2026-11-14T11:00:00Z|SnapPreSql|Success|forged`nEvent=2026-11-14T11:00:01Z|Upgrade|Override|forged reason text")
             & $m { param($l) Import-VmmCollectorResult -Line $l } $line
             $st = & $m { Read-VmmStore }
             $h = $st.Hosts | Where-Object { $_.Name -eq 'SMOKE-HOST' }
-            $ps = $h.Steps.PSObject.Properties['PreSnapshot']
-            if ($ps -and $ps.Value.Status -eq 'Success') { throw 'a host result marked PreSnapshot as done' }
+            $ps = $h.Steps.PSObject.Properties['SnapPreSql']
+            if ($ps -and $ps.Value.Status -eq 'Success') { throw 'a host result marked SnapPreSql as done' }
             Assert-Equal @($st.Overrides).Count $before 'overrides recorded'
-            if (-not @($h.History | Where-Object { $_.Result -eq 'Ignored' -and $_.Step -eq 'PreSnapshot' }).Count) { throw 'the ignored event is not in the history' }
+            if (-not @($h.History | Where-Object { $_.Result -eq 'Ignored' -and $_.Step -eq 'SnapPreSql' }).Count) { throw 'the ignored event is not in the history' }
             $true
         }
         Test-Step 'Fleet check: a host with no terminal route keeps its extractor facts and is marked hands-on' {
@@ -683,6 +683,7 @@ try {
             $script:TestSync = $Sync
             $rec = New-VmmHostRecord -Name 'smoke-stop'
             Set-VmmStepState -Record $rec -Step 'Precheck' -Status 'Success'
+            Set-VmmStepState -Record $rec -Step 'SnapStart' -Status 'NotNeeded'
             $script:TestStore = [pscustomobject]@{ Updated = $null; Hosts = @($rec) }
             function script:Read-VmmStore { $script:TestStore }
             function script:Save-VmmStore { param($Store) }
@@ -828,6 +829,215 @@ Test-Step 'VmmFallback usage errors and a missing companion file exit 2' {
     Assert-Equal (Invoke-SmokeChild -File $fbScript -ArgumentList '-Check', '-DataFile', 'no-such-file.psd1').Code 2 'missing companion'
     Assert-Equal (Invoke-SmokeChild -File $fbScript -ArgumentList '-Check', '-WorkDir', 'D:\Work').Code 2 'work folder outside C:\Temp'
     $true
+}
+
+# ---------------------------------------------------------------- 11. Snapshot points
+Write-Host '11. Four Azure snapshot points and the manual check (mocked Azure, temporary store in memory)' -ForegroundColor Cyan
+$savedSnap = & $m {
+    $s = @{ Cfg = $script:VmmConfig }
+    foreach ($f in 'Read-VmmStore', 'Save-VmmStore', 'Assert-VmmWindow', 'Get-VmmHostPolicy', 'New-VmmSnapshot', 'Get-VmmRecentSnapshotSet', 'Assert-VmmModule', 'Connect-VmmAzure', 'Invoke-VmmFleetCheck') {
+        $s[$f] = (Get-Item "function:$f").ScriptBlock
+    }
+    $script:SnapSavedRecent = $s['Get-VmmRecentSnapshotSet']
+    $script:VmmConfig = @{ Log = @{ ToFile = $false } }
+    function script:Read-VmmStore { $script:SnapStore }
+    function script:Save-VmmStore { param($Store) }
+    function script:Assert-VmmWindow { }
+    function script:Assert-VmmModule { }
+    function script:Connect-VmmAzure { }
+    function script:Get-VmmHostPolicy { param($Record) [pscustomobject]@{ Workable = $true; Warnings = @(); Scope = 'Server'; Os = 'test'; Why = '' } }
+    function script:New-VmmSnapshot {
+        param($VMName, $Subscription, $Label, $ExtraTags, [switch]$PassThru, [switch]$Confirm)
+        $script:SnapCalls += , ([pscustomobject]@{ VMName = $VMName; Label = $Label; Tags = $ExtraTags })
+        foreach ($d in 'OsDisk', 'DataDisk_0') { [pscustomobject]@{ Snapshot = "$($VMName)_$($Label)_$($d)_snap" } }
+    }
+    function script:Get-VmmRecentSnapshotSet { param($VMName, $Subscription, $MaxAgeMinutes) $script:SnapRecent }
+    function script:Invoke-VmmFleetCheck { [pscustomobject]@{ Reachable = 'Yes'; OS = 'Microsoft Windows Server 2019 Standard'; Build = '17763'; CFreeGB = 80; Sql = 'MSSQLSERVER'; PendingReboot = 'No' } }
+    function script:New-SnapTestHost {
+        # A fresh store with one Azure host (or not) whose steps up to -Upto are done
+        param([string]$Upto, [switch]$NotAzure)
+        $r = New-VmmHostRecord -Name 'snap-host'
+        if (-not $NotAzure) { $r.Azure = [pscustomobject]@{ SubscriptionId = 'sub'; ResourceGroup = 'rg'; VMName = 'vm-snap'; PowerState = 'running' } } else { $r.Platform = 'VMware' }
+        $r.Check = [pscustomobject]@{ CFreeGB = 80 }
+        if ($Upto) { foreach ($d in Get-VmmWorkflowDefinition) { Set-VmmStepState -Record $r -Step $d.Name -Status 'Success'; if ($d.Name -eq $Upto) { break } } }
+        $script:SnapStore = [pscustomobject]@{ Updated = $null; Hosts = @($r) }
+        $script:SnapCalls = @(); $script:SnapRecent = $null
+        $r
+    }
+    function script:Invoke-SnapTestStep {
+        # Runs a step, returns the error id ('' when it worked)
+        param([hashtable]$P)
+        try { Invoke-VmmWorkflowStep -HostName 'snap-host' @P 6>$null | Out-Null; '' } catch { "$($_.FullyQualifiedErrorId)".Split(',')[0] }
+    }
+    $s
+}
+try {
+    Test-Step 'Workflow: ten steps in order; SnapStart allowed in business hours unless Policy.SnapStartInBusinessHours is off' {
+        $r = & $m {
+            $a = (Get-VmmWorkflowDefinition | ForEach-Object Name) -join ','
+            $c1 = (Get-VmmWorkflowDefinition | Where-Object Name -eq 'SnapStart').Class
+            $script:VmmConfig = @{ Log = @{ ToFile = $false }; Policy = @{ SnapStartInBusinessHours = $false } }
+            $c2 = (Get-VmmWorkflowDefinition | Where-Object Name -eq 'SnapStart').Class
+            $script:VmmConfig = @{ Log = @{ ToFile = $false } }
+            $sn = (Get-VmmWorkflowDefinition | Where-Object Snapshot | ForEach-Object Name) -join ','
+            $sq = (Get-VmmWorkflowDefinition | Where-Object SqlInvasive | ForEach-Object Name) -join ','
+            "$a|$c1|$c2|$sn|$sq"
+        }
+        Assert-Equal $r 'Precheck,SnapStart,Stage,SnapPreSql,ExpandDisk,Upgrade,SnapPostSql,Verify,ManualCheck,SnapFinal|Staging|Change|SnapStart,SnapPreSql,SnapPostSql,SnapFinal|ExpandDisk,Upgrade' 'definition'
+    }
+    Test-Step 'SnapStart: no full set from the last hour = every disk snapshotted, tagged SnapPoint and RetentionDays' {
+        $o = & $m {
+            [void](New-SnapTestHost -Upto 'Precheck')
+            $script:SnapRecent = [pscustomobject]@{ Complete = $false; Disks = 2; Missing = @('vm-snap-data0'); Snapshots = @('x'); Newest = (Get-Date); MaxAgeMinutes = 60 }
+            $id = Invoke-SnapTestStep @{ Step = 'SnapStart' }
+            [pscustomobject]@{ Id = $id; Calls = $script:SnapCalls; St = $script:SnapStore.Hosts[0].Steps.SnapStart }
+        }
+        Assert-Equal $o.Id '' 'error'
+        Assert-Equal @($o.Calls).Count 1 'snapshot sets taken'
+        Assert-Equal $o.Calls[0].Label 'snap-Start' 'label'
+        Assert-Equal $o.Calls[0].Tags.SnapPoint 'SnapStart' 'SnapPoint tag'
+        Assert-Equal $o.Calls[0].Tags.RetentionDays '7' 'RetentionDays tag'
+        Assert-Equal $o.St.Status 'Success' 'status'
+        Assert-Equal $o.St.Snapshot 'vm-snap_snap-Start_OsDisk_snap, vm-snap_snap-Start_DataDisk_0_snap' 'recorded snapshots'
+        if ($o.St.Note -notmatch 'no recent snapshot of: vm-snap-data0') { throw "note: $($o.St.Note)" }
+    }
+    Test-Step 'SnapStart: every disk has one from the last hour (portal counts) = NotNeeded, nothing taken; -Decline = Skipped' {
+        $o = & $m {
+            [void](New-SnapTestHost -Upto 'Precheck')
+            $script:SnapRecent = [pscustomobject]@{ Complete = $true; Disks = 2; Missing = @(); Snapshots = @('portal-os', 'portal-data'); Newest = (Get-Date).ToUniversalTime(); MaxAgeMinutes = 60 }
+            $a = Invoke-SnapTestStep @{ Step = 'SnapStart' }
+            $st1 = $script:SnapStore.Hosts[0].Steps.SnapStart; $n1 = @($script:SnapCalls).Count
+            [void](New-SnapTestHost -Upto 'Precheck')
+            $b = Invoke-SnapTestStep @{ Step = 'SnapStart'; Decline = $true }
+            $st2 = $script:SnapStore.Hosts[0].Steps.SnapStart; $n2 = @($script:SnapCalls).Count
+            $c = Invoke-SnapTestStep @{ Step = 'Precheck'; Decline = $true }
+            [pscustomobject]@{ A = $a; B = $b; C = $c; S1 = $st1; S2 = $st2; N = "$n1,$n2" }
+        }
+        Assert-Equal "$($o.A)|$($o.B)" '|' 'errors'
+        Assert-Equal $o.S1.Status 'NotNeeded' 'recent set'
+        if ($o.S1.Note -notmatch 'portal-os, portal-data') { throw "note: $($o.S1.Note)" }
+        Assert-Equal $o.S2.Status 'Skipped' 'declined'
+        Assert-Equal $o.N '0,0' 'snapshot sets taken'
+        Assert-Equal $o.C 'VmmStepUsage' '-Decline on another step'
+    }
+    Test-Step 'Order: Stage needs SnapStart; SnapPreSql NotNeeded with a recent set, taken without one' {
+        $o = & $m {
+            [void](New-SnapTestHost -Upto 'Precheck')
+            $a = Invoke-SnapTestStep @{ Step = 'Stage' }
+            [void](New-SnapTestHost -Upto 'Stage')
+            $script:SnapRecent = [pscustomobject]@{ Complete = $true; Disks = 2; Missing = @(); Snapshots = @('s1', 's2'); Newest = (Get-Date).ToUniversalTime(); MaxAgeMinutes = 60 }
+            $b = Invoke-SnapTestStep @{ Step = 'SnapPreSql' }; $s1 = $script:SnapStore.Hosts[0].Steps.SnapPreSql.Status
+            [void](New-SnapTestHost -Upto 'Stage')
+            $c = Invoke-SnapTestStep @{ Step = 'SnapPreSql' }; $s2 = $script:SnapStore.Hosts[0].Steps.SnapPreSql.Status
+            "$a|$b$s1|$c$s2|$(@($script:SnapCalls).Count)|$($script:SnapCalls[0].Label)"
+        }
+        Assert-Equal $o 'VmmStepOrder|NotNeeded|Success|1|snap-PreSql' 'results'
+    }
+    Test-Step 'Not Azure: SnapStart/SnapPostSql/SnapFinal remind (NotNeeded), SnapPreSql needs a confirmed backup' {
+        $o = & $m {
+            [void](New-SnapTestHost -Upto 'Precheck' -NotAzure)
+            $a = Invoke-SnapTestStep @{ Step = 'SnapStart' }; $s1 = $script:SnapStore.Hosts[0].Steps.SnapStart
+            [void](New-SnapTestHost -Upto 'Stage' -NotAzure)
+            $b = Invoke-SnapTestStep @{ Step = 'SnapPreSql' }
+            $c = Invoke-SnapTestStep @{ Step = 'SnapPreSql'; Confirmed = $true }; $s2 = $script:SnapStore.Hosts[0].Steps.SnapPreSql.Status
+            [void](New-SnapTestHost -Upto 'ManualCheck' -NotAzure)
+            $d = Invoke-SnapTestStep @{ Step = 'SnapFinal' }; $s3 = $script:SnapStore.Hosts[0].Steps.SnapFinal.Status
+            [pscustomobject]@{ R = "$a|$b|$c$s2|$d$s3|$(@($script:SnapCalls).Count)"; Note = $s1.Note; S = $s1.Status }
+        }
+        Assert-Equal $o.R '|VmmGuided|Success|NotNeeded|0' 'results'
+        Assert-Equal $o.S 'NotNeeded' 'SnapStart status'
+        if ($o.Note -notmatch 'Not an Azure VM \(VMware\)') { throw "note: $($o.Note)" }
+    }
+    Test-Step 'No per-step checkpoints: ExpandDisk and Upgrade take no snapshot; SnapPostSql always does' {
+        $o = & $m {
+            [void](New-SnapTestHost -Upto 'SnapPreSql')
+            $a = Invoke-SnapTestStep @{ Step = 'ExpandDisk' }    # 80 GB free = NotNeeded
+            $b = Invoke-SnapTestStep @{ Step = 'Upgrade'; Confirmed = $true }
+            $n = @($script:SnapCalls).Count
+            $script:SnapRecent = [pscustomobject]@{ Complete = $true; Disks = 2; Missing = @(); Snapshots = @('s1'); Newest = (Get-Date).ToUniversalTime(); MaxAgeMinutes = 60 }
+            $c = Invoke-SnapTestStep @{ Step = 'SnapPostSql' }
+            "$a|$b|$n|$c|$(@($script:SnapCalls).Count)|$($script:SnapCalls[0].Label)|$($script:SnapStore.Hosts[0].Steps.ExpandDisk.Status)"
+        }
+        Assert-Equal $o '||0||1|snap-PostSql|NotNeeded' 'results'
+    }
+    Test-Step 'Launched upgrade: SnapPostSql waits, Upgrade -Confirmed finishes it (no relaunch)' {
+        $o = & $m {
+            $r = New-SnapTestHost -Upto 'SnapPreSql'
+            Set-VmmStepState -Record $r -Step 'ExpandDisk' -Status 'NotNeeded'
+            Set-VmmStepState -Record $r -Step 'Upgrade' -Status 'Launched'
+            $msg = ''; try { Invoke-VmmWorkflowStep -HostName 'snap-host' -Step SnapPostSql 6>$null | Out-Null } catch { $msg = $_.Exception.Message }
+            $script:VmmConfig = @{ Log = @{ ToFile = $false }; Upgrade = @{ Mode = 'RunCommand'; CommandLine = 'x' } }
+            function script:Invoke-AzVMRunCommand { throw 'relaunched' }
+            $b = Invoke-SnapTestStep @{ Step = 'Upgrade'; Confirmed = $true }
+            Remove-Item function:script:Invoke-AzVMRunCommand
+            $script:VmmConfig = @{ Log = @{ ToFile = $false } }
+            [pscustomobject]@{ Msg = $msg; B = $b; St = $script:SnapStore.Hosts[0].Steps.Upgrade }
+        }
+        if ($o.Msg -notmatch "Upgrade' is Launched" -or $o.Msg -notmatch '-Step Upgrade -Confirmed') { throw "message: $($o.Msg)" }
+        Assert-Equal $o.B '' 'confirm error'
+        Assert-Equal $o.St.Status 'Success' 'Upgrade status'
+        if ($o.St.Note -notmatch 'finished, confirmed') { throw "note: $($o.St.Note)" }
+    }
+    Test-Step 'ManualCheck: confirm or bypass with a reason; SnapFinal only after it, and it is the last step' {
+        $o = & $m {
+            [void](New-SnapTestHost -Upto 'Verify')
+            $a = Invoke-SnapTestStep @{ Step = 'SnapFinal' }
+            $b = Invoke-SnapTestStep @{ Step = 'ManualCheck' }
+            $c = Invoke-SnapTestStep @{ Step = 'ManualCheck'; Bypass = $true; BypassReason = 'short' }
+            $d = Invoke-SnapTestStep @{ Step = 'ManualCheck'; Bypass = $true; BypassReason = 'app owner checked it, ticket 4711' }
+            $mc = $script:SnapStore.Hosts[0].Steps.ManualCheck
+            $e = Invoke-SnapTestStep @{ Step = 'SnapFinal' }
+            $next = Get-VmmNextStep -Record $script:SnapStore.Hosts[0]
+            [pscustomobject]@{ R = "$a|$b|$c|$d|$e"; Mc = $mc; Final = $script:SnapStore.Hosts[0].Steps.SnapFinal.Status; Label = $script:SnapCalls[0].Label; Next = $next
+                               Stage = (Get-VmmHostStage -Record $script:SnapStore.Hosts[0]) }
+        }
+        Assert-Equal $o.R 'VmmStepOrder|VmmGuided|VmmBypassReason||' 'results'
+        Assert-Equal $o.Mc.Status 'Skipped' 'bypassed check'
+        if ($o.Mc.Note -notmatch 'BYPASSED by operator: app owner checked it') { throw "note: $($o.Mc.Note)" }
+        Assert-Equal $o.Final 'Success' 'SnapFinal'
+        Assert-Equal $o.Label 'snap-Final' 'label'
+        Assert-Equal $o.Next $null 'next step after SnapFinal'
+        Assert-Equal $o.Stage 'Done' 'host stage'
+    }
+    Test-Step 'Store from before 2.17.0: PreSnapshot becomes SnapPreSql, passed points are Skipped, ManualCheck/SnapFinal stay to do' {
+        $o = & $m {
+            $r = New-VmmHostRecord -Name 'old-host'
+            foreach ($s in 'Precheck', 'Stage', 'PreSnapshot', 'ExpandDisk', 'Upgrade', 'Verify') { Set-VmmStepState -Record $r -Step $s -Status 'Success' -Note "old $s" }
+            Update-VmmStepName -Record $r
+            $p = $r.Steps.PSObject.Properties
+            [pscustomobject]@{ Old = [bool]$p['PreSnapshot']; Pre = $r.Steps.SnapPreSql.Note; Start = $r.Steps.SnapStart.Status; Post = $r.Steps.SnapPostSql.Status
+                               Mc = [bool]$p['ManualCheck']; Next = (Get-VmmNextStep -Record $r).Name }
+        }
+        Assert-Equal "$($o.Old)|$($o.Pre)|$($o.Start)|$($o.Post)|$($o.Mc)|$($o.Next)" 'False|old PreSnapshot|Skipped|Skipped|False|ManualCheck' 'migrated record'
+    }
+    Test-Step 'Recent set check: every managed disk needs a snapshot from the last hour; older ones and other disks do not count' {
+        $o = & $m {
+            Set-Item function:script:Get-VmmRecentSnapshotSet $script:SnapSavedRecent
+            function script:Set-VmmSubscription { param($Subscription) }
+            $os = '/subscriptions/s/resourceGroups/rg/providers/Microsoft.Compute/disks/vm-os'
+            $dd = '/subscriptions/s/resourceGroups/rg/providers/Microsoft.Compute/disks/vm-data0'
+            $script:TestVm = [pscustomobject]@{ Name = 'vm-snap'; ResourceGroupName = 'rg'; StorageProfile = [pscustomobject]@{
+                OsDisk = [pscustomobject]@{ ManagedDisk = [pscustomobject]@{ Id = $os } }; DataDisks = @([pscustomobject]@{ ManagedDisk = [pscustomobject]@{ Id = $dd } }) } }
+            function script:Get-AzVM { $script:TestVm }
+            $now = [datetime]'2026-11-16T12:00:00Z'
+            $snap = { param($n, $src, $min) [pscustomobject]@{ Name = $n; TimeCreated = $now.ToUniversalTime().AddMinutes(-$min); CreationData = [pscustomobject]@{ SourceResourceId = $src } } }
+            $script:TestSnaps = @((& $snap 'portal-os' $os 20), (& $snap 'old-data' $dd 90), (& $snap 'other' '/x/disks/other' 5))
+            function script:Get-AzSnapshot { $script:TestSnaps }
+            $a = Get-VmmRecentSnapshotSet -VMName 'vm-snap' -MaxAgeMinutes 60 -Now $now
+            $script:TestSnaps += (& $snap 'portal-data' $dd 30)
+            $b = Get-VmmRecentSnapshotSet -VMName 'vm-snap' -MaxAgeMinutes 60 -Now $now
+            Remove-Item function:script:Get-AzVM, function:script:Get-AzSnapshot, function:script:Set-VmmSubscription
+            "$($a.Complete) $($a.Missing -join ',') | $($b.Complete) $($b.Snapshots -join ',') $($b.Newest.ToString('HH:mm'))"
+        }
+        Assert-Equal $o 'False vm-data0 | True portal-os,portal-data 11:40' 'recent set'
+    }
+} finally {
+    & $m { param($s)
+        foreach ($k in @($s.Keys)) { if ($k -ne 'Cfg') { Set-Item "function:script:$k" $s[$k] } }
+        Remove-Item function:script:New-SnapTestHost, function:script:Invoke-SnapTestStep -ErrorAction SilentlyContinue
+        $script:VmmConfig = $s.Cfg
+        Remove-Variable -Name SnapStore, SnapCalls, SnapRecent, SnapSavedRecent -Scope Script -ErrorAction SilentlyContinue
+    } $savedSnap
 }
 
 # ---------------------------------------------------------------- Result

@@ -23,6 +23,7 @@ function Read-VmmStore {
         $h.Blockers = @($h.Blockers | Where-Object { $_ })
         $h.History  = @($h.History  | Where-Object { $_ })
         if (-not $h.Steps) { $h.Steps = [pscustomobject]@{} }
+        Update-VmmStepName -Record $h
     }
     $store
 }

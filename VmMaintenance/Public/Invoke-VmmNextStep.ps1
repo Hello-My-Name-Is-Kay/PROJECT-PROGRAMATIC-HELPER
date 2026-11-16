@@ -5,8 +5,9 @@ function Invoke-VmmNextStep {
         allowed right now (-All). Failures are recorded and the batch carries on; at the end the command
         fails (VmmNextStepFailed, exit code 1) when any host failed or was blocked, naming them.
     .DESCRIPTION
-        Business hours: this moves every host through Precheck and Stage. Maintenance window: also
-        PreSnapshot and (on Azure) ExpandDisk. Guided steps are listed, not run.
+        Business hours: this moves every host through Precheck, SnapStart (while Policy.SnapStartInBusinessHours
+        is on) and Stage. Maintenance window: also SnapPreSql, (on Azure) ExpandDisk, SnapPostSql, Verify and
+        SnapFinal. Guided steps (Upgrade, ManualCheck) are listed, not run. SnapStart is taken, not declined.
     .EXAMPLE
         Invoke-VmmNextStep -All
     #>

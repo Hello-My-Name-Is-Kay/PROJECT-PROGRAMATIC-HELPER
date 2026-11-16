@@ -1,5 +1,36 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.16.0 - 2026-11-16:4-31 | 2.15.2 - 2026-11-16:32-46 | 2.15.1 - 2026-11-16:47-67 | 2.15.0 - 2026-11-16:68-125 | 2.14.0 - 2026-11-15:126-146 | 2.13.0 - 2026-11-15:147-176 | 2.12.0 - 2026-11-14:177-199 | 2.11.0 - 2026-11-14:200-218 | 2.10.0 - 2026-11-14:219-237 | 2.9.0 - 2026-11-14:238-250 | 2.8.0 - 2026-11-14:251-264 | 2.7.0 - 2026-11-14:265-282 | 2.6.0 - 2026-11-14:283-290 | 2.5.0 - 2026-11-14:291-303 | 2.4.0 - 2026-11-14:304-314 | 2.3.0 - 2026-11-14:315-329 | 2.2.1 - 2026-11-14:330-336 | 2.2.0 - 2026-11-14:337-344 | 2.1.0 - 2026-11-14:345-362 | 2.0.0 - 2026-11-14:363-368 | 1.0.0 - 2026-11-14:369-373 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.17.0 - 2026-11-16:4-34 | 2.16.0 - 2026-11-16:35-62 | 2.15.2 - 2026-11-16:63-77 | 2.15.1 - 2026-11-16:78-98 | 2.15.0 - 2026-11-16:99-156 | 2.14.0 - 2026-11-15:157-177 | 2.13.0 - 2026-11-15:178-207 | 2.12.0 - 2026-11-14:208-230 | 2.11.0 - 2026-11-14:231-249 | 2.10.0 - 2026-11-14:250-268 | 2.9.0 - 2026-11-14:269-281 | 2.8.0 - 2026-11-14:282-295 | 2.7.0 - 2026-11-14:296-313 | 2.6.0 - 2026-11-14:314-321 | 2.5.0 - 2026-11-14:322-334 | 2.4.0 - 2026-11-14:335-345 | 2.3.0 - 2026-11-14:346-360 | 2.2.1 - 2026-11-14:361-367 | 2.2.0 - 2026-11-14:368-375 | 2.1.0 - 2026-11-14:376-393 | 2.0.0 - 2026-11-14:394-399 | 1.0.0 - 2026-11-14:400-404 -->
 # Changelog
+
+## 2.17.0 - 2026-11-16
+
+Four Azure snapshot points replace the per-step checkpoints (Kay's rule, design agreed in the project thread).
+Still **alpha**.
+
+- **New workflow, ten steps:** Precheck > **SnapStart** > Stage > **SnapPreSql** > ExpandDisk > Upgrade >
+  **SnapPostSql** > Verify > **ManualCheck** > **SnapFinal**. Each snapshot point is a snapshot of every disk of the
+  Azure VM, named `<VM>_snap-<Point>_..._snap` and tagged `SnapPoint` and `RetentionDays`, so prune keeps working.
+- **SnapStart** (point 1) is taken by default unless every disk already has a snapshot from the last
+  `Workflow.StartSnapshotMaxAgeMinutes` (60). Snapshots made by hand in the Azure portal count; a partial set does not.
+  You may decline it (`-Decline`, console `n`): recorded as Skipped. Allowed in business hours while
+  `Policy.SnapStartInBusinessHours` is on (default): it does not touch the guest and causes no downtime.
+- **SnapPreSql** (point 2, was PreSnapshot) comes before the first SQL-invasive step. ExpandDisk counts as
+  SQL-invasive (the VM is deallocated, SQL stops); Upgrade covers the OS in-place upgrade and SQL SP/CU. Recorded as
+  NotNeeded when a full set from the last 60 minutes exists, because only Stage can have run since.
+- **SnapPostSql** (point 3) after the last SQL-invasive step and **SnapFinal** (point 4) as the true last step are
+  always taken.
+- **ManualCheck**: your own check after Verify. `-Confirmed` (console `Y`) records it; `-Bypass -BypassReason '..'`
+  (console `BYPASS`, 10+ characters) records it as Skipped with the reason.
+- **Gone:** `Workflow.SnapshotAfter` and the automatic `cp-<Step>` checkpoint after each changing step.
+  `Workflow.CheckpointRetentionDays` is still read when the new `Workflow.SnapshotRetentionDays` is not set.
+- **Other platforms:** SnapPreSql asks you to confirm a backup (as PreSnapshot did); the other three points record
+  NotNeeded with a reminder to snapshot in the platform console.
+- **Launched upgrades can be finished.** An Upgrade started with `Upgrade.Mode = RunCommand` stayed `Launched` and
+  blocked every later step. `vmm step -Step Upgrade -Confirmed` now records it as done (no relaunch), and the order
+  error says so.
+- **Stores from before 2.17.0** are read as before: PreSnapshot becomes SnapPreSql, and a SnapStart or SnapPostSql
+  the host already passed is marked Skipped with a note. ManualCheck and SnapFinal stay to do.
+- The Extractor (host .ps1) shows SnapPreSql instead of PreSnapshot; the other points are done from the laptop.
+- Tests: smoke section 11 (10 checks) and `tests\SnapshotPoints.Tests.ps1` (12 Pester tests).
 
 ## 2.16.0 - 2026-11-16
 

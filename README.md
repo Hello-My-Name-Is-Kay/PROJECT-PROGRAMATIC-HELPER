@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Last fallback no vmm no lapt:252-263 | Console UI:264-305 | CLI:306-372 | GitHub integration:373-389 | OS policy:390-404 | Workflow per host:405-418 | Directory tree:419-452 | Where your data lives never:453-469 | Testing:470-483 | Errors:484-498 | Public repository and licenc:499-512 | Future your work AI model wi:513-522 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Last fallback no vmm no lapt:252-263 | Console UI:264-305 | CLI:306-372 | GitHub integration:373-389 | OS policy:390-404 | Workflow per host:405-422 | Directory tree:423-456 | Where your data lives never:457-473 | Testing:474-487 | Errors:488-502 | Public repository and licenc:503-516 | Future your work AI model wi:517-526 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.16.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-16
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.17.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-16
 
 ## TL;DR
 
@@ -61,7 +61,7 @@ Rule: everything the Manager can do over the network it does by itself. When you
 | Access denied / blocked | Ready-to-send manager report (copied to clipboard). You must answer "contacted manager?" - Sent / Later / Bypass. The tool never sends email |
 | No remote access | RDP/RDM guide: numbered steps, confirm each, paste the collector line back |
 | Azure sign-in stuck on "Select a tenant and subscription" | Picker turned off for the process, tenant + subscription passed explicitly; device-code sign-in available |
-| Rollback | Checkpoint snapshot after each successful changing step (Azure VMs); prune expired ones at the end, preview first |
+| Rollback | Four Azure snapshot points per host, every disk: start (unless one from the last hour; you may decline), before and after the SQL-invasive steps, and a final one after your manual check; prune expired ones at the end, preview first |
 | Work inside a host | Extractor: extracts at once to an encrypted file on the desktop; status, steps with reasons, run, history, Finish removes every trace |
 | VPN | Cisco Secure Client (vpncli), Windows VPN profiles, or any client via a probe host; host work stops with a clear error when the VPN is down |
 | First run | Setup wizard: warnings you confirm, every option explained and validated (`vmm setup`) |
@@ -404,17 +404,21 @@ ManagementNotified columns.
 
 ## Workflow per host
 
-| # | Step | Class | Business hours | Off-hours / weekend | Checkpoint after |
+| # | Step | Class | Business hours | Off-hours / weekend | Azure snapshot |
 |---|---|---|---|---|---|
-| 1 | Precheck | Read-only | Yes | Yes | No |
-| 2 | Stage | Staging | Yes (into `C:\Temp`) | Yes | No |
-| 3 | PreSnapshot | Change | Override only | Yes | Is the snapshot |
-| 4 | ExpandDisk | Change | No (VM is shut down) | Yes | Yes (Azure) |
-| 5 | Upgrade | Change | Override only | Yes | Yes (Azure) |
-| 6 | Verify | Read-only | Yes | Yes | No |
+| 1 | Precheck | Read-only | Yes | Yes | - |
+| 2 | SnapStart | Staging | Yes (no downtime; `Policy.SnapStartInBusinessHours`) | Yes | Point 1, unless every disk has one from the last hour; can be declined |
+| 3 | Stage | Staging | Yes (into `C:\Temp`) | Yes | - |
+| 4 | SnapPreSql | Change | Override only | Yes | Point 2, before the SQL-invasive steps (skipped when a set is under an hour old) |
+| 5 | ExpandDisk | Change | No (VM is shut down) | Yes | - (SQL-invasive) |
+| 6 | Upgrade | Change | Override only | Yes | - (SQL-invasive) |
+| 7 | SnapPostSql | Change | Override only | Yes | Point 3, always |
+| 8 | Verify | Read-only | Yes | Yes | - |
+| 9 | ManualCheck | Read-only | Yes | Yes | - (confirm, or bypass with a reason) |
+| 10 | SnapFinal | Change | Override only | Yes | Point 4, always, the last step |
 | - | Prune | Change | Override only | Yes | - |
 
-Details and the snapshot-after-each-step answer: [docs/WORKFLOW.md](docs/WORKFLOW.md).
+Details: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 
 ## Directory tree
 
@@ -477,7 +481,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1 -History                                # before a release: whole git history
 ```
 
-Status (2.15.2, alpha): the offline smoke test (293 checks) and Pester (144 tests) pass on GitHub's Windows runners in
+Status (2.17.0, alpha): the offline smoke test and Pester pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -519,4 +523,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-16 11:50 UTC_
+_Last updated: 2026-11-16 12:30 UTC_

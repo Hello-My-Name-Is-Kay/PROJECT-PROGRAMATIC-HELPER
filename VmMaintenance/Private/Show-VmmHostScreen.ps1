@@ -1,5 +1,5 @@
 function Show-VmmHostScreen {
-    # One host: facts + the six workflow steps. Run steps, open the RDP guide, paste collector output,
+    # One host: facts + the ten workflow steps. Run steps, open the RDP guide, paste collector output,
     # raise a blocker and move on, open RDP/RDM/RDCMan, stage by hand with checks (T), hold/unhold.
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$HostName)

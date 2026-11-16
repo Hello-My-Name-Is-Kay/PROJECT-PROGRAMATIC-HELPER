@@ -1,6 +1,7 @@
 function Invoke-VmmStepFromTui {
     # Runs a step from the console, asking the questions the CLI takes as switches: override reason
-    # (business hours), confirmation for guided steps, manager-contact answer for blockers.
+    # (business hours), confirmation for guided steps, manager-contact answer for blockers, whether to take
+    # the start snapshot (default yes), and confirm-or-bypass for the manual check.
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$HostName, [Parameter(Mandatory)][string]$Step, [switch]$Confirmed)
     $sd = Get-VmmWorkflowDefinition | Where-Object Name -eq $Step
@@ -13,6 +14,19 @@ function Invoke-VmmStepFromTui {
         if ($a -cne 'OVERRIDE') { Write-VmmLog 'Cancelled - nothing changed.' -Level Muted; return }
         $p.Override = $true
         $p.OverrideReason = Read-VmmPrompt 'Reason (who approved, why; min 10 chars)'
+    }
+    if ($Step -eq 'SnapStart') {
+        $a = Read-VmmPrompt "Take the start snapshot of every disk of $HostName now (skipped by itself when every disk has one from the last hour)? (Y/n)"
+        if ("$a" -match '^[nN]') { $p.Decline = $true; Write-VmmLog 'Start snapshot declined - recorded.' -Level Warn }
+        return (Invoke-VmmWorkflowStep @p)
+    }
+    if ($Step -eq 'ManualCheck') {
+        Write-VmmLog "Manual check of ${HostName}: log in, check the applications, SQL jobs and event logs as you normally do." -Level Info
+        $a = Read-VmmPrompt 'Type Y if you checked it and it is fine, BYPASS to skip the check (recorded with a reason), anything else to cancel'
+        if ("$a" -match '^[yY]$') { $p.Confirmed = $true }
+        elseif ("$a" -ceq 'BYPASS') { $p.Bypass = $true; $p.BypassReason = Read-VmmPrompt 'Reason (who checked instead, or why no check is needed; min 10 chars)' }
+        else { Write-VmmLog 'Cancelled - nothing recorded.' -Level Muted; return }
+        return (Invoke-VmmWorkflowStep @p)
     }
     if ($Confirmed) {
         $a = Read-VmmPrompt "Confirm you completed '$Step' on $HostName yourself and it succeeded (y/N)"

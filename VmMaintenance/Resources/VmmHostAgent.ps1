@@ -59,7 +59,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.16.0'
+$AgentVersion = '2.17.0'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
@@ -490,7 +490,9 @@ function Get-Window {
 }
 
 # ============================================================== steps: plan
-$StepNames = @('Precheck', 'Stage', 'PreSnapshot', 'ExpandDisk', 'Upgrade', 'Verify')
+# Host-side steps only. The other snapshot points (SnapStart, SnapPostSql, SnapFinal) and ManualCheck are done
+# from the laptop (vmm step); on Azure every snapshot point is taken from the laptop.
+$StepNames = @('Precheck', 'Stage', 'SnapPreSql', 'ExpandDisk', 'Upgrade', 'Verify')
 function Get-LastStatus([string]$Step) {
     $ev = @(Read-Events | Where-Object { $_.Step -eq $Step })
     if ($ev.Count) { return $ev[$ev.Count - 1].Status + ' (here)' }
@@ -517,21 +519,21 @@ function Get-Plan($Facts) {
                 elseif ($staged) { $why = 'All packages already in ' + $Card.TargetFolder + '. Re-run only to re-verify.' }
                 else { $why = 'Staging to ' + $Card.TargetFolder + ' is allowed any time (also in business hours).' }
             }
-            'PreSnapshot' {
+            'SnapPreSql' {
                 $class = 'Change'
-                if ($Card.AzureVm -eq 'Yes') { $can = $false; $why = 'Azure VM: the snapshot is taken from the laptop (vmm step -Step PreSnapshot), not from inside the host.' }
+                if ($Card.AzureVm -eq 'Yes') { $can = $false; $why = 'Azure VM: the snapshot is taken from the laptop (vmm step -Step SnapPreSql), not from inside the host.' }
                 else { $why = 'Not Azure: take the snapshot/backup in the platform console, then confirm here.' }
             }
             'ExpandDisk' {
                 $class = 'Change'
                 if ($Facts.CFreeGB -ge $okGB) { $can = $false; $why = "Not needed: C: has $($Facts.CFreeGB) GB free (target $okGB GB)." }
-                elseif (-not (Test-Done 'PreSnapshot')) { $can = $false; $why = 'Needs a rollback snapshot first (PreSnapshot not done).' }
+                elseif (-not (Test-Done 'SnapPreSql')) { $can = $false; $why = 'Needs a rollback snapshot first (SnapPreSql not done).' }
                 elseif (-not $admin) { $can = $false; $why = 'Needs an elevated PowerShell (Run as administrator).' }
                 else { $why = 'Extends C: into unallocated space. Grow the virtual disk first (laptop for Azure, platform console otherwise).' }
             }
             'Upgrade' {
                 $class = 'Change'
-                if (-not (Test-Done 'PreSnapshot')) { $can = $false; $why = 'Needs a rollback snapshot first (PreSnapshot not done).' }
+                if (-not (Test-Done 'SnapPreSql')) { $can = $false; $why = 'Needs a rollback snapshot first (SnapPreSql not done).' }
                 elseif ($Card.Packages.Count -and -not $staged) { $can = $false; $why = 'Install files not staged/verified in ' + $Card.TargetFolder + '.' }
                 elseif ($Facts.CFreeGB -lt $critGB) { $can = $false; $why = "C: has $($Facts.CFreeGB) GB free, below the $critGB GB minimum. Run ExpandDisk first." }
                 elseif ($Facts.PendingReboot) { $can = $false; $why = 'A reboot is pending. Reboot (in the window) and run Precheck again.' }
@@ -596,14 +598,14 @@ function Invoke-Stage {
     }
     if ($bad) { Write-Event 'Stage' 'Failed' "$bad package(s) missing or invalid" } else { Write-Event 'Stage' 'Success' 'all packages present and verified' }
 }
-function Invoke-PreSnapshotConfirm {
-    if ($Card.AzureVm -eq 'Yes') { Warn 'Azure VM: take the snapshot from the laptop (vmm step -Step PreSnapshot).'; return }
+function Invoke-PreSqlSnapshotConfirm {
+    if ($Card.AzureVm -eq 'Yes') { Warn 'Azure VM: take the snapshot from the laptop (vmm step -Step SnapPreSql).'; return }
     Info 'Take a snapshot/backup of this host in the platform console (vSphere, Hyper-V, backup tool).'
-    Info "Name it $($env:COMPUTERNAME)_pre-upgrade_$((Get-Date).ToString('yyyyMMdd'))."
+    Info "Name it $($env:COMPUTERNAME)_snap-PreSql_$((Get-Date).ToString('yyyyMMdd'))."
     Warn 'Type DONE only after the snapshot shows as completed.'
     if ((Read-Host ' >') -cne 'DONE') { Mute 'Not confirmed.'; return }
-    Write-Event 'PreSnapshot' 'Success' 'operator confirmed snapshot/backup in the platform console'
-    Good 'PreSnapshot recorded.'
+    Write-Event 'SnapPreSql' 'Success' 'operator confirmed snapshot/backup in the platform console'
+    Good 'SnapPreSql recorded.'
 }
 function Invoke-Extend {
     if (-not (Confirm-Change 'ExpandDisk')) { return }
@@ -678,7 +680,7 @@ function Invoke-RunMenu {
     switch ($p.Step) {
         'Precheck'    { Invoke-Check 'Precheck' }
         'Stage'       { Invoke-Stage }
-        'PreSnapshot' { Invoke-PreSnapshotConfirm }
+        'SnapPreSql'  { Invoke-PreSqlSnapshotConfirm }
         'ExpandDisk'  { Invoke-Extend }
         'Upgrade'     { Invoke-Upgrade }
         'Verify'      { Invoke-Check 'Verify' }
