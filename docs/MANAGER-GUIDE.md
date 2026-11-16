@@ -108,7 +108,7 @@ encrypted data and the reports.
 
 ## Who to ask
 
-The tool's author and operator: Kay. Problems are logged and can be reported as an issue in the private
-GitHub repository with `vmm issue -FromErrorLog` (the text is masked and shown for approval before it is sent).
+The tool's author and operator: Kay. Problems are logged and can be reported as an issue in the project's
+GitHub repository (public, so anyone can read the issue) with `vmm issue -FromErrorLog` (the text is masked and shown for approval before it is sent).
 
-_Last updated: 2026-11-16 12:30 UTC_
+_Last updated: 2026-11-16 17:04 UTC_

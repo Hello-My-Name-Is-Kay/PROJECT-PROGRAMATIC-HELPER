@@ -221,7 +221,7 @@
 
     # GitHub integration (GitHub CLI 'gh' and its own sign-in; vmm stores no token)
     GitHub = @{
-        Repo         = ''        # owner/name of your PRIVATE repository; empty = integration off
+        Repo         = ''        # owner/name of the repository for issues (public repo = public issues); empty = integration off
         Branch       = 'main'    # branch 'vmm update' installs from
         SourcePath   = ''        # local git clone (vmm clone) used by update and pull requests
         CheckOnStart = $true     # one quick call at start: shows 'Update available' in the menu
