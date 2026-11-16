@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance guide for management: purpose, enforced rules, credentials, data protection, logging, RDP fallback, status/limits. SECTIONS: What it is:7-24 | Rules built into the tool:25-38 | Credentials:39-55 | Where the data is, and how it is protected:56-71 | Logging and accountability:72-80 | When the network route fails: remote desktop fallback:81-91 | Status and known limitations:92-106 | Who to ask:107-112 -->
+<!-- SUMMARY: VmMaintenance guide for management: purpose, enforced rules, credentials, data protection, logging, RDP fallback, status/limits. SECTIONS: What it is:7-26 | Rules built into the tool:27-40 | Credentials:41-57 | Where the data is, and how it is protected:58-73 | Logging and accountability:74-82 | When the network route fails: remote desktop fallback:83-93 | Status and known limitations:94-108 | Who to ask:109-114 -->
 # VmMaintenance - guide for management
 
 A two-page overview of what this tool is, what it is allowed to do, and how it protects company data.
@@ -18,9 +18,11 @@ It has two parts:
 | **Extractor** (a `.ps1` file) | One server, inside a remote desktop session | Only for servers the laptop cannot reach over the network: reads the same facts on the server and leaves one encrypted file to bring back. Removes itself at the end |
 
 Per server, the steps are always the same and always in this order:
-**Precheck > Stage > PreSnapshot > ExpandDisk > Upgrade > Verify**. A step cannot run before the one before it
-has succeeded. After each step that changes something on an Azure VM, a checkpoint snapshot is taken so the
-change can be rolled back.
+**Precheck > SnapStart > Stage > SnapPreSql > ExpandDisk > Upgrade > SnapPostSql > Verify > ManualCheck > SnapFinal**.
+A step cannot run before the one before it has succeeded. On an Azure VM, a copy of every disk (a snapshot) is
+taken at four points: when work starts (unless one was taken in the last hour), just before the steps that stop
+or change SQL Server, just after them, and as the very last step after the engineer has checked the server by
+hand. Any of these copies can be used to roll the server back.
 
 ## Rules built into the tool
 
@@ -91,7 +93,7 @@ encrypted data and the reports.
 
 ## Status and known limitations
 
-- **Version 2.15.1, alpha.** The tool has passed its automated tests (about 290 offline checks and 140 unit
+- **Version 2.17.0, alpha.** The tool has passed its automated tests (about 290 offline checks and 140 unit
   tests) on Windows PowerShell 5.1 and PowerShell 7 on GitHub's Windows machines. 2.15.0 checked how every
   command ends: an unfinished or failed job is reported as failed, and a disk expansion that stops half way puts
   the servers back in their power state.
@@ -109,4 +111,4 @@ encrypted data and the reports.
 The tool's author and operator: Kay. Problems are logged and can be reported as an issue in the private
 GitHub repository with `vmm issue -FromErrorLog` (the text is masked and shown for approval before it is sent).
 
-_Last updated: 2026-11-16 04:59 UTC_
+_Last updated: 2026-11-16 12:30 UTC_

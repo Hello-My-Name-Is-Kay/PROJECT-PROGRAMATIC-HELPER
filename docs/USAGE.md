@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | SQL Server updates:19-24 | Every morning business hours:25-42 | Evening weekend all steps:43-50 | Problems:51-63 | End of day:64-68 | Updates and GitHub:69-73 | Tests:74-82 -->
+<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | SQL Server updates:19-24 | Every morning business hours:25-42 | Evening weekend all steps:43-51 | Problems:52-64 | End of day:65-69 | Updates and GitHub:70-74 | Tests:75-83 -->
 # Usage - daily runbook
 
 ## Once
@@ -42,10 +42,11 @@ downloaded twice. One-time setup: `Install-Module dbatools -Scope CurrentUser`.
 
 ## Evening / weekend (all steps)
 
-1. `1` Plan: PreSnapshot, ExpandDisk, Upgrade per host. Guided steps: `G` for the checklist, then `Y` to
+1. `1` Plan: SnapPreSql, ExpandDisk, Upgrade, SnapPostSql per host (SnapStart already ran in the day). Guided steps: `G` for the checklist, then `Y` to
    confirm. (Steps from inside the host are off by default: `Extractor.AllowSteps`.)
 2. After the reboots: Verify (fleet check, or run the Extractor again and copy its file back: a result after
    the upgrade counts as Verify by itself).
+   Then ManualCheck (`Y` after your own check, or `BYPASS` with a reason) and SnapFinal, the last step.
 3. Extractor `F` (Finish) on each host where you used it.
 
 ## Problems
@@ -79,4 +80,4 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1      # before any commit or push
 ```
 
-_Last updated: 2026-11-15 22:00 UTC_
+_Last updated: 2026-11-16 12:30 UTC_

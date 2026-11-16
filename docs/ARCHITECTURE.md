@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance architecture: two programs, module layout, state, file formats, step flow, extension points. SECTIONS: Two programs:4-20 | Module layout:21-33 | State:34-45 | Formats:46-54 | Flow of one step:55-64 | Code flags:65-69 | Extension points:70-77 -->
+<!-- SUMMARY: VmMaintenance architecture: two programs, module layout, state, file formats, step flow, extension points. SECTIONS: Two programs:4-20 | Module layout:21-33 | State:34-45 | Formats:46-54 | Flow of one step:55-65 | Code flags:66-70 | Extension points:71-78 -->
 # Architecture
 
 ## Two programs
@@ -59,7 +59,8 @@ Check{...}, Baseline{OS, Build, Sql}, Health, Steps{<Step>: {Status, At, Note, S
 3. `Assert-VmmVpn` (network steps) stops early when the VPN is down.
 4. Auto steps run; Guided steps require `-Confirmed` after the RDP guide or the host agent.
 5. Access errors produce a blocker report (`New-VmmBlockerReport`) and the step becomes `Blocked`.
-6. On success, an Azure checkpoint snapshot is taken per `Workflow.SnapshotAfter`.
+6. Snapshot steps (SnapStart, SnapPreSql, SnapPostSql, SnapFinal) call `New-VmmSnapshot` for every disk; SnapStart and
+   SnapPreSql first ask `Get-VmmRecentSnapshotSet` whether every disk has one from the last hour. Other steps take none.
 7. `Set-VmmStepState` records status + history; `Save-VmmStore` writes atomically.
 
 ## Code flags
@@ -74,4 +75,4 @@ extension point. Feature flags live in the config (`Features.*`), run flags on t
 - Steps: `Get-VmmWorkflowDefinition` + a branch in `Invoke-VmmWorkflowStep` + agent `Get-Plan`.
 - MCP (future): see [AI.md](AI.md).
 
-_Last updated: 2026-11-14 03:48 UTC_
+_Last updated: 2026-11-16 12:30 UTC_

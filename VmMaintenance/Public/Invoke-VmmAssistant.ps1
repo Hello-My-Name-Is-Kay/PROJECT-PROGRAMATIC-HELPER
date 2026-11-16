@@ -41,7 +41,7 @@ function Invoke-VmmAssistant {
     $safeC = ConvertTo-VmmAiSafeText -Text $ctx -Map $safeQ.Map
 
     $system = 'You assist a Windows server administrator doing in-place OS upgrades with a PowerShell tool (vmm). ' +
-        'Steps per host: Precheck, Stage (copy to C:\Temp), PreSnapshot, ExpandDisk, Upgrade, Verify. Business hours (Mon-Fri 08:00-17:00 Lisbon) allow only checks and staging. ' +
+        'Steps per host: Precheck, SnapStart (Azure snapshot unless one from the last hour), Stage (copy to C:\Temp), SnapPreSql, ExpandDisk, Upgrade, SnapPostSql, Verify, ManualCheck (confirm or bypass), SnapFinal. Business hours (Mon-Fri 08:00-17:00 Lisbon) allow only checks and staging. ' +
         'Be concise and specific. You cannot run commands; say exactly what the admin should check or do. Never ask for passwords. Host names are aliases.'
     $msgs = @(@{ role = 'system'; content = $system })
     if ($safeC.Text) { $msgs += @{ role = 'user'; content = "Context:`n$($safeC.Text)" } }

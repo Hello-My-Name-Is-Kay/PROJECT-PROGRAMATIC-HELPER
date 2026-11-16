@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.15.1",
+  "version": "2.17.0",
   "stage": "alpha",
   "license": "proprietary, internal use (LICENSE)",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
@@ -14,15 +14,19 @@
   },
   "workflow": [
     "Precheck",
+    "SnapStart",
     "Stage",
-    "PreSnapshot",
+    "SnapPreSql",
     "ExpandDisk",
     "Upgrade",
-    "Verify"
+    "SnapPostSql",
+    "Verify",
+    "ManualCheck",
+    "SnapFinal"
   ],
   "time_rules": {
     "zone": "GMT Standard Time (Europe/Lisbon)",
-    "business_hours": "Mon-Fri 08:00-17:00: read-only + staging to C:\\Temp",
+    "business_hours": "Mon-Fri 08:00-17:00: read-only + staging to C:\\Temp + the Azure start snapshot (SnapStart, Policy.SnapStartInBusinessHours)",
     "other_times": "all steps",
     "override": "typed OVERRIDE + reason, logged"
   },

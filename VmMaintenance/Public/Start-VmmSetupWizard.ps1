@@ -118,8 +118,8 @@ function Start-VmmSetupWizard {
         }
         if (& $want 'Workflow') {
             & $title 'Workflow and snapshots' @('ChangingSteps = checkpoint snapshot after ExpandDisk and Upgrade (Azure VMs). EveryStep adds Precheck/Stage/Verify (costs storage, no extra rollback value).')
-            [void](& $ask 'Workflow.SnapshotAfter' 'Checkpoint snapshots after' 'ChangingSteps' 'choice' @('ChangingSteps', 'EveryStep', 'Off'))
-            [void](& $ask 'Workflow.CheckpointRetentionDays' 'Days before checkpoints may be pruned' '7' 'int')
+            [void](& $ask 'Workflow.StartSnapshotMaxAgeMinutes' 'Skip the start snapshot when every disk has one from the last N minutes' '60' 'int')
+            [void](& $ask 'Workflow.SnapshotRetentionDays' 'Days before snapshot-point snapshots may be pruned' '7' 'int')
             [void](& $ask 'Upgrade.Mode' 'Upgrade run by' 'Guided' 'choice' @('Guided', 'RunCommand'))
             [void](& $ask 'Upgrade.CommandLine' 'Exact upgrade command (shown in guides and the host agent; empty = later)' '')
             [void](& $ask 'Upgrade.ExpectedOs' 'Verify passes only if the OS matches (wildcards)' '*Server 2019*')

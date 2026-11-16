@@ -9,7 +9,7 @@ function Import-VmmCollectorResult {
         are accepted. Agent events (steps run on the host, overrides) are added to the host history.
         [SEC] A result is encrypted to this laptop's public key, which is inside every extractor file: that
         keeps it confidential, it does not prove who wrote it. So a result can never mark a change step
-        (Stage, PreSnapshot, ExpandDisk, Upgrade) as done, or record an override, unless Extractor.AllowSteps
+        (Stage, SnapPreSql, ExpandDisk, Upgrade) as done, or record an override, unless Extractor.AllowSteps
         is on; with it off those events are kept as history notes only.
     .EXAMPLE
         Import-VmmCollectorResult -Line (Get-Clipboard)

@@ -1,15 +1,27 @@
 function Invoke-VmmWorkflowStep {
     <#
     .SYNOPSIS
-        Runs one workflow step on one host, enforcing order, the time rules, gates and checkpoints.
+        Runs one workflow step on one host, enforcing order, the time rules, gates and the snapshot points.
     .DESCRIPTION
-        Steps: Precheck, Stage, PreSnapshot, ExpandDisk, Upgrade, Verify (see docs\WORKFLOW.md).
+        Steps: Precheck, SnapStart, Stage, SnapPreSql, ExpandDisk, Upgrade, SnapPostSql, Verify, ManualCheck,
+        SnapFinal (see docs\WORKFLOW.md).
         - Earlier steps must be finished first.
         - Change steps are refused in business hours unless -Override -OverrideReason (recorded).
         - Guided steps (and Hybrid steps on non-Azure hosts) need -Confirmed after you did the work in
           RDP/RDM following Get-VmmRdpGuide.
-        - After each successful changing step on an Azure VM, a checkpoint snapshot is taken
-          (Workflow.SnapshotAfter = ChangingSteps | EveryStep | Off).
+        - Four snapshot points, every disk of an Azure VM (tag SnapPoint=<step>, RetentionDays for prune):
+            SnapStart   taken unless every disk already has a snapshot from the last
+                        Workflow.StartSnapshotMaxAgeMinutes (60; portal snapshots count). -Decline skips it (recorded).
+                        Allowed in business hours while Policy.SnapStartInBusinessHours is on.
+            SnapPreSql  before the first SQL-invasive step (ExpandDisk, Upgrade). NotNeeded when a full set from
+                        the last Workflow.StartSnapshotMaxAgeMinutes exists (only Stage ran since). Other platforms:
+                        you confirm a backup (-Confirmed).
+            SnapPostSql after the last SQL-invasive step. Always taken.
+            SnapFinal   the last step, after ManualCheck. Always taken.
+          Other platforms: SnapStart, SnapPostSql and SnapFinal print a reminder (NotNeeded); vmm cannot snapshot them.
+        - ManualCheck: your own check after Verify. -Confirmed records it, -Bypass -BypassReason '...' (10+ chars)
+          records it as Skipped with the reason.
+        - An Upgrade recorded as Launched (Run Command) is finished with -Step Upgrade -Confirmed once it is done.
         - Access errors produce a blocker report and mark the step Blocked (-Contact answers the
           manager-contact question up front).
         - A failed or blocked step is recorded first, then raised as an error (VmmStepFailed / VmmStepBlocked,
@@ -23,12 +35,17 @@ function Invoke-VmmWorkflowStep {
         Invoke-VmmWorkflowStep -HostName srv01 -Step Precheck
     .EXAMPLE
         Invoke-VmmWorkflowStep -HostName srv01 -Step Upgrade -Confirmed
+    .EXAMPLE
+        Invoke-VmmWorkflowStep -HostName srv01 -Step ManualCheck -Bypass -BypassReason 'app owner checked, ticket 123'
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$HostName,
-        [Parameter(Mandatory)][ValidateSet('Precheck', 'Stage', 'PreSnapshot', 'ExpandDisk', 'Upgrade', 'Verify')][string]$Step,
+        [Parameter(Mandatory)][ValidateSet('Precheck', 'SnapStart', 'Stage', 'SnapPreSql', 'ExpandDisk', 'Upgrade', 'SnapPostSql', 'Verify', 'ManualCheck', 'SnapFinal')][string]$Step,
         [switch]$Confirmed,
+        [switch]$Decline,          # SnapStart only: do not take the start snapshot (recorded as Skipped)
+        [switch]$Bypass,           # ManualCheck only: skip your manual check, with -BypassReason (recorded)
+        [string]$BypassReason,
         [switch]$Override,
         [string]$OverrideReason,
         [ValidateSet('Sent', 'Later', 'Bypass')][string]$Contact,
@@ -40,13 +57,27 @@ function Invoke-VmmWorkflowStep {
     $rec   = Get-VmmHostRecord -Store $store -Name $HostName
     $name  = $rec.Name
 
+    # Switches that belong to one step only
+    if ($Decline -and $Step -ne 'SnapStart') {
+        throw (New-VmmErrorRecord -Activity '-Decline is for the start snapshot only.' -Target "$name/$Step" -Fix "Use it as: vmm step -HostName $name -Step SnapStart -Decline" -Category InvalidArgument -ErrorId 'VmmStepUsage')
+    }
+    if ($Bypass -and $Step -ne 'ManualCheck') {
+        throw (New-VmmErrorRecord -Activity '-Bypass is for the manual check only.' -Target "$name/$Step" -Fix "Use it as: vmm step -HostName $name -Step ManualCheck -Bypass -BypassReason '<why>'" -Category InvalidArgument -ErrorId 'VmmStepUsage')
+    }
+    if ($Bypass -and (-not $BypassReason -or $BypassReason.Trim().Length -lt 10)) {
+        throw (New-VmmErrorRecord -Activity 'Bypass refused: a reason of at least 10 characters is required.' -Target "$name/$Step" `
+            -Fix "Add -BypassReason 'who checked instead, or why no check is needed'" -Category InvalidArgument -ErrorId 'VmmBypassReason')
+    }
+
     # Order: every earlier step finished
     foreach ($e in $def | Where-Object { $_.Order -lt $sd.Order }) {
         $st = $rec.Steps.PSObject.Properties[$e.Name]
         if (-not $st -or $st.Value.Status -notin 'Success', 'NotNeeded', 'Skipped') {
+            $fix = if ($st -and $st.Value.Status -eq 'Launched') { "Wait until $($e.Name) has finished on the host, then confirm it: vmm step -HostName $name -Step $($e.Name) -Confirmed" }
+                   else { "Run $($e.Name) first (vmm step -HostName $name -Step $($e.Name))." }
             throw (New-VmmErrorRecord -Activity "Cannot run $Step on $name yet." -Target $name `
                 -Cause "Step $($e.Order) '$($e.Name)' is $(if ($st) { $st.Value.Status } else { 'not done' })." `
-                -Fix "Run $($e.Name) first (vmm step -HostName $name -Step $($e.Name))." -Category InvalidOperation -ErrorId 'VmmStepOrder')
+                -Fix $fix -Category InvalidOperation -ErrorId 'VmmStepOrder')
         }
     }
     # OS policy: target Windows Server 2019; client OS only with an order; nothing to do on target/newer OS
@@ -64,8 +95,10 @@ function Invoke-VmmWorkflowStep {
 
     $isAzure = [bool]$rec.Azure
     $guided  = $sd.Mode -eq 'Guided' -or ($sd.Mode -eq 'Hybrid' -and -not $isAzure)
-    if ($Step -eq 'Upgrade' -and $isAzure -and (Get-VmmSetting 'Upgrade.Mode' -Default 'Guided') -eq 'RunCommand') { $guided = $false }
-    if ($guided -and -not $Confirmed) {
+    $cur     = $rec.Steps.PSObject.Properties[$Step]
+    $finishLaunched = $Step -eq 'Upgrade' -and $Confirmed -and $cur -and $cur.Value.Status -eq 'Launched'
+    if ($Step -eq 'Upgrade' -and $isAzure -and (Get-VmmSetting 'Upgrade.Mode' -Default 'Guided') -eq 'RunCommand' -and -not $finishLaunched) { $guided = $false }
+    if ($guided -and -not $Confirmed -and -not $Bypass) {
         throw (New-VmmErrorRecord -Activity "$Step on $name is a guided step." -Target $name `
             -Cause $(if ($sd.Mode -eq 'Hybrid') { "$name is not an Azure VM ($($rec.Platform)), so the tool cannot do this itself." } else { 'This step is done by you in RDP/RDM.' }) `
             -Fix "Follow: vmm guide -HostName $name -Step $Step   then confirm with -Confirmed (G and Y keys in the console)." `
@@ -74,8 +107,32 @@ function Invoke-VmmWorkflowStep {
 
     Write-VmmLog "[$name] $Step - $($sd.Title)" -Level Info
     $status = 'Success'; $note = ''; $snap = $null
+    $maxAge = [int](Get-VmmSetting 'Workflow.StartSnapshotMaxAgeMinutes' -Default 60)
+    $days   = [string](Get-VmmSetting 'Workflow.SnapshotRetentionDays' -Default (Get-VmmSetting 'Workflow.CheckpointRetentionDays' -Default 7))
+    $snapBox = @{ Names = $null }
+    # One snapshot point = every disk of the VM, named <VM>_snap-<Point>_..., tagged SnapPoint and RetentionDays
+    $takeSet = {
+        $s = @(New-VmmSnapshot -VMName $rec.Azure.VMName -Subscription $rec.Azure.SubscriptionId -Label ('snap-' + ($Step -replace '^Snap', '')) `
+                -ExtraTags @{ SnapPoint = $Step; RetentionDays = $days } -PassThru -Confirm:$false)
+        if (-not $s) { throw 'No snapshot was created - see the errors above.' }
+        $snapBox.Names = ($s | ForEach-Object { $_.Snapshot }) -join ', '
+        "$($s.Count) disk snapshot(s)"
+    }
+    # A full set of the VM from the last $maxAge minutes, from any source (vmm, script, Azure portal)
+    $recentSet = {
+        try {
+            Assert-VmmModule -Name 'Az.Accounts', 'Az.Compute'
+            Connect-VmmAzure -TenantId (Get-VmmSetting 'Azure.TenantId') -Subscription $rec.Azure.SubscriptionId
+            Get-VmmRecentSnapshotSet -VMName $rec.Azure.VMName -Subscription $rec.Azure.SubscriptionId -MaxAgeMinutes $maxAge
+        } catch {
+            Write-VmmLog "[$name] could not list recent snapshots ($((("$($_.Exception.Message)" -split "`r?`n")[0]).Trim())): a new set is taken." -Level Warn
+            $null
+        }
+    }
+    $recentText = { param($r) "every disk ($($r.Disks)) has a snapshot from the last $($r.MaxAgeMinutes) min (newest $($r.Newest.ToString('yyyy-MM-dd HH:mm')) UTC: $($r.Snapshots -join ', '))" }
+    $notAzure = "Not an Azure VM ($($rec.Platform)): vmm cannot snapshot it. Take one in the platform console if you want this point."
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $phase = 'run'        # run -> checkpoint -> record
+    $phase = 'run'        # run -> record
     $recorded = $false    # the result is in the store
     $ended = $false       # stays $false only when Ctrl+C stopped the step (catch blocks do not run then, finally does)
     try {
@@ -113,14 +170,35 @@ function Invoke-VmmWorkflowStep {
                     $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
                     $note = "Staged: $($files -join ', ')$via"
                 }
-                'PreSnapshot' {
+                'SnapStart' {
+                    if ($Decline) { $status = 'Skipped'; $note = 'Start snapshot declined by operator' }
+                    elseif (-not $isAzure) { $status = 'NotNeeded'; $note = $notAzure }
+                    else {
+                        $r = & $recentSet
+                        if ($r -and $r.Complete) { $status = 'NotNeeded'; $note = 'Not taken: ' + (& $recentText $r) }
+                        else {
+                            $note = & $takeSet; $snap = $snapBox.Names
+                            if ($r -and $r.Missing) { $note += " (no recent snapshot of: $($r.Missing -join ', '))" }
+                        }
+                    }
+                    $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+                }
+                'SnapPreSql' {
                     if ($isAzure) {
-                        $s = @(New-VmmSnapshot -VMName $rec.Azure.VMName -Subscription $rec.Azure.SubscriptionId -Label 'pre' -PassThru -Confirm:$false)
-                        if (-not $s) { throw 'No snapshot was created - see the errors above.' }
-                        $snap = ($s | ForEach-Object { $_.Snapshot }) -join ', '
-                        $note = "$($s.Count) disk snapshot(s)"
+                        $r = & $recentSet
+                        if ($r -and $r.Complete) { $status = 'NotNeeded'; $note = 'Not taken: ' + (& $recentText $r) + '; only non-changing steps ran since' }
+                        else { $note = & $takeSet; $snap = $snapBox.Names }
                     } else { $note = "Backup/snapshot confirmed by operator on $($rec.Platform)" }
                     $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+                }
+                { $_ -in 'SnapPostSql', 'SnapFinal' } {
+                    if ($isAzure) { $note = & $takeSet; $snap = $snapBox.Names }
+                    else { $status = 'NotNeeded'; $note = $notAzure }
+                    $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
+                }
+                'ManualCheck' {
+                    if ($Bypass) { $status = 'Skipped'; $note = "Manual check BYPASSED by operator: $BypassReason" }
+                    else { $note = 'Manual check done and confirmed by operator' }
                 }
                 'ExpandDisk' {
                     $ok = [double](Get-VmmSetting 'Lansweeper.OkGB' -Default 40)
@@ -135,7 +213,8 @@ function Invoke-VmmWorkflowStep {
                     $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
                 }
                 'Upgrade' {
-                    if ($guided) { $note = 'Upgrade run by operator in RDP/RDM (guided)' }
+                    if ($finishLaunched) { $note = 'Launched upgrade finished, confirmed by operator' }
+                    elseif ($guided) { $note = 'Upgrade run by operator in RDP/RDM (guided)' }
                     else {
                         $cmd = Get-VmmSetting 'Upgrade.CommandLine' -Required
                         $script = "Start-Process -FilePath cmd.exe -ArgumentList '/c $($cmd -replace "'", "''")' -WindowStyle Hidden; 'LAUNCHED'"
@@ -182,25 +261,6 @@ function Invoke-VmmWorkflowStep {
             throw (New-VmmErrorRecord -Activity "$Step on $name FAILED (recorded as Failed)." -Target $name -Exception $err.Exception `
                 -Fix "Options: $opt." -Category $err.CategoryInfo.Category -ErrorId 'VmmStepFailed')
         }
-        $phase = 'checkpoint'
-
-        # Checkpoint snapshot after a successful step (Azure VMs only)
-        $policy = Get-VmmSetting 'Workflow.SnapshotAfter' -Default 'ChangingSteps'
-        $wantCp = $status -eq 'Success' -and $isAzure -and $Step -ne 'PreSnapshot' -and
-                  (($policy -eq 'EveryStep') -or ($policy -eq 'ChangingSteps' -and $sd.Changes))
-        if ($wantCp) {
-            try {
-                $days = [string](Get-VmmSetting 'Workflow.CheckpointRetentionDays' -Default 7)
-                $cp = @(New-VmmSnapshot -VMName $rec.Azure.VMName -Subscription $rec.Azure.SubscriptionId -Label "cp-$Step" `
-                        -ExtraTags @{ Checkpoint = $Step; RetentionDays = $days } -PassThru -Confirm:$false)
-                if ($cp) { $snap = ($cp | ForEach-Object { $_.Snapshot }) -join ', '; $note += " | checkpoint: $($cp.Count) snapshot(s)" }
-                else { $note += ' | CHECKPOINT FAILED - see log' }
-            } catch { $note += " | CHECKPOINT FAILED: $($_.Exception.Message.Split([Environment]::NewLine)[0])" }
-            $store = Read-VmmStore; $rec = Get-VmmHostRecord -Store $store -Name $name
-        } elseif ($status -eq 'Success' -and -not $isAzure -and $sd.Changes -and $policy -ne 'Off') {
-            $note += ' | no automatic checkpoint (not Azure) - take one in the platform console if needed'
-        }
-
         $phase = 'record'
         Set-VmmStepState -Record $rec -Step $Step -Status $status -Note $note -Snapshot $snap
         Save-VmmStore -Store $store
@@ -223,7 +283,7 @@ function Invoke-VmmWorkflowStep {
                     if ($phase -eq 'run') {
                         Set-VmmStepState -Record $rec -Step $Step -Status 'Failed' -Note "$why after $secs s, before the result was known: check the host before running $Step again"
                     } else {
-                        Set-VmmStepState -Record $rec -Step $Step -Status $status -Note "$note | checkpoint snapshot $($why): check it in Azure" -Snapshot $snap
+                        Set-VmmStepState -Record $rec -Step $Step -Status $status -Note "$note | $why while recording: check it in Azure and vmm plan" -Snapshot $snap
                     }
                     Save-VmmStore -Store $store
                 } catch { Add-VmmLogEntry -Text (Protect-VmmLogText "[$name] $($Step): this record could not be saved either ($($_.Exception.Message)): check the host and vmm plan") -Level Error }

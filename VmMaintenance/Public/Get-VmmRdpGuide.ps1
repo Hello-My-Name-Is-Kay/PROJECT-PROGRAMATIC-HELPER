@@ -42,10 +42,22 @@ function Get-VmmRdpGuide {
                 if ($p.Note) { [pscustomobject]@{ Text = "Note: $($p.Note)"; Command = $null } }
             }
         }
-        'PreSnapshot' {
-            [pscustomobject]@{ Text = 'Not an Azure VM: take a snapshot/backup in the platform console (vSphere, Hyper-V, backup tool).'; Command = $null }
-            [pscustomobject]@{ Text = 'Name it <HOST>_pre-upgrade_<yyyyMMdd> and note the retention you set.'; Command = $null }
-            [pscustomobject]@{ Text = 'Confirm in vmm only after the snapshot shows as completed.'; Command = $null }
+        { $_ -in 'SnapStart', 'SnapPreSql', 'SnapPostSql', 'SnapFinal' } {
+            $point = $Step -replace '^Snap', ''
+            if ($rec -and $rec.Azure) { [pscustomobject]@{ Text = "Azure VM: vmm takes this snapshot of every disk itself from the laptop. Nothing to do on the host."; Command = "vmm step -HostName $h -Step $Step" } }
+            else {
+                [pscustomobject]@{ Text = 'Not an Azure VM: take a snapshot/backup of every disk in the platform console (vSphere, Hyper-V, backup tool).'; Command = $null }
+                [pscustomobject]@{ Text = "Name it <HOST>_snap-$($point)_<yyyyMMdd> and note the retention you set."; Command = $null }
+                if ($Step -eq 'SnapPreSql') { [pscustomobject]@{ Text = 'Required before the SQL-invasive steps: confirm in vmm (Y) only after the snapshot shows as completed.'; Command = "vmm step -HostName $h -Step SnapPreSql -Confirmed" } }
+                else { [pscustomobject]@{ Text = 'Optional here: vmm records this point as NotNeeded with a reminder.'; Command = "vmm step -HostName $h -Step $Step" } }
+            }
+        }
+        'ManualCheck' {
+            $open
+            [pscustomobject]@{ Text = 'Log in and check the host as you normally do: the business applications start and answer, SQL Server services and Agent jobs run, no new errors in the System and Application event logs, disks and shares are there.'; Command = $null }
+            [pscustomobject]@{ Text = 'Quick look at stopped automatic services and the last errors:'; Command = "Get-Service | Where-Object { `$_.StartType -eq 'Automatic' -and `$_.Status -ne 'Running' }; Get-EventLog -LogName System -EntryType Error -Newest 20" }
+            [pscustomobject]@{ Text = 'All fine: confirm with Y. Fix anything first: the final snapshot (SnapFinal) is taken after this check.'; Command = "vmm step -HostName $h -Step ManualCheck -Confirmed" }
+            [pscustomobject]@{ Text = 'No check possible or needed: bypass it with a reason (recorded and reported).'; Command = "vmm step -HostName $h -Step ManualCheck -Bypass -BypassReason '<who checked instead / why>'" }
         }
         'ExpandDisk' {
             [pscustomobject]@{ Text = 'Grow the OS disk in the platform console first (vSphere: Edit settings > Hard disk 1).'; Command = $null }
@@ -54,7 +66,7 @@ function Get-VmmRdpGuide {
             [pscustomobject]@{ Text = 'If C: did not grow, a recovery partition sits after it: fix in Disk Management.'; Command = 'diskmgmt.msc' }
         }
         'Upgrade' {
-            [pscustomobject]@{ Text = 'Confirm a rollback snapshot exists (PreSnapshot = Success) before you start.'; Command = $null }
+            [pscustomobject]@{ Text = 'Confirm a rollback snapshot exists (SnapPreSql = Success or NotNeeded) before you start.'; Command = $null }
             $open; $ps
             [pscustomobject]@{ Text = "Check the media is staged in ${target}:"; Command = "Get-ChildItem '$target'" }
             $iso = @($pk | Where-Object { $_.Kind -eq 'OsMedia' -and -not $_.Gate }) | Select-Object -First 1
@@ -64,7 +76,7 @@ function Get-VmmRdpGuide {
             }
             if ($cmd) { [pscustomobject]@{ Text = 'Start the upgrade (from config Upgrade.CommandLine):'; Command = $cmd } }
             else { [pscustomobject]@{ Text = 'Run the installer from the staged files (set Upgrade.CommandLine in Settings to show the exact command here).'; Command = $null } }
-            [pscustomobject]@{ Text = 'Wait for the reboots to finish, reconnect, check services, then run Verify.'; Command = $null }
+            [pscustomobject]@{ Text = 'Wait for the reboots to finish, reconnect, check services, then confirm Upgrade (Y). vmm then takes the post-SQL snapshot (SnapPostSql) and runs Verify.'; Command = $null }
         }
         default { throw (New-VmmErrorRecord -Activity "No RDP guide for step '$Step'." -Category InvalidArgument) }
     }

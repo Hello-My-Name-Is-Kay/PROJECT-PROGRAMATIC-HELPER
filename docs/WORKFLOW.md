@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, checkpoint snapshots and prune, blockers, daily target, Extractor steps. SECTIONS: OS policy:7-13 | Steps:14-36 | Time rules EuropeLisbon:37-57 | Snapshot after every success:58-86 | Blockers:87-99 | Daily target:100-105 | Inside the host the Extracto:106-126 -->
+<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, the four snapshot points and prune, blockers, daily target, Extractor steps. SECTIONS: OS policy:7-13 | Steps:14-42 | Time rules EuropeLisbon:43-63 | The four snapshot points:64-101 | Blockers:102-114 | Daily target:115-120 | Inside the host the Extracto:121-141 -->
 # Workflow
 
 How one host moves from "imported" to "done", what the time rules allow, where snapshots
@@ -16,11 +16,17 @@ host; Stage and change steps only on hosts in scope.
 | # | Step | Class | Mode | What happens |
 |---|---|---|---|---|
 | 1 | Precheck | ReadOnly | Auto | Ping, ports, CIM: OS/SP, SQL version, C: free, pending reboot, watched software. Baseline saved on first success |
-| 2 | Stage | Staging | Auto | Copies from the media repository (`Staging.SourceShare`) to `C:\Temp` on the host (folder created if missing): the Windows Server image for `Staging.OsMediaVersion` in the host's install language, every file in `<share>\<HOST>\`, and any `Staging.Packages`; SHA256 verified when a hash is known. If the copy fails, vmm offers the hands-on copy over RDP / RDM / RDCMan (`vmm handoff`) and records Stage only when the files are verified on the host |
-| 3 | PreSnapshot | Change | Hybrid | Azure: snapshot of all disks. Other platforms: you confirm a backup/snapshot was taken in their console |
-| 4 | ExpandDisk | Change | Hybrid | Azure: grow OS disk to the next tier and extend C: when free space is under `Lansweeper.OkGB`. Otherwise guided. `NotNeeded` when space is fine |
-| 5 | Upgrade | Change | Guided | You run setup in RDP/RDM with the checklist. `Upgrade.Mode = RunCommand` launches it remotely on Azure VMs |
-| 6 | Verify | ReadOnly | Auto | Host back, OS caption matches `Upgrade.ExpectedOs`, SQL still answers |
+| 2 | SnapStart | Staging* | Auto | **Snapshot point 1.** Azure: snapshot of every disk, unless every disk already has a snapshot from the last `Workflow.StartSnapshotMaxAgeMinutes` (60). You may decline it (`-Decline`, or `n` in the console): recorded as Skipped. Other platforms: reminder only |
+| 3 | Stage | Staging | Auto | Copies from the media repository (`Staging.SourceShare`) to `C:\Temp` on the host (folder created if missing): the Windows Server image for `Staging.OsMediaVersion` in the host's install language, every file in `<share>\<HOST>\`, and any `Staging.Packages`; SHA256 verified when a hash is known. If the copy fails, vmm offers the hands-on copy over RDP / RDM / RDCMan (`vmm handoff`) and records Stage only when the files are verified on the host |
+| 4 | SnapPreSql | Change | Hybrid | **Snapshot point 2**, before the first SQL-invasive step. Azure: every disk; NotNeeded when a full set from the last 60 min exists (SnapStart or the portal; only Stage ran since). Other platforms: you confirm a backup/snapshot taken in their console |
+| 5 | ExpandDisk | Change | Hybrid | SQL-invasive (the VM is deallocated, SQL stops). Azure: grow OS disk to the next tier and extend C: when free space is under `Lansweeper.OkGB`. Otherwise guided. `NotNeeded` when space is fine |
+| 6 | Upgrade | Change | Guided | SQL-invasive: OS in-place upgrade or SQL SP/CU. You run setup in RDP/RDM with the checklist. `Upgrade.Mode = RunCommand` launches it remotely on Azure VMs (`Launched`); confirm it with `-Confirmed` once it has finished |
+| 7 | SnapPostSql | Change | Auto | **Snapshot point 3**, after the last SQL-invasive step. Azure: every disk, always taken. Other platforms: reminder only |
+| 8 | Verify | ReadOnly | Auto | Host back, OS caption matches `Upgrade.ExpectedOs`, SQL still answers |
+| 9 | ManualCheck | ReadOnly | Guided | Your own check of the host and its applications. `-Confirmed` (console `Y`) records it; `-Bypass -BypassReason '...'` (console `BYPASS`, 10+ characters) records it as Skipped with the reason |
+| 10 | SnapFinal | Change | Auto | **Snapshot point 4**, always the last step, after ManualCheck. Azure: every disk, always taken. Other platforms: reminder only |
+
+\* SnapStart is `Change` when `Policy.SnapStartInBusinessHours = $false`.
 
 - **Auto**: the tool does it.
 - **Guided**: `vmm guide -HostName x -Step y` prints numbered steps; you do them in RDP/RDM,
@@ -41,7 +47,7 @@ daylight saving handled by Windows).
 
 | When | ReadOnly | Staging | Change |
 |---|---|---|---|
-| Mon-Fri 08:00-16:59 | Yes | Yes, into `C:\Temp` only | Override only |
+| Mon-Fri 08:00-16:59 | Yes | Yes, into `C:\Temp` only, and the Azure start snapshot (SnapStart) | Override only |
 | Mon-Fri before 08:00 / from 17:00 | Yes | Yes | Yes (`Schedule.AllowChangesOffHoursWeekdays`, default on) |
 | Saturday, Sunday, `Schedule.Holidays` | Yes | Yes | Yes |
 
@@ -55,30 +61,39 @@ the fleet store and listed in the daily report, so your manager sees it.
 Functions that enforce the rule: `Invoke-VmmWorkflowStep`, `Expand-VmmOsDisk -Apply`,
 `Mount-VmmUpgradeMedia`, `Dismount-VmmUpgradeMedia`, `Invoke-VmmPrune -Apply`.
 
-## Snapshot after every successful step, prune at the end
+## The four snapshot points, prune at the end
 
-Question asked: "Do we have a snapshot after every successful step, and prune after we are done?"
+Kay's rule (2026-11-16): exactly four Azure snapshot points per host, each a snapshot of **every disk** of the
+VM (OS and data disks). They replace the per-step checkpoints of 2.4.0-2.15.x (`Workflow.SnapshotAfter` and
+`cp-<Step>` snapshots are gone).
 
-**Before v2: no.** Snapshots were taken only before a disk resize (inside `Expand-AzOsDisk`) and
-by running `CreateSnapshots.ps1` by hand. Pruning was a separate manual script.
+| Point | Step | When | Skipped when |
+|---|---|---|---|
+| 1 | SnapStart | At the start of the work, after Precheck and before Stage writes to `C:\Temp` | Every disk has a snapshot from the last `Workflow.StartSnapshotMaxAgeMinutes` (60), or you decline it |
+| 2 | SnapPreSql | Before the first SQL-invasive step (ExpandDisk, or Upgrade when ExpandDisk is NotNeeded) | Every disk has a snapshot from the last 60 min (in practice: SnapStart was taken less than an hour ago) |
+| 3 | SnapPostSql | After the last SQL-invasive step (Upgrade done or confirmed) | Never |
+| 4 | SnapFinal | The true last step, after your manual check or its bypass | Never |
 
-**Now: yes, with one deliberate default.**
-
-| Setting `Workflow.SnapshotAfter` | Checkpoint after |
-|---|---|
-| `ChangingSteps` (default) | ExpandDisk and Upgrade succeed (PreSnapshot is itself the snapshot) |
-| `EveryStep` | every successful step, including Precheck, Stage and Verify |
-| `Off` | never (PreSnapshot still runs) |
-
-- Checkpoints are named `<VM>_cp-<Step>_OsDisk_snap` (and per data disk), tagged
-  `Checkpoint=<Step>`, `RetentionDays=<Workflow.CheckpointRetentionDays>` plus your `Snapshots.Tags`.
-- **Azure VMs only.** On VMware, Hyper-V or physical hosts the tool cannot snapshot; the step note
-  says "no automatic checkpoint" and PreSnapshot asks you to confirm a backup instead.
-- A failed checkpoint does not undo the step. The note says `CHECKPOINT FAILED` and the daily
-  report shows it.
-- Why `ChangingSteps` is the default: a snapshot after a read-only step (Precheck, Verify) or after
-  copying files to `C:\Temp` costs storage and adds no rollback point the previous snapshot does not
-  already give. Switch to `EveryStep` in Settings if you want it anyway.
+- **SQL-invasive** = ExpandDisk (the VM is deallocated, so SQL stops, and C: changes) and Upgrade (the OS
+  in-place upgrade and SQL SP/CU). There are no separate OS points.
+- **"From the last hour"** counts every snapshot whose source is one of the VM's disks, whoever made it: vmm,
+  `CreateSnapshots.ps1`, or by hand in the Azure portal. It only counts when **every** managed disk has one;
+  otherwise a full new set is taken. The note names the snapshots it relied on.
+- **Names and tags**: `<VM>_snap-Start_OsDisk_snap`, `<VM>_snap-PreSql_DataDisk_0_snap`, ... (an existing name
+  gets the run stamp appended), tagged `SnapPoint=<step>`, `RetentionDays=<Workflow.SnapshotRetentionDays>`
+  (default 7) plus your `Snapshots.Tags`, so prune finds them.
+- **Time rules**: SnapStart may run in business hours while `Policy.SnapStartInBusinessHours` is on (default):
+  it does not touch the guest and causes no downtime. The other three are Change steps: after hours, or an
+  override with a reason.
+- **Other platforms** (VMware, Hyper-V, physical): vmm cannot snapshot them. SnapPreSql asks you to confirm a
+  backup/snapshot taken in the platform console; the other three record NotNeeded with a reminder.
+- **Disk expansion** still takes its own OS-disk copy while the VM is deallocated (inside `Expand-VmmOsDisk`);
+  that is part of the resize safety net, not a workflow point.
+- A snapshot point that fails is recorded as **Failed** and the host stops there: run it again (existing
+  snapshots are never overwritten).
+- Hosts recorded before 2.17.0: `PreSnapshot` is read as SnapPreSql, and a SnapStart or SnapPostSql that the host
+  already passed is marked Skipped ("not in the workflow when this host passed this point"). ManualCheck and
+  SnapFinal are still to do.
 
 **Prune**: `vmm prune` (console key `8`) previews every snapshot past its `RetentionDays` in all
 subscriptions the fleet uses, filtered by `Snapshots.CleanupTagName/Value`. Deleting needs
@@ -106,7 +121,7 @@ day when one of `Target.CountedSteps` (default Stage, Verify) succeeded that day
 ## Inside the host: the Extractor
 
 Off by default: the Extractor is snapshot-only unless `Extractor.AllowSteps` is true, and then only the per-host
-Extractor (`X`) carries steps. With steps on, it first saves `VMM_<HOST>_<time>.vmm` on the desktop, then shows the same six steps for its host with: status (from the laptop at export time, then
+Extractor (`X`) carries steps. With steps on, it first saves `VMM_<HOST>_<time>.vmm` on the desktop, then shows the host-side steps (Precheck, Stage, SnapPreSql, ExpandDisk, Upgrade, Verify; the other snapshot points and ManualCheck are done from the laptop) with: status (from the laptop at export time, then
 from its own log), whether the step is available **now**, and **why**. It evaluates locally: Lisbon
 time rule, admin rights, rollback snapshot done, staged files present and hash-verified, C: free space
 against `Lansweeper.OkGB` / `CriticalGB`, pending reboot, and whether the plan is for this host.
@@ -115,7 +130,7 @@ against `Lansweeper.OkGB` / `CriticalGB`, pending reboot, and whether the plan i
 |---|---|
 | Precheck / Verify | Collects facts; Verify compares the OS with `Upgrade.ExpectedOs` |
 | Stage | Checks `C:\Temp`; copies from the share if the host can reach it, else tells you what to paste |
-| PreSnapshot | Azure: done from the laptop. Other platforms: confirm (`DONE`) after the console snapshot |
+| SnapPreSql | Azure: done from the laptop. Other platforms: confirm (`DONE`) after the console snapshot |
 | ExpandDisk | Extends C: into unallocated space (diskpart); grow the virtual disk first |
 | Upgrade | Starts `Upgrade.CommandLine` after you type the host name; logs `Launched` |
 
@@ -123,4 +138,4 @@ Change steps need the window or an override (typed `OVERRIDE` + reason), and the
 confirmation. The export carries every logged event; the laptop adds them to the host history and
 records host-side overrides in the daily report.
 
-_Last updated: 2026-11-16 04:00 UTC_
+_Last updated: 2026-11-16 12:30 UTC_
