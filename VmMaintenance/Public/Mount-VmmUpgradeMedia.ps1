@@ -44,10 +44,11 @@ function Mount-VmmUpgradeMedia {
     Connect-VmmAzure -TenantId $TenantId -Subscription $Subscription
 
     $imageCache = @{}
+    $bad = New-Object System.Collections.Generic.List[string]   # VMs that did not get their media disk
     foreach ($n in $names) {
         $diskName = "$n-$DiskSuffix"
         try { $vm = Get-AzVM -ResourceGroupName $ResourceGroup -Name $n -ErrorAction Stop }
-        catch { Write-VmmLog ("$n : " + (ConvertTo-VmmNote -Activity "VM lookup in $ResourceGroup" -ErrorRecord $_)) -Level Error; continue }
+        catch { Write-VmmLog ("$n : " + (ConvertTo-VmmNote -Activity "VM lookup in $ResourceGroup" -ErrorRecord $_)) -Level Error; $bad.Add("$($n): VM lookup failed"); continue }
 
         $attached = $vm.StorageProfile.DataDisks | Where-Object Name -eq $diskName
         if ($attached) { Write-VmmLog "$n : $diskName already attached at LUN $($attached.Lun) - skipped" -Level Muted; continue }
@@ -55,11 +56,11 @@ function Mount-VmmUpgradeMedia {
         $lunUser = $vm.StorageProfile.DataDisks | Where-Object Lun -eq $Lun
         if ($lunUser) {
             Write-VmmLog "$n : LUN $Lun is already used by '$($lunUser.Name)' - skipped. Pick a free LUN with -Lun or UpgradeMedia.Lun." -Level Error
-            continue
+            $bad.Add("$($n): LUN $Lun in use"); continue
         }
 
         try { $img = Get-VmmUpgradeImage -Location $vm.Location -Publisher $Publisher -Offer $Offer -Sku $Sku -Cache $imageCache }
-        catch { Write-VmmLog "$n : $($_.Exception.Message)" -Level Error; continue }
+        catch { Write-VmmLog "$n : $($_.Exception.Message)" -Level Error; $bad.Add("$($n): upgrade image not found"); continue }
 
         if (-not $PSCmdlet.ShouldProcess($n, "Create $diskName from $Sku image and attach at LUN $Lun")) { continue }
 
@@ -68,7 +69,7 @@ function Mount-VmmUpgradeMedia {
             $disk = Get-AzDisk -ResourceGroupName $ResourceGroup -DiskName $diskName -ErrorAction SilentlyContinue
             if ($disk -and $disk.ManagedBy) {
                 Write-VmmLog "$n : $diskName exists and is attached to $(($disk.ManagedBy -split '/')[-1]) - skipped. Detach it there first." -Level Error
-                continue
+                $bad.Add("$($n): $diskName attached to another VM"); continue
             }
             if (-not $disk) {
                 $stage = 'create disk from image'
@@ -84,8 +85,13 @@ function Mount-VmmUpgradeMedia {
             Write-VmmLog "$n : $($disk.Name) attached" -Level Success
         } catch {
             Write-VmmLog ("$n : " + (ConvertTo-VmmNote -Activity $stage -ErrorRecord $_)) -Level Error
+            $bad.Add("$($n): $stage failed")
         }
     }
 
     Get-VmmUpgradeMediaState -ResourceGroup $ResourceGroup -VMName $names -DiskSuffix $DiskSuffix
+    if ($bad.Count) {
+        throw (New-VmmErrorRecord -Activity "Upgrade media not attached on $($bad.Count) of $($names.Count) VM(s)." -Target ($bad -join ' | ') `
+            -Fix 'See the errors above; fix them and run it again (attached disks are skipped, unattached ones reused).' -Category InvalidResult -ErrorId 'VmmMediaIncomplete')
+    }
 }

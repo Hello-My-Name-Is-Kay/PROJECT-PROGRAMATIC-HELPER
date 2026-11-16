@@ -72,7 +72,12 @@ function Import-VmmFleet {
     Write-VmmLog "$added new host(s) added, $updated updated; fleet now has $(@($store.Hosts).Count). Next: 3 Check fleet (or vmm check) to read them." -Level Success
 
     if ($RemoveSource -and $Path -and $PSCmdlet.ShouldProcess($Path, 'Delete plaintext source list')) {
-        Remove-Item -LiteralPath $Path -Force
+        # [SEC] a list that could not be deleted must not be reported as removed: it holds host names in plaintext
+        try { Remove-Item -LiteralPath $Path -Force -ErrorAction Stop }
+        catch {
+            throw (New-VmmErrorRecord -Activity 'Hosts imported, but the plaintext source list was NOT deleted.' -Target $Path -Exception $_.Exception `
+                -Fix 'Close the program that has it open (Excel), then delete it by hand.' -Category WriteError -ErrorId 'VmmSourceNotRemoved')
+        }
         Write-VmmLog "Plaintext list removed: $Path (names now only in the encrypted store)" -Level Muted
     }
 }

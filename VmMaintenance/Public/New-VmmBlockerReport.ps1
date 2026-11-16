@@ -53,7 +53,7 @@ Thanks,
 "@
     $dir  = Get-VmmPath -Name Blockers
     $file = Join-Path $dir ('{0}_{1}_{2}.txt' -f $stamp, $HostName.ToUpper(), $Step)
-    Set-Content -LiteralPath $file -Value $text -Encoding UTF8
+    Set-Content -LiteralPath $file -Value $text -Encoding UTF8 -ErrorAction Stop   # never mark Blocked with a report that is not there
 
     if (-not $Contact) {
         Write-VmmLog 'Manager contact is required for this blocker. Answer: [S]ent now / [L]ater (listed in the daily report) / [B]ypass (you confirm no contact is needed)' -Level Warn

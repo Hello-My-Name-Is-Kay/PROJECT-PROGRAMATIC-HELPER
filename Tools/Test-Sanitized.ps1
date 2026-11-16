@@ -105,9 +105,13 @@ $histLines = 0
 if ($History) {
     $git = Get-Command git -ErrorAction SilentlyContinue
     if (-not $git) { Write-Host 'git not found: history not checked.' -ForegroundColor Yellow; $hits++ }
+    elseif ((& git -C $repo rev-parse --is-inside-work-tree 2>$null) -ne 'true') { Write-Host "Not a git repository: $repo - history not checked." -ForegroundColor Red; $hits++ }
     else {
+        # A shallow clone has only part of the history: a "clean" result would not cover the rest
+        if ((& git -C $repo rev-parse --is-shallow-repository 2>$null) -eq 'true') { Write-Host 'Shallow clone: only part of the history is here. Fetch it all (git fetch --unshallow, or CI fetch-depth: 0) and run again.' -ForegroundColor Red; $hits++ }
         $commit = ''; $path = ''
         $log = & git -C $repo log --all -p --no-color --no-ext-diff --format='commit %H' 2>$null
+        if ($LASTEXITCODE -ne 0) { Write-Host "git log failed (exit code $LASTEXITCODE): history not checked." -ForegroundColor Red; $hits++; $log = @() }
         foreach ($line in $log) {
             if ($line -like 'commit *' -and $line.Length -eq 47) { $commit = $line.Substring(7, 7); continue }
             if ($line -like '+++ b/*') { $path = $line.Substring(6); continue }
@@ -119,6 +123,7 @@ if ($History) {
             foreach ($h in (Test-VmmLeakLine $text)) { $hits++; Write-Host "history $commit ${path}:  $h" -ForegroundColor Red }
         }
         $msgs = & git -C $repo log --all --format='%h %an <%ae> %B' 2>$null
+        if ($LASTEXITCODE -ne 0) { Write-Host "git log failed (exit code $LASTEXITCODE): commit messages not checked." -ForegroundColor Red; $hits++; $msgs = @() }
         foreach ($line in $msgs) {
             $histLines++
             foreach ($h in (Test-VmmLeakLine $line)) { $hits++; Write-Host "commit message: $line  $h" -ForegroundColor Red }
@@ -127,7 +132,7 @@ if ($History) {
 }
 
 if ($hits) {
-    Write-Host "$hits sensitive value(s) found. Move them to your local config or server lists before committing." -ForegroundColor Red
+    Write-Host "$hits problem(s): sensitive values found, or a check could not run (see above). Move values to your local config or server lists before committing." -ForegroundColor Red
     if ($History) { Write-Host 'A value found only in the history needs the history rewritten (ask before doing that): removing it from the files is not enough.' -ForegroundColor Red }
     exit 1
 }

@@ -29,7 +29,7 @@ function Show-VmmStagingScreen {
                       if ((Read-VmmPrompt 'Download what is missing and fill the host folders? (y/N)') -match '^[yY]') { Save-VmmSqlUpdate -Confirm:$false }
                   }); $err = & $load }
             'O'   { $s = Get-VmmSetting 'Staging.SourceShare'; if ($s) { Start-Process explorer.exe -ArgumentList $s } }
-            'S'   { $v = Read-VmmPrompt 'Media repository path (\\server\share\project\iso-folder)'; if ($v) { try { Set-VmmSetting -Name Staging.SourceShare -Value $v } catch { } }; $err = & $load; Clear-Host }
+            'S'   { $v = Read-VmmPrompt 'Media repository path (\\server\share\project\iso-folder)'; if ($v) { try { Set-VmmSetting -Name Staging.SourceShare -Value $v } catch { Write-VmmLog "Not saved: $(("$($_.Exception.Message)" -split "`r?`n")[0])" -Level Error; Write-VmmErrorLog -ErrorRecord $_ -Command 'ui: set media repository'; Start-Sleep -Seconds 3 } }; $err = & $load; Clear-Host }
         }
     }
 }

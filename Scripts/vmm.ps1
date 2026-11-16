@@ -62,15 +62,9 @@ try {
     & $mod { param($e, $c) Write-VmmErrorLog -ErrorRecord $e -Command $c } $_ $Command
     if ($id -notlike 'Vmm*' -and $flags.DebugErrors) { Write-Host "  At     : $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor DarkGray }
     elseif ($id -notlike 'Vmm*') { Write-Host '  Details: logged to %LOCALAPPDATA%\VmMaintenance\logs\errors.log (run with --debug-errors to show the location).' -ForegroundColor DarkGray }
-    $code = switch -Wildcard ($id) {
-        'VmmCli*'          { 2 }
-        'VmmWindowBlocked*' { 3 }
-        'VmmVpnDown*'      { 4 }
-        'VmmStoreIntegrity*' { 5 }
-        'VmmAgentResult*'  { 5 }
-        'VmmInstanceLocked*' { 6 }
-        default            { 1 }
-    }
+    # Same table for vmm and the entry scripts (Private\Get-VmmExitCode.ps1)
+    $code = 1
+    try { $code = & $mod { param($e) Get-VmmExitCode -ErrorRecord $e } $_ } catch { }
     # The day log gets the exit code (and the error itself when it was raised before the command started)
     & $mod { param($c, $n, $m) Add-VmmLogEntry -Text "vmm $c exit code $n$(if ($m) { ': ' + $m })" -Level Error } $Command $code $(if ($id -like 'VmmCli*' -or $id -like 'VmmInstanceLocked*') { $msg } else { '' })
     exit $code

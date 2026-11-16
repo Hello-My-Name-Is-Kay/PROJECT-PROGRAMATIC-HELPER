@@ -52,7 +52,8 @@ function New-VmmDiskFromSnapshot {
             }
 
         if (-not $jobs) {
-            Write-VmmLog "No snapshots named ${vm}_OsDisk_snap or ${vm}_DataDisk_<n>_snap in $ResourceGroup - nothing to restore." -Level Warn
+            Write-VmmLog "No snapshots named ${vm}_OsDisk_snap or ${vm}_DataDisk_<n>_snap in $ResourceGroup - nothing to restore." -Level Error
+            [pscustomobject][ordered]@{ VMName = $vm; Snapshot = ''; Disk = ''; Result = 'Failed: no snapshot found' }
             continue
         }
 
@@ -82,4 +83,9 @@ function New-VmmDiskFromSnapshot {
     $results = @($results)
     if ($results) { $results | Format-Table -AutoSize | Out-VmmHost }
     if ($PassThru) { $results }
+    $failedRows = @($results | Where-Object { "$($_.Result)" -like 'Failed*' })
+    if ($failedRows) {
+        throw (New-VmmErrorRecord -Activity "$($failedRows.Count) disk(s) not created from snapshots." -Target (@($failedRows | ForEach-Object { if ($_.Disk) { $_.Disk } else { "$($_.VMName) (no snapshot)" } }) -join ', ') `
+            -Fix 'See the errors above, then run it again (disks that exist are skipped).' -Category InvalidResult -ErrorId 'VmmRestoreDiskIncomplete')
+    }
 }

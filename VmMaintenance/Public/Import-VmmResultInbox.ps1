@@ -8,6 +8,8 @@ function Import-VmmResultInbox {
         Imported files are deleted (they have no further use); files that fail stay where they are and the
         reason is shown. Runs by itself when the Manager starts (Collect.AutoImport) and with E in the menu.
         Precheck or Verify is chosen per host: Verify once the upgrade was launched, else Precheck.
+        When a file fails, the command fails at the end (exit code 1; 5 when a file failed its integrity check),
+        unless -Quiet or -PassThru, whose caller shows the failures itself.
     .EXAMPLE
         vmm inbox
     .EXAMPLE
@@ -35,13 +37,22 @@ function Import-VmmResultInbox {
         try {
             $r = Import-VmmCollectorResult -Path $f.FullName -PassThru
             $ok += $r
-            Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue
+            try { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop }
+            catch { Write-VmmLog "$($f.Name): imported, but the file could not be deleted (it is imported again next time; delete it by hand)." -Level Warn }
         } catch {
-            $bad += [pscustomobject]@{ File = $f.Name; Reason = $_.Exception.Message.Split([Environment]::NewLine)[0] }
+            $bad += [pscustomobject]@{ File = $f.Name; Reason = $_.Exception.Message.Split([Environment]::NewLine)[0]; Id = "$($_.FullyQualifiedErrorId)" }
             Write-VmmLog "$($f.Name): not imported - $($bad[-1].Reason)" -Level Error
         }
     }
     $script:VmmInboxNotice = if ($ok) { "Imported $($ok.Count) extractor result(s): $((@($ok | ForEach-Object Host) | Select-Object -Unique) -join ', ')$(if ($bad) { "; $($bad.Count) failed (E for details)" })" } elseif ($bad) { "$($bad.Count) extractor file(s) could not be imported (E for details)" } else { '' }
     if (-not $Quiet) { Write-VmmLog "Extractor results: $($ok.Count) imported, $($bad.Count) failed." -Level $(if ($bad) { 'Warn' } else { 'Success' }) }
     if ($PassThru) { [pscustomobject]@{ Imported = $ok; Failed = $bad } }
+    elseif ($bad -and -not $Quiet) {
+        # A file that fails its integrity check keeps the security exit code (5): it may have been changed on the way
+        $sec = @($bad | Where-Object { $_.Id -like 'VmmAgentResult*' }).Count
+        throw (New-VmmErrorRecord -Activity "$($bad.Count) extractor result file(s) not imported$(if ($sec) { " ($sec failed the integrity check)" })." `
+            -Target (@($bad | ForEach-Object File) -join ', ') -Cause (@($bad | Select-Object -First 3 | ForEach-Object { "$($_.File): $($_.Reason)" }) -join ' | ') `
+            -Fix 'The files stay where they are. Build a fresh extractor for those hosts (vmm extractor -HostName <host>) and run it again.' `
+            -Category InvalidData -ErrorId $(if ($sec) { 'VmmAgentResultRejected' } else { 'VmmInboxFailed' }))
+    }
 }

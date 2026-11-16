@@ -9,6 +9,9 @@ function New-VmmSnapshot {
         The VM's current tags are saved to <WorkDir>\Snapshots\<VM>_tags_preupgrade_<time>.json.
         A manifest CSV lists every snapshot created (VM, disk, LUN, snapshot name).
         Tip: snapshot while VMs are deallocated for clean copies, then start them.
+        A VM that is not found (or found twice), and any disk that could not be snapshotted, makes the run fail
+        at the end (VmmSnapshotIncomplete, exit code 1) after the other VMs are done: a rollback set with a
+        missing disk is not a rollback set.
     .EXAMPLE
         New-VmmSnapshot -WhatIf
     .EXAMPLE
@@ -44,25 +47,26 @@ function New-VmmSnapshot {
     $workDir = Resolve-VmmWorkDir -SubFolder 'Snapshots'
     $created = New-Object System.Collections.Generic.List[object]
     $failed  = 0
+    $problems = New-Object System.Collections.Generic.List[string]   # one short line per failed VM or disk
 
     foreach ($n in $names) {
         Write-VmmLog "`n=== $n ===" -Level Info
 
         try { $found = @(Get-AzVM -Name $n -ErrorAction Stop) }
-        catch { Write-VmmLog (ConvertTo-VmmNote -Activity "VM lookup of $n" -ErrorRecord $_) -Level Error; $failed++; continue }
+        catch { Write-VmmLog (ConvertTo-VmmNote -Activity "VM lookup of $n" -ErrorRecord $_) -Level Error; $failed++; $problems.Add("$($n): VM lookup failed"); continue }
         if ($found.Count -eq 0) {
-            Write-VmmLog "$n not found in subscription '$((Get-AzContext).Subscription.Name)' - skipped. Check the name or Azure.Subscription." -Level Warn
-            continue
+            Write-VmmLog "$n not found in subscription '$((Get-AzContext).Subscription.Name)' - skipped. Check the name or Azure.Subscription." -Level Error
+            $failed++; $problems.Add("$($n): not found"); continue
         }
         if ($found.Count -gt 1) {
-            Write-VmmLog "$n exists in several resource groups ($(($found.ResourceGroupName) -join ', ')) - skipped. Snapshot it by hand." -Level Warn
-            continue
+            Write-VmmLog "$n exists in several resource groups ($(($found.ResourceGroupName) -join ', ')) - skipped. Snapshot it by hand." -Level Error
+            $failed++; $problems.Add("$($n): found in $($found.Count) resource groups"); continue
         }
 
         try {
             $vm    = Get-AzVM -ResourceGroupName $found[0].ResourceGroupName -Name $found[0].Name -ErrorAction Stop
             $state = Get-VmmPowerState -ResourceGroup $vm.ResourceGroupName -VMName $vm.Name
-        } catch { Write-VmmLog (ConvertTo-VmmNote -Activity "Read of VM $n" -ErrorRecord $_) -Level Error; $failed++; continue }
+        } catch { Write-VmmLog (ConvertTo-VmmNote -Activity "Read of VM $n" -ErrorRecord $_) -Level Error; $failed++; $problems.Add("$($n): VM read failed"); continue }
 
         $rg = $vm.ResourceGroupName
         Write-VmmLog "Resource group: $rg | Power state: $state"
@@ -84,7 +88,7 @@ function New-VmmSnapshot {
         foreach ($t in $targets) {
             if (-not ($t.Ref.ManagedDisk -and $t.Ref.ManagedDisk.Id)) {
                 Write-VmmLog "$($vm.Name): $($t.Kind) '$($t.Ref.Name)' is unmanaged (VHD) - cannot be snapshotted here. Copy the VHD blob by hand." -Level Error
-                $failed++; continue
+                $failed++; $problems.Add("$($vm.Name): $($t.Kind) is unmanaged (VHD)"); continue
             }
             $diskName = ($t.Ref.ManagedDisk.Id -split '/')[8]
             try {
@@ -100,7 +104,7 @@ function New-VmmSnapshot {
                     Snapshot = $snap.Name; PowerState = $state; Created = (Get-Date -Format 's')
                 })
             } catch {
-                $failed++
+                $failed++; $problems.Add("$($vm.Name): $($t.Kind) snapshot failed")
                 Write-VmmLog ("$($vm.Name): " + (ConvertTo-VmmNote -Activity "Snapshot of $($t.Kind) $diskName" -ErrorRecord $_)) -Level Error
             }
         }
@@ -117,7 +121,13 @@ function New-VmmSnapshot {
     } catch { Write-VmmLog (ConvertTo-VmmNote -Activity 'Snapshot listing' -ErrorRecord $_) -Level Warn }
 
     if ($created.Count) { Export-VmmCsv -InputObject $created.ToArray() -Path (Resolve-VmmOutputPath -Path $OutCsv -BaseName 'SnapshotManifest') }
-    if ($failed) { Write-VmmLog "$failed disk/VM step(s) failed - see errors above." -Level Error }
-    else { Write-VmmLog "$($created.Count) snapshot(s) created." -Level Success }
     if ($PassThru) { $created.ToArray() }
+    if ($failed) {
+        Write-VmmLog "$($created.Count) snapshot(s) created, $failed VM/disk step(s) failed - see the errors above." -Level Error
+        throw (New-VmmErrorRecord -Activity "Snapshots incomplete: $failed VM/disk step(s) failed, $($created.Count) snapshot(s) created." `
+            -Target (@($problems | Select-Object -First 5) -join ' | ') -Cause 'See the errors above for each VM or disk.' `
+            -Fix 'Fix the cause and run it again for those VMs (existing snapshots are never overwritten). Created snapshots are in the SnapshotManifest CSV.' `
+            -Category InvalidResult -ErrorId 'VmmSnapshotIncomplete')
+    }
+    Write-VmmLog "$($created.Count) snapshot(s) created." -Level Success
 }

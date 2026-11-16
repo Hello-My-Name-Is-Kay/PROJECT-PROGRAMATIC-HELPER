@@ -114,6 +114,7 @@ WHERE d.Caption = 'C:'
     } finally {
         $conn.Close()
         $conn.Dispose()
+        $securePwd.Dispose()   # [SEC] the copy made for SqlCredential
     }
 
     # --- Index results by name (case-insensitive)

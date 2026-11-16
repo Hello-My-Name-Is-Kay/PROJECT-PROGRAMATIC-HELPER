@@ -29,6 +29,7 @@ function Dismount-VmmUpgradeMedia {
     Assert-VmmModule -Name 'Az.Accounts', 'Az.Compute'
     Connect-VmmAzure -TenantId $TenantId -Subscription $Subscription
 
+    $bad = New-Object System.Collections.Generic.List[string]   # VMs whose media disk is still there
     foreach ($n in $names) {
         $diskName = "$n-$DiskSuffix"
 
@@ -45,6 +46,7 @@ function Dismount-VmmUpgradeMedia {
             }
         } catch {
             Write-VmmLog ("$n : " + (ConvertTo-VmmNote -Activity "Detach of $diskName" -ErrorRecord $_)) -Level Error
+            $bad.Add("$($n): detach failed")
             continue   # never delete a disk we could not confirm as detached
         }
 
@@ -56,13 +58,19 @@ function Dismount-VmmUpgradeMedia {
                     Write-VmmLog "$n : $diskName deleted" -Level Success
                 } catch {
                     Write-VmmLog ("$n : " + (ConvertTo-VmmNote -Activity "Delete of $diskName" -ErrorRecord $_)) -Level Error
+                    $bad.Add("$($n): delete of $diskName failed")
                 }
             }
         } elseif ($disk) {
             Write-VmmLog "$n : $diskName still attached to $(($disk.ManagedBy -split '/')[-1]) - skipped" -Level Error
+            $bad.Add("$($n): $diskName attached to another VM")
         }
     }
 
     # Verify: both lists should come back empty
     Get-VmmUpgradeMediaState -ResourceGroup $ResourceGroup -VMName $names -DiskSuffix $DiskSuffix
+    if ($bad.Count) {
+        throw (New-VmmErrorRecord -Activity "Upgrade media not removed on $($bad.Count) of $($names.Count) VM(s)." -Target ($bad -join ' | ') `
+            -Fix 'See the errors above; fix them and run it again (it only removes what is still there).' -Category InvalidResult -ErrorId 'VmmMediaIncomplete')
+    }
 }
