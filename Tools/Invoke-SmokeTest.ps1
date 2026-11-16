@@ -815,6 +815,21 @@ try {
     Remove-Item -LiteralPath $tmpExit -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# ---------------------------------------------------------------- 10. Last fallback (VmmFallback.ps1)
+Write-Host '10. Last fallback script and its companion file (new PowerShell processes, nothing on this machine changes)' -ForegroundColor Cyan
+$fbScript = Join-Path $repo 'VmMaintenance\Resources\Fallback\VmmFallback.ps1'
+Test-Step 'VmmFallback -Check: the shipped companion file is valid (exit 0)' {
+    $r = Invoke-SmokeChild -File $fbScript -ArgumentList '-Check', '-NoColor'
+    Assert-Equal $r.Code 0 ('VmmFallback -Check exit code: ' + $r.Out)
+}
+Test-Step 'VmmFallback usage errors and a missing companion file exit 2' {
+    Assert-Equal (Invoke-SmokeChild -File $fbScript -ArgumentList '-Snapshot', '-Check').Code 2 'two modes'
+    Assert-Equal (Invoke-SmokeChild -File $fbScript -ArgumentList '-Step', 'Nope').Code 2 'unknown step'
+    Assert-Equal (Invoke-SmokeChild -File $fbScript -ArgumentList '-Check', '-DataFile', 'no-such-file.psd1').Code 2 'missing companion'
+    Assert-Equal (Invoke-SmokeChild -File $fbScript -ArgumentList '-Check', '-WorkDir', 'D:\Work').Code 2 'work folder outside C:\Temp'
+    $true
+}
+
 # ---------------------------------------------------------------- Result
 Write-Host ''
 if ($script:fail -eq 0) {
