@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.15.2",
+  "version": "2.16.0",
   "stage": "alpha",
   "license": "MIT (LICENSE)",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
@@ -10,7 +10,8 @@
   },
   "programs": {
     "manager": "vmm (module VmMaintenance) on the laptop",
-    "extractor": "Resources/VmmHostAgent.ps1 template -> VmmExtractor.ps1 (any host) / VmmExtractor_<HOST>_<time>.ps1 (with plan); writes VMM_<HOST>_<time>.vmm on the host desktop; Manager imports from Collect.InboxFolders"
+    "extractor": "Resources/VmmHostAgent.ps1 template -> VmmExtractor.ps1 (any host) / VmmExtractor_<HOST>_<time>.ps1 (with plan); writes VMM_<HOST>_<time>.vmm on the host desktop; Manager imports from Collect.InboxFolders",
+    "fallback": "Resources/Fallback/VmmFallback.ps1 + VmmFallback.psd1 (companion data file): standalone last fallback on a host, no vmm/laptop/network; read-only snapshot VMMF_<HOST>_<kind>_<time>.txt (Key=Value, VMMF1, not encrypted) in C:\\Temp\\VmmFallback; guide steps Snapshot, Precheck, WindowsPatch, SqlPatch, SqlUpgrade, OsUpgrade, Disk, Postcheck, Finish with run / guidance-only / stage"
   },
   "workflow": [
     "Precheck",
@@ -295,13 +296,15 @@
     "docs/AI.md",
     "docs/MANAGER-GUIDE.md",
     "docs/TROUBLESHOOTING.md",
+    "docs/FALLBACK.md",
     "docs/RELEASE.md",
     "LICENSE",
     "llms.txt"
   ],
   "tests": [
     "Tools/Invoke-SmokeTest.ps1",
-    "tests/VmMaintenance.Tests.ps1"
+    "tests/VmMaintenance.Tests.ps1",
+    "tests/Fallback.Tests.ps1"
   ],
   "status": "Written and statically checked; not yet executed in PowerShell.",
   "creator": "Kay (GitHub: Hello-My-Name-Is-Kay)",
@@ -384,5 +387,17 @@
     "where": "Private/Enter-VmmInstanceLock.ps1, Exit-VmmInstanceLock.ps1; called by Invoke-VmmCli and Save-VmmStore; released on module removal",
     "how": "exclusive open handle on <data>/vmm.lock; vmm.lock.txt holds pid|start|command; error id VmmInstanceLocked, exit code 6",
     "read_only_commands": "log,status,plan,time,progress,vpn,guide,agents,media,github,policy,inventory,config,stage"
+  },
+  "fallback_exit_codes": {
+    "0": "done",
+    "1": "error or step failed",
+    "2": "usage or companion file invalid",
+    "3": "time window",
+    "5": "refused by policy or safety check",
+    "6": "another copy running",
+    "7": "snapshot saved, some reads failed",
+    "8": "cancelled",
+    "9": "reboot needed",
+    "10": "needs administrator"
   }
 }

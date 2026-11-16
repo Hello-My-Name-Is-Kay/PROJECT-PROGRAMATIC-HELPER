@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Console UI:252-293 | CLI:294-360 | GitHub integration:361-377 | OS policy:378-392 | Workflow per host:393-406 | Directory tree:407-440 | Where your data lives never:441-457 | Testing:458-471 | Errors:472-486 | Public repository and licenc:487-500 | Future your work AI model wi:501-510 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Last fallback no vmm no lapt:252-263 | Console UI:264-305 | CLI:306-372 | GitHub integration:373-389 | OS policy:390-404 | Workflow per host:405-418 | Directory tree:419-452 | Where your data lives never:453-469 | Testing:470-483 | Errors:484-498 | Public repository and licenc:499-512 | Future your work AI model wi:513-522 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.15.2 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-16
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.16.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-16
 
 ## TL;DR
 
@@ -248,6 +248,18 @@ the menu `1` Status, `2` Steps, `3` Run, `4` History, `5` Export, `6` Finish. It
 plan made for another host. The any-host Extractor never carries steps.
 
 The Extractor works on Windows PowerShell 2.0 to 5.1.
+
+## Last fallback (no vmm, no laptop, no network)
+
+When neither the terminal nor the Extractor can be used, copy `VmMaintenance\Resources\Fallback\VmmFallback.ps1`
+and its companion `VmmFallback.psd1` to the host and run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\VmmFallback.ps1`
+as administrator. It reads everything (OS, disks, patches, roles, SQL 64 and 32-bit with backups, software, agents),
+then guides nine steps (Snapshot, Precheck, WindowsPatch, SqlPatch, SqlUpgrade, OsUpgrade, Disk, Postcheck,
+Finish). Each step gives advice and offers **R** run (after hours, typed YES), **G** guidance only (manual
+commands, nothing changes) or **T** stage media. Media from a local folder only; it never reboots; result file
+`VMMF_<HOST>_...txt` (plain Key=Value, not encrypted) in `C:\Temp\VmmFallback`; exit codes 0-10.
+Everything it says and every rule it applies comes from the companion file (`-Check` validates it).
+Details: [docs/FALLBACK.md](docs/FALLBACK.md).
 
 ## Console UI
 
