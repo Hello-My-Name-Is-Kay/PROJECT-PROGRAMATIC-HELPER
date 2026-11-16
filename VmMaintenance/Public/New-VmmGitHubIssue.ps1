@@ -33,7 +33,7 @@ function New-VmmGitHubIssue {
     $safeTitle = ($t.Text -replace '"', "'" -replace '[\r\n]+', ' ').Trim()
     if ($safeTitle.Length -gt 200) { $safeTitle = $safeTitle.Substring(0, 200) }
 
-    Write-VmmLog "This will be posted to $repo (private repo; visible to its collaborators):" -Level Info
+    Write-VmmLog "This will be posted to $repo (anyone who can read that repository can read it; if it is public, everyone can):" -Level Info
     Write-Host "Title: $safeTitle"
     Write-VmmColor $b.Text -Role Text
     if ((Read-VmmPrompt 'Create the issue? (y/N)') -notmatch '^[yY]') { Write-VmmLog 'Not sent.' -Level Muted; return }

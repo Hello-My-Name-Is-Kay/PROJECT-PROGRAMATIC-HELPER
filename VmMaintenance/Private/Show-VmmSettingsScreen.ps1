@@ -43,7 +43,7 @@ function Show-VmmSettingsScreen {
         @('Reports.ManagerName', 'Greeting name in blocker reports (optional)')
         @('UI.Mouse', 'Mouse support in this console')
         @('UI.TrueColor', 'Auto | true | false: 24-bit theme colours (false = the 16 console colours)')
-        @('GitHub.Repo', 'owner/name of the private repository (updates, issues, PRs)')
+        @('GitHub.Repo', 'owner/name of the repository (updates, issues, PRs); issues are as visible as the repository')
         @('GitHub.SourcePath', 'Local git clone used by update and pull requests')
         @('GitHub.CheckOnStart', 'Check for updates when vmm starts')
         @('Vpn.Provider', 'None | CiscoSecureClient | Windows | Probe')
