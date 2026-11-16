@@ -487,7 +487,7 @@ Describe 'Batch commands finish every item, then fail when one failed' {
     It 'Extractor: -Finish and -Extract exit 1 when they did not finish' {
         $t = [IO.File]::ReadAllText((Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'))
         $t | Should -Match 'if \(\$Finish\) \{ if \(-not \(Invoke-Finish -Force\)\) \{ exit 1 \}; return \}'
-        $t | Should -Match 'if \(\$Extract\) \{ \$Script:LastResultFile = \$null; Export-Result -Auto; if \(-not \$Script:LastResultFile\) \{ exit 1 \}; return \}'
+        $t | Should -Match '(?s)if \(\$Extract\) \{\s+\$Script:LastResultFile = \$null; Export-Result -Auto\s+\$code = Get-ExtractExitCode \$Script:LastResultFile \$Script:Problems.Count\s+if \(\$code\) \{ exit \$code \}'
     }
     It 'the leak scan with -History fails outside a git clone instead of passing unchecked' {
         $copy = Join-Path $TestDrive 'leak'

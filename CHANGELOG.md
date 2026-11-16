@@ -1,5 +1,26 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.15.0 - 2026-11-16:4-61 | 2.14.0 - 2026-11-15:62-82 | 2.13.0 - 2026-11-15:83-112 | 2.12.0 - 2026-11-14:113-135 | 2.11.0 - 2026-11-14:136-154 | 2.10.0 - 2026-11-14:155-173 | 2.9.0 - 2026-11-14:174-186 | 2.8.0 - 2026-11-14:187-200 | 2.7.0 - 2026-11-14:201-218 | 2.6.0 - 2026-11-14:219-226 | 2.5.0 - 2026-11-14:227-239 | 2.4.0 - 2026-11-14:240-250 | 2.3.0 - 2026-11-14:251-265 | 2.2.1 - 2026-11-14:266-272 | 2.2.0 - 2026-11-14:273-280 | 2.1.0 - 2026-11-14:281-298 | 2.0.0 - 2026-11-14:299-304 | 1.0.0 - 2026-11-14:305-309 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.15.1 - 2026-11-16:4-24 | 2.15.0 - 2026-11-16:25-82 | 2.14.0 - 2026-11-15:83-103 | 2.13.0 - 2026-11-15:104-133 | 2.12.0 - 2026-11-14:134-156 | 2.11.0 - 2026-11-14:157-175 | 2.10.0 - 2026-11-14:176-194 | 2.9.0 - 2026-11-14:195-207 | 2.8.0 - 2026-11-14:208-221 | 2.7.0 - 2026-11-14:222-239 | 2.6.0 - 2026-11-14:240-247 | 2.5.0 - 2026-11-14:248-260 | 2.4.0 - 2026-11-14:261-271 | 2.3.0 - 2026-11-14:272-286 | 2.2.1 - 2026-11-14:287-293 | 2.2.0 - 2026-11-14:294-301 | 2.1.0 - 2026-11-14:302-319 | 2.0.0 - 2026-11-14:320-325 | 1.0.0 - 2026-11-14:326-330 -->
 # Changelog
+
+## 2.15.1 - 2026-11-16
+
+The Extractor (the .ps1 that is copied to a host and run there) reviewed end to end. Still **alpha**.
+
+- **Runs on PowerShell 7 too.** All nine WMI reads used `Get-WmiObject`, which PowerShell 7 does not have: every
+  field of the snapshot would have been empty with a Problem line each. The reads use `Get-WmiObject` where it
+  exists (PowerShell 2.0 to 5.1) and `Get-CimInstance` where it does not. The last boot time handles both
+  formats. The inventory probe the laptop pastes into the RDP collector got the same reader, inside itself.
+- **SQL instances whose name starts with "PS" are read.** The filter `Name -notlike 'PS*'` was meant to drop
+  PowerShell's own properties; an instance such as PSQL01 was skipped without any message. Only those
+  properties are left out now, by exact name.
+- **The last result file survives a failed write.** The older result files were deleted before the new one was
+  written; a full disk or no access lost the previous snapshot. The new file is written first now.
+- **`-Extract` has an exit code for failed reads:** 0 = saved and every read worked, 1 = not saved, 2 = saved but
+  some reads failed (they are `Problem=` lines in the result). Before, 2 and 0 were both 0.
+- **32-bit SQL instances are read.** Only the 64-bit registry view was read, so a 32-bit instance (registered under
+  Wow6432Node) was missing from the snapshot. The Extractor, the RDP collector and the laptop fleet check read both
+  views; a 32-bit instance is tagged `(32-bit)` after its edition, a name in both views is listed once.
+- Tests: new `tests\Extractor.Tests.ps1` (13 Pester tests: both WMI branches, the probe on both, no bare
+  `Get-WmiObject` left, the SQL names, both SQL registry views, the result file order and failure, the exit code).
 
 ## 2.15.0 - 2026-11-16
 
@@ -306,4 +327,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-16 04:02 UTC_
+_Last updated: 2026-11-16 05:07 UTC_

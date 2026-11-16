@@ -438,7 +438,7 @@ Describe 'Non-invasive snapshot, terminal first' {
     }
     It 'a read that fails becomes a Problem line and the rest still goes' {
         $ast = [System.Management.Automation.Language.Parser]::ParseInput($script:SnapText, [ref]$null, [ref]$null)
-        foreach ($n in 'Protect-Text', 'Add-Problem', 'Get-Facts', 'Test-Admin') {
+        foreach ($n in 'Protect-Text', 'Add-Problem', 'Get-Facts', 'Get-Wmi', 'Test-Admin') {
             $fn = $ast.FindAll({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq $n }, $true) | Select-Object -First 1
             . ([scriptblock]::Create($fn.Extent.Text))
         }

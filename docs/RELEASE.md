@@ -1,19 +1,19 @@
-<!-- SUMMARY: VmMaintenance release readiness: status, checklist, known limitations, first real run, release steps (Kay go only). SECTIONS: Status:7-15 | Readiness checklist (2.15.0):16-36 | Known limitations:37-51 | First run on real hosts (recommended before ending alpha):52-64 | Release steps (only after Kay says go):65-76 -->
+<!-- SUMMARY: VmMaintenance release readiness: status, checklist, known limitations, first real run, release steps (Kay go only). SECTIONS: Status:7-15 | Readiness checklist (2.15.1):16-36 | Known limitations:37-51 | First run on real hosts (recommended before ending alpha):52-64 | Release steps (only after Kay says go):65-76 -->
 # Release readiness
 
-What has to be true before VmMaintenance leaves **alpha**, what was checked for 2.15.0, what is still open, and
+What has to be true before VmMaintenance leaves **alpha**, what was checked for 2.15.1, what is still open, and
 the exact steps to make the release. Nothing here is done automatically: the release is made only on Kay's go.
 
 ## Status
 
 | | |
 |---|---|
-| Version | 2.15.0 |
+| Version | 2.15.1 |
 | Stage | **alpha** (`PrivateData.PSData.Prerelease = 'alpha'` in the manifest, "alpha" in the README header) |
 | Automated tests | GitHub checks on Windows PowerShell 5.1 and PowerShell 7: leak scan (files and full history), offline smoke test, Pester, script analyzer (errors) |
 | Real environment | **Not run yet** on a real host, Azure subscription, VPN, Lansweeper database or interactive console |
 
-## Readiness checklist (2.15.0)
+## Readiness checklist (2.15.1)
 
 | Area | Check | State |
 |---|---|---|
@@ -25,14 +25,14 @@ the exact steps to make the release. Nothing here is done automatically: the rel
 | Tests | Smoke + Pester green on PS 5.1 and 7 | Done in CI for this branch (counts in the README) |
 | Exits | Every command and entry script ends with the right exit code; failed and blocked steps are recorded and raised; Ctrl+C is logged; credentials are cleared; a disk expansion that stops half way puts the VMs back | Done in 2.15.0 (`tests\Exits.Tests.ps1`, smoke section 9) |
 | Tests | First read-only run on a few real hosts | **Open** (see "First run on real hosts") |
-| Docs | README, CHANGELOG, USAGE, WORKFLOW, ARCHITECTURE, SECURITY, AI | Done, reviewed for 2.15.0 |
+| Docs | README, CHANGELOG, USAGE, WORKFLOW, ARCHITECTURE, SECURITY, AI | Done, reviewed for 2.15.1 |
 | Docs | Manager guide, troubleshooting, this release page | Done (2.15.0: exit codes per command in TROUBLESHOOTING) |
 | Versions | Manifest, Extractor, README, PROJECT.json and CHANGELOG agree | Done (a Pester test enforces it) |
 | Repository | `.gitignore` covers configs, lists, data, keys, logs, reports, agents, `.rdp`/`.rdg`, certificates | Done |
 | Repository | No dead files | Done: every private function is used, every public function exported |
 | Repository | Licence | **Open: decide.** `LICENSE` says proprietary, internal use, all rights reserved. Change it if your employer owns the code under other terms |
 | Delivery | `VmMaintenance.zip` and folder in the project files match the release commit | **Open**: rebuild from the merge commit (`git archive`) after the merge |
-| Merge | PR for 2.15.0 (exits, error handling, logging) reviewed and merged | **Open: Kay** |
+| Merge | PR #3 (2.15.0: exits, error handling, logging) merged 2026-11-16; PR for 2.15.1 (Extractor fixes) reviewed and merged | **Open: Kay** |
 
 ## Known limitations
 
@@ -64,7 +64,7 @@ Record the results in the CHANGELOG under the release that ends alpha.
 
 ## Release steps (only after Kay says go)
 
-1. Merge the open pull request on `main` (2.15.0).
+1. Merge the open pull request on `main` (2.15.1).
 2. On a branch: remove `Prerelease = 'alpha'` from `VmMaintenance\VmMaintenance.psd1`, drop "(alpha)" from the
    README header and from the Status table above, add the CHANGELOG entry; open a pull request; wait for green
    checks; merge.
@@ -73,4 +73,4 @@ Record the results in the CHANGELOG under the release that ends alpha.
    (`git archive --format=zip -o VmMaintenance.zip v<version>`).
 5. Send the manager the [manager guide](MANAGER-GUIDE.md) and the release link.
 
-_Last updated: 2026-11-16 04:00 UTC_
+_Last updated: 2026-11-16 04:59 UTC_
