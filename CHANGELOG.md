@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.16.0 - 2026-11-16:4-31 | 2.15.1 - 2026-11-16:32-52 | 2.15.0 - 2026-11-16:53-110 | 2.14.0 - 2026-11-15:111-131 | 2.13.0 - 2026-11-15:132-161 | 2.12.0 - 2026-11-14:162-184 | 2.11.0 - 2026-11-14:185-203 | 2.10.0 - 2026-11-14:204-222 | 2.9.0 - 2026-11-14:223-235 | 2.8.0 - 2026-11-14:236-249 | 2.7.0 - 2026-11-14:250-267 | 2.6.0 - 2026-11-14:268-275 | 2.5.0 - 2026-11-14:276-288 | 2.4.0 - 2026-11-14:289-299 | 2.3.0 - 2026-11-14:300-314 | 2.2.1 - 2026-11-14:315-321 | 2.2.0 - 2026-11-14:322-329 | 2.1.0 - 2026-11-14:330-347 | 2.0.0 - 2026-11-14:348-353 | 1.0.0 - 2026-11-14:354-358 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.16.0 - 2026-11-16:4-31 | 2.15.2 - 2026-11-16:32-46 | 2.15.1 - 2026-11-16:47-67 | 2.15.0 - 2026-11-16:68-125 | 2.14.0 - 2026-11-15:126-146 | 2.13.0 - 2026-11-15:147-176 | 2.12.0 - 2026-11-14:177-199 | 2.11.0 - 2026-11-14:200-218 | 2.10.0 - 2026-11-14:219-237 | 2.9.0 - 2026-11-14:238-250 | 2.8.0 - 2026-11-14:251-264 | 2.7.0 - 2026-11-14:265-282 | 2.6.0 - 2026-11-14:283-290 | 2.5.0 - 2026-11-14:291-303 | 2.4.0 - 2026-11-14:304-314 | 2.3.0 - 2026-11-14:315-329 | 2.2.1 - 2026-11-14:330-336 | 2.2.0 - 2026-11-14:337-344 | 2.1.0 - 2026-11-14:345-362 | 2.0.0 - 2026-11-14:363-368 | 1.0.0 - 2026-11-14:369-373 -->
 # Changelog
 
 ## 2.16.0 - 2026-11-16
@@ -28,6 +28,21 @@ New: the **last fallback**, a standalone script for a host that neither vmm nor 
   disk, patch, feature, software and policy lines) and a sanitized log in `C:\Temp\VmmFallback`. Not encrypted;
   a vmm import is not built yet.
 - Docs: `docs\FALLBACK.md`. Tests: `tests\Fallback.Tests.ps1` (Pester) and smoke section 10.
+
+## 2.15.2 - 2026-11-16
+
+The Extractor file in the repository checked and labelled as what it is: the template. Still **alpha**.
+
+- **The repository file is the template, not the host copy.** `Resources\VmmHostAgent.ps1` holds no laptop key, so it
+  cannot save a result (it says so and exits 1 with `-Extract`). `vmm extractor` builds the file to take to a host. The
+  file header and TROUBLESHOOTING now say so. Nothing environment-specific is committed: the key is per laptop and
+  its private half never leaves that laptop, so a committed ready-to-run build would be wrong.
+- **Tests that keep the template and the generator honest** (they run in CI on Windows PowerShell 5.1 and 7):
+  the template carries an empty plan card and no key, address, share, e-mail or id; the build equals the template
+  minus the steps code plus the plan card, line by line; a static scan shows nothing in the snapshot code that
+  Windows PowerShell 2.0 lacks (the only newer cmdlet, `Get-CimInstance`, is used only when `Get-WmiObject` is
+  missing).
+- Not tested: a real run on PowerShell 2.0 (Server 2008 R2) or on any real host.
 
 ## 2.15.1 - 2026-11-16
 

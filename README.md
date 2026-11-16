@@ -436,7 +436,7 @@ VmMaintenance\
     VmMaintenance.psd1 / .psm1      manifest / loader
     Public\                         exported functions, one per file
     Private\                        helpers and TUI screens, one per file
-    Resources\                      VmmHostAgent.ps1 (program 2), VmmConsoleInput.cs, LansweeperDiskSpace.sql
+    Resources\                      VmmHostAgent.ps1 (program 2, the template: `vmm extractor` builds the host copy), VmmConsoleInput.cs, LansweeperDiskSpace.sql
   Scripts\
     vmm.ps1                         CLI/UI entry point
     _Bootstrap.ps1 + 10 classic task scripts
@@ -477,7 +477,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1 -History                                # before a release: whole git history
 ```
 
-Status (2.15.1, alpha): the offline smoke test (292 checks) and Pester (141 tests) pass on GitHub's Windows runners in
+Status (2.15.2, alpha): the offline smoke test (293 checks) and Pester (144 tests) pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 

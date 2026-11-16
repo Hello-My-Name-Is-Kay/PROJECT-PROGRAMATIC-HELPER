@@ -352,6 +352,27 @@ if (-not $isWin) {
             if ($card -match '(?m)^(Host|Share|UpgradeCommand)=') { throw 'snapshot card carries host, share or upgrade command' }
             $true
         }
+        Test-Step 'Extractor build equals the repository template, minus the steps code, plus the plan card' {
+            $f = & $m { Export-VmmHostAgent -Generic -NoClipboard -PassThru }
+            $strip = {
+                param($s)
+                $o = New-Object System.Collections.Generic.List[string]; $skip = $false
+                foreach ($l in ($s -split "`r?`n")) {
+                    if ($l -like '# VMM-STEPS-BEGIN*') { $skip = $true; continue }
+                    if ($l -like '# VMM-STEPS-END*') { $skip = $false; continue }
+                    if ($skip -or $l -like '$CardText = *' -or $l -like '# (snapshot extractor: built without the steps code)*') { continue }
+                    $o.Add($l)
+                }
+                $o -join "`n"
+            }
+            $tpl = & $strip ([IO.File]::ReadAllText((Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1')))
+            $built = & $strip ([IO.File]::ReadAllText($f.FullName))
+            # The template alone must be a generic file: empty card, no key
+            $raw = [IO.File]::ReadAllText((Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'))
+            if ($raw -notmatch "(?m)^\`$CardText = ''   # VMM-CARD") { throw 'the template in the repository has a plan card' }
+            if ($built -ne $tpl) { throw 'the generator changed more than the plan card and the steps code' }
+            $true
+        }
         Test-Step 'Extractor per host: snapshot by default, steps only with Extractor.AllowSteps' {
             $f = & $m { Export-VmmHostAgent -HostName 'smoke-host' -NoClipboard -PassThru }
             $text = [IO.File]::ReadAllText($f.FullName)
