@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.15.0",
+  "version": "2.15.1",
   "stage": "alpha",
   "license": "proprietary, internal use (LICENSE)",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",

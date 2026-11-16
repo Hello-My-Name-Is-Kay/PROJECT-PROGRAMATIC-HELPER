@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance troubleshooting: first steps, exit codes, common errors by id, encrypted file recovery, log locations. SECTIONS: First steps:7-18 | Exit codes (vmm and the entry scripts):19-52 | Common problems:53-80 | Encrypted files:81-91 | Where to look:92-101 -->
+<!-- SUMMARY: VmMaintenance troubleshooting: first steps, exit codes, common errors by id, encrypted file recovery, log locations. SECTIONS: First steps:7-18 | Exit codes (vmm and the entry scripts):19-52 | Common problems:53-81 | Encrypted files:82-92 | Where to look:93-102 -->
 # Troubleshooting
 
 Every error vmm raises has the same shape: what failed, on which target, the raw error, the likely cause and the
@@ -75,6 +75,7 @@ host before running it again.
 | Resize errors | OS disk resizes only while deallocated, never smaller | vmm deallocates first; check `Get-AzVM -Status` if it was interrupted |
 | Login failed for user / `VmmSqlConnect` | Lansweeper SQL login wrong or Windows-auth only | Test in SSMS; ask the DBA |
 | `VmmInstanceLocked` | Another vmm window holds the lock | Close it; the lock is released automatically when a process ends |
+| Extractor (`-Extract`) exits 2 | The result file is saved, but some reads on the host failed | Normal on a restricted host: the failed reads are `Problem=` lines in the result and the rest is complete. Exit 1 = nothing was saved |
 | `VmmAgentResult`, `VmmCollectorName` | Extractor result incomplete, from another laptop, or tampered | Run the Extractor again on the host and copy the whole file |
 | Scripts blocked by policy | Downloaded files still marked, or Group Policy enforces AllSigned | `Get-ChildItem -Recurse . \| Unblock-File`; for AllSigned, sign the scripts with your code-signing certificate |
 
@@ -98,4 +99,4 @@ host before running it again.
 | `%APPDATA%\VmMaintenance\config.psd1` | Your settings (`vmm config`) |
 | `%LOCALAPPDATA%\VmMaintenance\data\` | Encrypted store, keys, backups, `vmm.lock` |
 
-_Last updated: 2026-11-16 04:00 UTC_
+_Last updated: 2026-11-16 04:59 UTC_

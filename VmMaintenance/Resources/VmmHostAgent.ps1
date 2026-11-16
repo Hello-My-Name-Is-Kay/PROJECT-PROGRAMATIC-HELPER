@@ -32,7 +32,8 @@
     [SEC] Treat everything shown here as business data carried over the VPN: do not copy it anywhere
     other than the vmm Manager on your laptop.
 .PARAMETER Extract
-    No menu: take the snapshot, save the result file on the desktop, exit (exit code 1 when it was not saved).
+    No menu: take the snapshot, save the result file on the desktop, exit. Exit code 0 = saved and every read
+    worked, 1 = not saved, 2 = saved, but some reads failed (they are listed as Problem= in the result).
 .PARAMETER Finish
     No menu: delete this file and its result files from the host (exit code 1 when something stays behind).
 .PARAMETER NoClipboard
@@ -54,7 +55,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.15.0'
+$AgentVersion = '2.15.1'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
@@ -162,6 +163,30 @@ function Get-FileSha256([string]$Path) {
     try { return ([BitConverter]::ToString($sha.ComputeHash($fs)) -replace '-', '') }
     finally { $fs.Close(); $sha.Clear() }
 }
+function Get-Wmi([string]$Class, [string]$Filter) {
+    # One WMI read. Get-WmiObject (PowerShell 2.0 to 5.1); Get-CimInstance where Get-WmiObject does not exist
+    # (PowerShell 7 on a host that has it installed). Throws when the class cannot be read.
+    $cim = $Script:WmiUseCim   # never set on a host; the tests set it to reach both branches
+    if ($null -eq $cim) { $cim = -not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue) }
+    if (-not $cim) {
+        if ($Filter) { return Get-WmiObject -Class $Class -Filter $Filter -ErrorAction Stop }
+        return Get-WmiObject -Class $Class -ErrorAction Stop
+    }
+    if ($Filter) { return Get-CimInstance -ClassName $Class -Filter $Filter -ErrorAction Stop }
+    Get-CimInstance -ClassName $Class -ErrorAction Stop
+}
+function Get-SqlInstanceNames($Props) {
+    # Instance name = registry value name under ...\Instance Names\SQL. Only PowerShell's own provider properties
+    # are left out (by exact name): an instance called PSQL01 is an instance.
+    $own = @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider')
+    foreach ($n in @($Props.PSObject.Properties)) { if ($own -notcontains $n.Name) { $n } }
+}
+function Get-ExtractExitCode($File, [int]$Problems) {
+    # -Extract exit code: 0 saved and every read worked | 1 not saved | 2 saved, but some reads failed (Problem= lines)
+    if (-not $File) { return 1 }
+    if ($Problems -gt 0) { return 2 }
+    0
+}
 function Get-PackageState {
     $res = @()
     foreach ($p in $Card.Packages) {
@@ -237,8 +262,20 @@ function Get-InvProbe($Services, $Agents, $SkipLicence) {
     # Also pasted into the RDP collector by the laptop, so it must stay self-contained (with Get-AgentVerdict).
     $out = @()
     $why = { param($e) $m = ''; try { $m = "$($e.Exception.Message)" } catch { }; $m = $m -replace '[\r\n|]+', ' '; if ($m.Length -gt 100) { $m = $m.Substring(0, 100) }; $m }
+    # WMI read: Get-WmiObject (PowerShell 2.0 to 5.1) or Get-CimInstance (PowerShell 7); throws when the class cannot be read
+    $wmi = {
+        param($Class, $Filter)
+        $cim = $Script:WmiUseCim   # never set on a host; the tests set it to reach both branches
+        if ($null -eq $cim) { $cim = -not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue) }
+        if (-not $cim) {
+            if ($Filter) { return Get-WmiObject -Class $Class -Filter $Filter -ErrorAction Stop }
+            return Get-WmiObject -Class $Class -ErrorAction Stop
+        }
+        if ($Filter) { return Get-CimInstance -ClassName $Class -Filter $Filter -ErrorAction Stop }
+        Get-CimInstance -ClassName $Class -ErrorAction Stop
+    }
     try {
-        $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction Stop
+        $cs = & $wmi 'Win32_ComputerSystem'
         $dom = "$($cs.Domain)"
         if (-not $cs.PartOfDomain) { $dom = 'WORKGROUP (' + $dom + ')' }
         $out += 'Inv.Domain=' + $dom
@@ -248,7 +285,7 @@ function Get-InvProbe($Services, $Agents, $SkipLicence) {
     } catch { $out += 'Problem=Domain: ' + (& $why $_) }
     try {
         $ip = ''
-        foreach ($a in @(Get-WmiObject Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True' -ErrorAction Stop)) {
+        foreach ($a in @(& $wmi 'Win32_NetworkAdapterConfiguration' 'IPEnabled=True')) {
             foreach ($x in @($a.IPAddress)) { if (-not $ip -and "$x" -match '^\d{1,3}(\.\d{1,3}){3}$' -and "$x" -notmatch '^(127|169\.254)\.') { $ip = "$x" } }
         }
         $out += 'Inv.IPAddress=' + $ip
@@ -257,13 +294,13 @@ function Get-InvProbe($Services, $Agents, $SkipLicence) {
         $lic = 'Unknown (run slmgr /dli)'
         $names = @{ 0 = 'Unlicensed'; 1 = 'Licensed'; 2 = 'Grace period (OOB)'; 3 = 'Grace period (OOT)'; 4 = 'Grace period (non-genuine)'; 5 = 'Notification'; 6 = 'Grace period (extended)' }
         try {
-            $p = @(Get-WmiObject SoftwareLicensingProduct -Filter "Name LIKE 'Windows%' AND PartialProductKey IS NOT NULL" -ErrorAction Stop)
+            $p = @(& $wmi 'SoftwareLicensingProduct' "Name LIKE 'Windows%' AND PartialProductKey IS NOT NULL")
             if ($p.Count) { $lic = $names[[int]$p[0].LicenseStatus] } else { $lic = 'No product key installed' }
         } catch { $out += 'Problem=Windows licence: ' + (& $why $_) }
         $out += 'Inv.WindowsLicense=' + $lic
     }
     $svc = $null
-    try { $svc = @(Get-WmiObject Win32_Service -ErrorAction Stop) } catch { $out += 'Problem=Services (agent columns left empty): ' + (& $why $_) }
+    try { $svc = @(& $wmi 'Win32_Service') } catch { $out += 'Problem=Services (agent columns left empty): ' + (& $why $_) }
     if ($null -ne $svc -and $Agents -and $Agents.Count) {
         # Installed programs (name + version) from both Uninstall keys, read once (never the WMI product class: querying it starts MSI repairs)
         $apps = @()
@@ -289,7 +326,7 @@ function Get-InvProbe($Services, $Agents, $SkipLicence) {
                         if ("$($hit.PathName)" -match '^\s*"([^"]+)"') { $exe = $Matches[1] } elseif ("$($hit.PathName)" -match '^\s*(\S+\.exe)') { $exe = $Matches[1] }
                         if ($exe -and (Test-Path -LiteralPath $exe)) { try { $ver = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion } catch { } }
                     }
-                    foreach ($d in @($sp.Drivers)) { if ($d) { $dr = Get-WmiObject Win32_SystemDriver -Filter ("Name='" + $d + "'") -ErrorAction SilentlyContinue; if (-not $dr -or $dr.State -ne 'Running') { $dd += $d } } }
+                    foreach ($d in @($sp.Drivers)) { if ($d) { $dr = $null; try { $dr = & $wmi 'Win32_SystemDriver' ("Name='" + $d + "'") } catch { }; if (-not $dr -or $dr.State -ne 'Running') { $dd += $d } } }
                     # Listening on any address (language-neutral: the foreign address column is the any-address with port 0)
                     if ($listen) { foreach ($p in @($sp.Ports)) { if ($p -and $listen -notmatch (':' + $p + '\s+(0\.0\.0\.0|\[::\]):0\s')) { $pc += ("$p not listening") } } }
                     if ($sp.Log -and (Test-Path -LiteralPath $sp.Log)) { $age = ((Get-Date) - (Get-Item -LiteralPath $sp.Log).LastWriteTime).TotalHours }
@@ -326,13 +363,18 @@ function Get-Facts {
     }
     try { $f.Admin = (Test-Admin) } catch { }
     try {
-        $os = Get-WmiObject Win32_OperatingSystem -ErrorAction Stop
+        $os = Get-Wmi 'Win32_OperatingSystem'
         $f.OS = "$($os.Caption)".Trim(); $f.Version = $os.Version; $f.Build = $os.BuildNumber; $f.SP = $os.ServicePackMajorVersion
         try { $f.Lang = (New-Object Globalization.CultureInfo([int]$os.OSLanguage)).Name } catch { }
-        try { $f.LastBoot = $os.ConvertToDateTime($os.LastBootUpTime).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') } catch { }
+        try {
+            # Get-WmiObject gives the DMTF text, Get-CimInstance a DateTime
+            $lb = $os.LastBootUpTime
+            if ($lb -isnot [DateTime]) { $lb = $os.ConvertToDateTime($lb) }
+            $f.LastBoot = $lb.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        } catch { }
     } catch { Add-Problem 'Operating system' $_ }
     try {
-        $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction Stop
+        $cs = Get-Wmi 'Win32_ComputerSystem'
         $f.Manufacturer = $cs.Manufacturer; $f.Model = $cs.Model
         $f.Platform = 'Physical'
         if ($cs.Manufacturer -like '*VMware*' -or $cs.Model -like '*VMware*') { $f.Platform = 'VMware' }
@@ -342,7 +384,7 @@ function Get-Facts {
         }
     } catch { Add-Problem 'Computer model' $_ }
     try {
-        $c = Get-WmiObject Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
+        $c = Get-Wmi 'Win32_LogicalDisk' "DeviceID='C:'"
         $f.CTotalGB = [math]::Round($c.Size / 1GB, 1); $f.CFreeGB = [math]::Round($c.FreeSpace / 1GB, 1)
     } catch { Add-Problem 'C: drive' $_ }
     try {
@@ -350,7 +392,7 @@ function Get-Facts {
         $k = 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL'
         if (Test-Path $k) {
             $props = Get-ItemProperty $k
-            foreach ($n in ($props.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' })) {
+            foreach ($n in @(Get-SqlInstanceNames $props)) {
                 try {
                     $s = Get-ItemProperty ('HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\' + $n.Value + '\Setup')
                     $sql += ($n.Name + ' ' + $s.PatchLevel + ' ' + $s.Edition)
@@ -702,13 +744,17 @@ function Protect-Result([string]$Text) {
         $aes.Clear(); $rsa.Clear()
     }
 }
-function Save-ResultFile([string]$Line) {
-    # Result file on this user's desktop, one per host: VMM_<HOST>_<yyyyMMdd_HHmm>.vmm (older ones replaced).
-    $desk = [Environment]::GetFolderPath('Desktop')
+function Save-ResultFile([string]$Line, [string]$Desktop) {
+    # Result file on this user's desktop, one per host: VMM_<HOST>_<yyyyMMdd_HHmm>.vmm. The new file is written
+    # first and the older ones are removed after: a write that fails (disk full, no access) keeps the last snapshot.
+    $desk = $Desktop
+    if (-not $desk) { $desk = [Environment]::GetFolderPath('Desktop') }
     if (-not $desk -or -not (Test-Path -LiteralPath $desk)) { $desk = Join-Path $env:USERPROFILE 'Desktop' }
-    Get-ChildItem -LiteralPath $desk -Filter ('VMM_' + $env:COMPUTERNAME + '_*.vmm') -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     $file = Join-Path $desk ('VMM_' + $env:COMPUTERNAME + '_' + (Get-Date).ToString('yyyyMMdd_HHmm') + '.vmm')
     [IO.File]::WriteAllText($file, $Line, [Text.Encoding]::ASCII)
+    foreach ($old in @(Get-ChildItem -LiteralPath $desk -Filter ('VMM_' + $env:COMPUTERNAME + '_*.vmm') -ErrorAction SilentlyContinue)) {
+        if ($old.FullName -ne $file) { Remove-Item -LiteralPath $old.FullName -Force -ErrorAction SilentlyContinue }
+    }
     $file
 }
 function Export-Result([switch]$Auto) {
@@ -817,7 +863,7 @@ function Show-Header {
         }
     }
     try {
-        $pf = New-Object PSObject -Property @{ OS = "$((Get-WmiObject Win32_OperatingSystem).Caption)"; Platform = $Card.Platform }
+        $pf = New-Object PSObject -Property @{ OS = "$((Get-Wmi 'Win32_OperatingSystem').Caption)"; Platform = $Card.Platform }
         $pol = Get-Policy $pf
         if (-not $pol.Workable) { Warn (' POLICY: ' + $pol.Why) }
         foreach ($x in $pol.Warnings) { Bad (' WARN MANAGEMENT: ' + $x) }
@@ -857,7 +903,12 @@ function Pause-Agent { Write-Host ''; Read-Host ' Enter to continue' | Out-Null 
 # ============================================================== main
 try {
     if ($Finish) { if (-not (Invoke-Finish -Force)) { exit 1 }; return }
-    if ($Extract) { $Script:LastResultFile = $null; Export-Result -Auto; if (-not $Script:LastResultFile) { exit 1 }; return }
+    if ($Extract) {
+        $Script:LastResultFile = $null; Export-Result -Auto
+        $code = Get-ExtractExitCode $Script:LastResultFile $Script:Problems.Count
+        if ($code) { exit $code }
+        return
+    }
 
     # Snapshot straight away, so the result file is on the desktop before any key is pressed.
     Show-Header
