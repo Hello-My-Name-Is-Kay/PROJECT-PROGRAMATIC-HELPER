@@ -336,9 +336,14 @@ Describe 'Stage copies through the admin-share drive and checks every file' {
         (InModuleScope VmMaintenance { @($script:VmmLogBuffer | ForEach-Object Text) -join "`n" }) | Should -Match 'right size but the wrong SHA256: copying it again'
     }
     It 'a copy that arrives corrupt is deleted and ends with VmmHashMismatch' {
-        Mock -ModuleName VmMaintenance Copy-VmmFileWithProgress { Microsoft.PowerShell.Management\Set-Content -LiteralPath $Destination -Value 'corrupt' -NoNewline }
+        # What a corrupt network copy looks like to Stage: the copy on the host does not have the share's SHA256.
+        # The real copy runs through the drive (a stand-in that wrote through the drive from the test's own scope
+        # failed on PowerShell 7 for Windows only, with DirectoryNotFound, while Stage's own writes worked).
+        $badSha = '0' * 64
+        Mock -ModuleName VmMaintenance Test-VmmStagingSource { [pscustomobject]@{ Name = 'pkg.bin'; File = $script:Src; DestName = 'pkg.bin'; Sha256 = $badSha; SizeMB = 0; Gate = $null; Note = $null } }
         { Copy-VmmStagingPackage -HostName 'stage-host' } | Should -Throw -ErrorId 'VmmHashMismatch*'
-        Join-Path $script:FakeC 'Temp\pkg.bin' | Should -Not -Exist
+        # Stage created C:\Temp on the host and left nothing in it: no corrupt copy, no .part file
+        @(Get-ChildItem -LiteralPath (Join-Path $script:FakeC 'Temp') -Force -ErrorAction Stop).Count | Should -Be 0
     }
     It 'a copy that fails at the end leaves no .part file and no destination file' {
         Mock -ModuleName VmMaintenance Move-Item { throw 'There is not enough space on the disk.' }
