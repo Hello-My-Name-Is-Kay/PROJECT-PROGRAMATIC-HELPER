@@ -115,15 +115,14 @@
             Id = 'WindowsPatch'; Title = 'Windows patches (security and cumulative updates)'
             Advice = @(
                 'Offline: installs *.msu (wusa) and *.cab (DISM) found in {MediaDir}\Windows, in name order (prefix 01-, 02- to set it).'
-                'Online: if Windows Update or WSUS answers, it can list and install what it offers instead.'
+                'Local media only: nothing is downloaded, not even from Windows Update or WSUS.'
                 'Install the servicing stack update first when the cumulative update needs it.'
-                'Changes only after hours. A reboot is usually needed: the script never reboots by itself.'
+                'Changes only after hours, after you confirm the rollback snapshot/backup. A reboot is usually needed: the script never reboots by itself.'
             )
             Manual = @(
                 'Copy the .msu files to {MediaDir}\Windows.'
                 'wusa.exe "{MediaDir}\Windows\<file>.msu" /quiet /norestart     (exit 0 ok, 3010 reboot needed, 2359302 already installed)'
                 'dism.exe /online /add-package /packagepath:"{MediaDir}\Windows\<file>.cab" /quiet /norestart'
-                'Or: Settings / sconfig > 6 Download and install updates.'
                 'Reboot in the maintenance window, then run the snapshot again.'
             )
         }

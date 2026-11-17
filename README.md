@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-251 | Last fallback no vmm no lapt:252-263 | Console UI:264-305 | CLI:306-372 | GitHub integration:373-389 | OS policy:390-404 | Workflow per host:405-422 | Directory tree:423-456 | Where your data lives never:457-473 | Testing:474-487 | Errors:488-502 | Public repository and licenc:503-516 | Future your work AI model wi:517-526 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-256 | Last fallback no vmm no lapt:257-268 | Console UI:269-310 | CLI:311-377 | GitHub integration:378-394 | OS policy:395-409 | Workflow per host:410-427 | Directory tree:428-461 | Where your data lives never:462-478 | Testing:479-492 | Errors:493-507 | Public repository and licenc:508-521 | Future your work AI model wi:522-531 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.17.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-16
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.17.1 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-17
 
 ## TL;DR
 
@@ -245,9 +245,14 @@ saves the same kind of file (not encrypted).
 makes the per-host Extractor (`X` on a host) also carry the six workflow steps, with the same Lisbon time
 rules and override rules, a sanitized log in `C:\Temp\VmmAgent` (Administrators, SYSTEM and you only) and
 the menu `1` Status, `2` Steps, `3` Run, `4` History, `5` Export, `6` Finish. It refuses change steps for a
-plan made for another host. The any-host Extractor never carries steps.
+plan made for another host or older than its `ValidHours` (you type the plan's host name to confirm), never
+overrides disk expansion in business hours, and reads the time window again after you confirm. The any-host
+Extractor never carries steps.
 
-The Extractor works on Windows PowerShell 2.0 to 5.1.
+The Extractor works on Windows PowerShell 2.0 to 5.1 (from 2.17.1: earlier builds stopped with a parse error on
+PowerShell 2.0, the default on Server 2008 R2, so build a new one with `vmm extractor`). On Server 2008 R2 the
+default execution policy is Restricted and right-click > Run with PowerShell may refuse the file: use the
+command line above. When it stops with an error, the window waits for Enter so the message stays readable.
 
 ## Last fallback (no vmm, no laptop, no network)
 
@@ -481,7 +486,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1 -History                                # before a release: whole git history
 ```
 
-Status (2.17.0, alpha): the offline smoke test and Pester pass on GitHub's Windows runners in
+Status (2.17.1, alpha): the offline smoke test and Pester pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -523,4 +528,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-16 12:30 UTC_
+_Last updated: 2026-11-17 17:20 UTC_

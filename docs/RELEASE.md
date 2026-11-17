@@ -8,7 +8,7 @@ the exact steps to make the release. Nothing here is done automatically: the rel
 
 | | |
 |---|---|
-| Version | 2.17.0 |
+| Version | 2.17.1 |
 | Stage | **alpha** (`PrivateData.PSData.Prerelease = 'alpha'` in the manifest, "alpha" in the README header) |
 | Automated tests | GitHub checks on Windows PowerShell 5.1 and PowerShell 7: leak scan (files and full history), offline smoke test, Pester, script analyzer (errors) |
 | Real environment | **Not run yet** on a real host, Azure subscription, VPN, Lansweeper database or interactive console |
@@ -74,4 +74,4 @@ Record the results in the CHANGELOG under the release that ends alpha.
    (`git archive --format=zip -o VmMaintenance.zip v<version>`).
 5. Send the manager the [manager guide](MANAGER-GUIDE.md) and the release link.
 
-_Last updated: 2026-11-16 12:30 UTC_
+_Last updated: 2026-11-17 17:20 UTC_

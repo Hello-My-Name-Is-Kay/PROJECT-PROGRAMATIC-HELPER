@@ -26,8 +26,9 @@
     RULES (same as vmm): goal OS Windows Server 2019; a client OS (Windows 10/11) is never changed without
     -Order "<reason>"; warnings for Server 2008 (not R2), physical machines, domain controllers and clusters;
     Mon-Fri 08:00-17:00 Lisbon only reads and staging into C:\Temp; disk growth is done in Azure (VM
-    deallocated, after a snapshot); patch and upgrade media come from a local folder only (no downloads,
-    except what Windows Update/WSUS sends when you choose that option); the script never reboots the host.
+    deallocated, after a snapshot); patch and upgrade media come from a local folder only (nothing is ever
+    downloaded); every change asks you to confirm the rollback snapshot/backup and, where management warnings
+    apply, that management was informed; the script never reboots the host.
 
     Compatible with Windows PowerShell 2.0 to 5.1 and PowerShell 7.
 
@@ -88,7 +89,7 @@ param(
     [switch]$Help
 )
 
-$FallbackVersion = '2.16.0'
+$FallbackVersion = '2.17.1'
 $ErrorActionPreference = 'Stop'
 $Script:SelfPath = $MyInvocation.MyCommand.Path
 $Script:Inv = [Globalization.CultureInfo]::InvariantCulture
@@ -394,6 +395,15 @@ function Get-Wmi([string]$Class, [string]$Filter) {
     if ($Filter) { return Get-CimInstance -ClassName $Class -Filter $Filter -ErrorAction Stop }
     Get-CimInstance -ClassName $Class -ErrorAction Stop
 }
+function Get-PlatformName([string]$Manufacturer, [string]$Model, [bool]$AzureAgent) {
+    # Physical only when no known hypervisor shows in the model or manufacturer (same list as the Extractor)
+    if ($Manufacturer -like '*VMware*' -or $Model -like '*VMware*') { return 'VMware' }
+    if ($Model -like '*Virtual Machine*') { if ($AzureAgent) { return 'Azure' }; return 'Hyper-V' }
+    if ($Model -like '*KVM*' -or $Model -like '*VirtualBox*' -or $Model -like '*HVM domU*' -or $Model -like '*AHV*' -or $Model -like '*Standard PC*' -or
+        $Manufacturer -like '*Xen*' -or $Manufacturer -like '*QEMU*' -or $Manufacturer -like '*Nutanix*' -or $Manufacturer -like '*innotek*' -or
+        $Manufacturer -like '*Red Hat*' -or $Manufacturer -like '*oVirt*' -or $Manufacturer -like '*Amazon EC2*' -or $Manufacturer -like '*Google*') { return 'OtherVirtual' }
+    'Physical'
+}
 function Get-RegValue([string]$Key, [string]$Name) {
     try { $p = Get-ItemProperty -LiteralPath $Key -Name $Name -ErrorAction Stop; return $p.$Name } catch { return $null }
 }
@@ -524,12 +534,8 @@ function Get-Facts($Data) {
     try {
         $cs = Get-Wmi 'Win32_ComputerSystem'
         $f.Manufacturer = "$($cs.Manufacturer)"; $f.Model = "$($cs.Model)"
-        $f.Platform = 'Physical'
-        if ($cs.Manufacturer -like '*VMware*' -or $cs.Model -like '*VMware*') { $f.Platform = 'VMware' }
-        elseif ($cs.Model -like '*Virtual Machine*') {
-            $f.Platform = 'Hyper-V'
-            if (Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue) { $f.Platform = 'Azure' }
-        } elseif ($cs.Model -like '*KVM*' -or $cs.Model -like '*VirtualBox*' -or $cs.Manufacturer -like '*Xen*' -or $cs.Manufacturer -like '*QEMU*') { $f.Platform = 'OtherVirtual' }
+        $az = $false; try { $az = [bool](Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue) } catch { }
+        $f.Platform = Get-PlatformName "$($cs.Manufacturer)" "$($cs.Model)" $az
         $f.Domain = "$($cs.Domain)"; if (-not $cs.PartOfDomain) { $f.Domain = 'WORKGROUP (' + $cs.Domain + ')' }
         $f.DomainController = 'No'; if ([int]$cs.DomainRole -ge 4) { $f.DomainController = 'Yes' }
         try { $f.Cpus = "$($cs.NumberOfLogicalProcessors)" } catch { }
@@ -648,7 +654,9 @@ function ConvertTo-ResultLines($Facts, $Policy, $Data, [string]$Kind) {
         $sqlShort += ($i.Name + ' ' + $i.Version + ' ' + $i.Edition + $tag)
         $v = Get-SqlVerdict $i $Data
         $l += ('SqlInstance=' + (@($i.Name, $i.Bits, $i.Version, $i.Level, $i.Update, $i.Edition, $i.Service, $i.Clustered, $i.Hadr, $i.Databases, @($i.Stale).Count, $v.Verdict) -join '|'))
-        foreach ($st in @($i.Stale)) { if ($st) { $l += ('SqlStaleBackup=' + $i.Name + '|' + $st) } }
+        # Database names stay on screen only: the result file is not encrypted (db1, db2... in the order read)
+        $k = 0
+        foreach ($st in @($i.Stale)) { if ($st) { $k++; $l += ('SqlStaleBackup=' + $i.Name + '|db' + $k + '|' + ("$st" -split '\|')[-1]) } }
     }
     $l += ('Sql=' + ($sqlShort -join '; '))
     foreach ($k in @($Facts.Agents.Keys | Sort-Object)) { $l += ('Inv.' + $k + '=' + $Facts.Agents[$k]) }
@@ -715,6 +723,15 @@ function Test-Interactive {
     foreach ($a in [Environment]::GetCommandLineArgs()) { if ($a -like '-NonI*') { return $false } }
     $true
 }
+function Wait-BeforeClose {
+    # Started by right-click > Run with PowerShell (the script is on this process's command line), the window
+    # closes at exit: keep the last message readable. A console you typed the command in stays open anyway.
+    if (-not (Test-Interactive) -or -not $Script:SelfPath) { return }
+    $leaf = Split-Path -Leaf $Script:SelfPath
+    $mine = $false; foreach ($a in [Environment]::GetCommandLineArgs()) { if ($a -like ('*' + $leaf + '*')) { $mine = $true } }
+    if (-not $mine) { return }
+    try { Read-Host ' Enter to close this window' | Out-Null } catch { }
+}
 function Read-Answer([string]$Prompt) {
     if (-not (Test-Interactive)) { return $null }
     try { return (Read-Host $Prompt) } catch { return $null }
@@ -727,6 +744,38 @@ function Confirm-Yes([string]$What) {
     if ($a -ceq 'YES') { return 0 }
     Mute ' Cancelled.'
     8
+}
+function Test-WindowStill([string]$StepId) {
+    # Prompts wait for a person: read the time window again right before the change runs. 0 = still open, 3 = closed.
+    $w = Get-Window $Script:Data['Settings'] ([DateTime]::UtcNow)
+    if ($w.ChangesAllowed) { return 0 }
+    Bad (' ' + $w.Why + ' The window closed while waiting for your answer: nothing was run.')
+    Write-Log $StepId 'Blocked' 'time window closed while waiting for confirmation'
+    3
+}
+function Confirm-Rollback([string]$StepId) {
+    # Before ANY change: a rollback point (Azure snapshot, or a backup elsewhere), and management informed when
+    # warnings apply (Server 2008 non-R2, physical, DC, cluster, Exchange). 0 = confirmed, 8 = cancelled, 2 = no console.
+    $f = $Script:Facts
+    if ($f.Platform -eq 'Azure') { $c = Confirm-Phrase 'Azure VM: a snapshot of every disk (OS and SQL data) must exist in the portal before this change.' 'SNAPSHOT TAKEN' }
+    else { $c = Confirm-Phrase ('Platform ' + $f.Platform + ': a full backup or platform snapshot of this host must exist before this change.') 'BACKUP CONFIRMED' }
+    if ($c) { Write-Log $StepId 'Cancelled' 'rollback point not confirmed'; return $c }
+    Write-Log $StepId 'Confirmed' 'rollback point confirmed by the operator'
+    $warn = @(); foreach ($w in @($Script:Policy.Warnings)) { if ($w) { $warn += $w } }
+    if ($warn.Count) {
+        $c = Confirm-Phrase ('Management warnings apply: ' + ($warn -join ' ')) 'MANAGEMENT INFORMED'
+        if ($c) { Write-Log $StepId 'Cancelled' 'management not informed'; return $c }
+        Write-Log $StepId 'Confirmed' 'operator confirmed management was informed'
+    }
+    0
+}
+function Read-Secret([string]$Prompt) {
+    # Typed without echo; the plain text lives only in this call's return value
+    if (-not (Test-Interactive)) { return $null }
+    $sec = $null; try { $sec = Read-Host $Prompt -AsSecureString } catch { return $null }
+    if (-not $sec -or $sec.Length -eq 0) { return '' }
+    $b = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
+    try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($b) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($b) }
 }
 function Confirm-Phrase([string]$What, [string]$Phrase) {
     Warn (' ' + $What)
@@ -824,6 +873,7 @@ function Get-WimImages([string]$Root) {
 }
 function Copy-Media([string]$Sub) {
     # Staging: copy one media sub folder into the work folder (C:\Temp). Allowed in business hours.
+    if ($Script:Policy -and $Script:Policy.Scope -eq 'ClientOs') { Bad (' ' + $Script:Policy.Why + ' Staging copies files onto it: refused.'); Write-Log 'Stage' 'Blocked' 'client OS without -Order'; return 5 }
     $src = Join-Path $Script:MediaRoot $Sub
     $dst = Join-Path (Join-Path $Script:WorkRoot 'Media') $Sub
     if (-not (Test-Path -LiteralPath $src)) { Bad (" Nothing to stage: $src does not exist. Put the files there first (local media only, nothing is downloaded).") ; return 5 }
@@ -983,16 +1033,17 @@ function Invoke-StepWindowsPatch([string]$Act) {
     if ($Act -eq 'Stage') { return (Copy-Media 'Windows') }
     if ($Act -eq 'Menu') {
         Write-Host (' Offline packages found: {0}' -f $files.Count)
-        $c = Read-Choice '[R] run offline packages, [W] use Windows Update/WSUS, [G] guidance only, [T] stage media, [B] back'
-        switch ($c) { 'R' { $Act = 'Run' } 'W' { $Act = 'Online' } 'G' { return (Show-Manual 'WindowsPatch' $map $extra) } 'T' { return (Copy-Media 'Windows') } default { return 0 } }
+        $c = Read-Choice '[R] run offline packages, [G] guidance only, [T] stage media, [B] back'
+        switch ($c) { 'R' { $Act = 'Run' } 'G' { return (Show-Manual 'WindowsPatch' $map $extra) } 'T' { return (Copy-Media 'Windows') } default { return 0 } }
     }
     $g = Test-Gate 'WindowsPatch'
     if ($g.Code) { Bad (' ' + $g.Why); Write-Log 'WindowsPatch' 'Blocked' $g.Why; return $g.Code }
     if (@($Script:Facts.PendingReboot).Count) { Bad ' A reboot is pending: reboot first, then patch.'; Write-Log 'WindowsPatch' 'Blocked' 'pending reboot'; return 5 }
-    if ($Act -eq 'Online') { return (Invoke-WindowsUpdateOnline) }
-    if (-not $files.Count) { Bad (' No .msu/.cab files in ' + (Join-Path $Script:MediaRoot 'Windows') + '. Copy them there (no downloads), or use [W].'); return 5 }
+    if (-not $files.Count) { Bad (' No .msu/.cab files in ' + (Join-Path $Script:MediaRoot 'Windows') + '. Copy them there (local media only, nothing is downloaded).'); return 5 }
+    $c = Confirm-Rollback 'WindowsPatch'; if ($c) { return $c }
     $c = Confirm-Yes ('Install {0} package(s) from {1} with wusa/DISM, no reboot.' -f $files.Count, (Join-Path $Script:MediaRoot 'Windows'))
     if ($c) { Write-Log 'WindowsPatch' 'Cancelled' ''; return $c }
+    $c = Test-WindowStill 'WindowsPatch'; if ($c) { return $c }
     $reboot = $false; $failed = 0
     foreach ($x in $files) {
         if (-not $x) { continue }
@@ -1004,31 +1055,6 @@ function Invoke-StepWindowsPatch([string]$Act) {
     if ($failed) { Bad (' {0} package(s) failed: read C:\Windows\Logs\CBS\CBS.log and the Setup event log.' -f $failed); return 1 }
     if ($reboot) { Warn ' Reboot needed: reboot in the maintenance window, then run the snapshot again.'; return 9 }
     Good ' Windows packages done.'
-    0
-}
-function Invoke-WindowsUpdateOnline {
-    try {
-        $session = New-Object -ComObject Microsoft.Update.Session
-        $searcher = $session.CreateUpdateSearcher()
-        Info ' Asking Windows Update / WSUS what this host needs (can take minutes)...'
-        $res = $searcher.Search("IsInstalled=0 and IsHidden=0 and Type='Software'")
-    } catch { Bad (' Windows Update cannot be reached: ' + (Protect-Text $_.Exception.Message) + '. Use offline .msu files instead.'); Write-Log 'WindowsPatch' 'Failed' 'online search failed'; return 1 }
-    $n = $res.Updates.Count
-    if ($n -eq 0) { Good ' Windows Update offers nothing: up to date for this source.'; Write-Log 'WindowsPatch' 'NotNeeded' 'online: nothing offered'; return 0 }
-    for ($i = 0; $i -lt $n; $i++) { Write-Host ('   ' + $res.Updates.Item($i).Title) }
-    $c = Confirm-Yes ("Download (from Windows Update/WSUS) and install these $n update(s), no reboot.")
-    if ($c) { Write-Log 'WindowsPatch' 'Cancelled' 'online'; return $c }
-    $coll = New-Object -ComObject Microsoft.Update.UpdateColl
-    for ($i = 0; $i -lt $n; $i++) { $u = $res.Updates.Item($i); if (-not $u.EulaAccepted) { $u.AcceptEula() }; [void]$coll.Add($u) }
-    $dl = $session.CreateUpdateDownloader(); $dl.Updates = $coll; [void]$dl.Download()
-    $inst = $session.CreateUpdateInstaller(); $inst.Updates = $coll
-    $r = $inst.Install()
-    # ResultCode: 2 succeeded, 3 succeeded with errors, 4 failed, 5 aborted
-    Write-Log 'WindowsPatch' ("Online" + $r.ResultCode) ("$n update(s), reboot " + $r.RebootRequired)
-    if ($r.ResultCode -ge 4) { Bad (' Windows Update install failed (result code ' + $r.ResultCode + '). See C:\Windows\WindowsUpdate.log / Get-WindowsUpdateLog.'); return 1 }
-    if ($r.ResultCode -eq 3) { Warn ' Some updates failed: run the step again after a reboot.' }
-    if ($r.RebootRequired) { Warn ' Reboot needed: reboot in the maintenance window, then run the snapshot again.'; return 9 }
-    Good ' Windows Update install done.'
     0
 }
 function Select-SqlInstance {
@@ -1077,8 +1103,10 @@ function Invoke-StepSqlPatch([string]$Act) {
     $cur = $null; $new = $null
     try { $cur = New-Object Version ($sql.Version -replace '[^\d\.].*$', ''); $new = New-Object Version $media.Version } catch { }
     if ($cur -and $new -and $new -le $cur) { Good (' ' + $sql.Name + ' is already at ' + $sql.Version + ' (installer ' + $media.Version + '): nothing to do.'); Write-Log 'SqlPatch' 'NotNeeded' $sql.Name; return 0 }
+    $c = Confirm-Rollback 'SqlPatch'; if ($c) { return $c }
     $c = Confirm-Yes ('Patch SQL instance ' + $sql.Name + ' to ' + $media.Version + '. The instance restarts.')
     if ($c) { Write-Log 'SqlPatch' 'Cancelled' $sql.Name; return $c }
+    $c = Test-WindowStill 'SqlPatch'; if ($c) { return $c }
     $v = Get-NativeVerdict 'SQL setup' (Invoke-Native $media.Path $cmdArgs)
     Write-Log 'SqlPatch' $v.Result ($sql.Name + ': ' + $v.Message)
     switch ($v.Result) {
@@ -1124,10 +1152,12 @@ function Invoke-StepSqlUpgrade([string]$Act) {
         if (-not ([int]::TryParse("$a", [ref]$k) -and $k -ge 1 -and $k -le $media.Count)) { Mute ' Cancelled.'; return 8 }
         $m = $media[$k - 1]
     }
+    $c = Confirm-Rollback 'SqlUpgrade'; if ($c) { return $c }
     $c = Confirm-Yes ('Upgrade SQL instance ' + $sql.Name + ' (' + $verdict.Name + ') to ' + $m.Name + ' in place. Databases stay; the instance is offline during setup.')
     if ($c) { Write-Log 'SqlUpgrade' 'Cancelled' $sql.Name; return $c }
-    # Product key: asked here, used once, never logged or stored. Empty = the key carried by the media.
-    $pidKey = Read-Answer ' Product key for the licensed edition (empty = use the key on the media)'
+    # Product key: typed without echo, used once, never logged or stored. Empty = the key carried by the media.
+    $pidKey = Read-Secret ' Product key for the licensed edition, not shown while typing (empty = use the key on the media)'
+    $c = Test-WindowStill 'SqlUpgrade'; if ($c) { $pidKey = $null; return $c }
     $run = $cmdArgs; if ($pidKey) { $run += (' /PID=' + "$pidKey".Trim()) }
     $v = Get-NativeVerdict 'SQL setup' (Invoke-Native $m.Path $run)
     $pidKey = $null; $run = $null
@@ -1174,12 +1204,12 @@ function Invoke-StepOsUpgrade([string]$Act) {
         foreach ($i in @($f.Sql)) { if ($i -and (Get-SqlVerdict $i $Script:Data).Verdict -ne 'OK') { Bad (' SQL ' + $i.Name + ' is not ready for ' + $next + ': run SqlPatch/SqlUpgrade first.'); return 5 } }
     }
     if (-not $good) { Bad (' No ' + $next + ' setup media (build ' + $nb + ') found. Mount the ISO or extract it to ' + (Join-Path $Script:MediaRoot 'Os') + '.'); return 5 }
-    if ($f.Platform -eq 'Azure') { $c = Confirm-Phrase 'Azure VM: the OS disk snapshot must exist before the upgrade.' 'SNAPSHOT TAKEN'; if ($c) { return $c } }
-    if (@($pol.Warnings).Count) { $c = Confirm-Phrase ('Management warnings apply: ' + (@($pol.Warnings) -join ' ')) 'MANAGEMENT INFORMED'; if ($c) { return $c } }
+    $c = Confirm-Rollback 'OsUpgrade'; if ($c) { return $c }
     $base = '/auto upgrade /quiet /dynamicupdate disable /noreboot'
     if ($Act -eq 'Scan') {
         $c = Confirm-Yes ('Run the ' + $next + ' compatibility scan (no upgrade; setup writes its working folder on C:).')
         if ($c) { return $c }
+        $c = Test-WindowStill 'OsUpgrade'; if ($c) { return $c }
         $v = Get-NativeVerdict 'Windows setup' (Invoke-Native $good.Setup ($base + ' /compat scanonly'))
         Write-Log 'OsUpgrade' ('Scan' + $v.Result) $v.Message
         if ($v.Result -eq 'Ok') { Good (' ' + $v.Message); return 0 }
@@ -1195,6 +1225,7 @@ function Invoke-StepOsUpgrade([string]$Act) {
     } else { Good (' Image index {0} matches {1} {2}.' -f $idx, $f.Edition, $f.InstallType) }
     $c = Confirm-Yes ('Upgrade this host from ' + $f.OS + ' to ' + $next + ' (index ' + $idx + ', keep files and apps). Setup stops before its reboot; YOU reboot to continue.')
     if ($c) { Write-Log 'OsUpgrade' 'Cancelled' ''; return $c }
+    $c = Test-WindowStill 'OsUpgrade'; if ($c) { return $c }
     $v = Get-NativeVerdict 'Windows setup' (Invoke-Native $good.Setup ($base + ' /imageindex ' + $idx))
     Write-Log 'OsUpgrade' $v.Result $v.Message
     if ($v.Result -eq 'Ok' -or $v.Result -eq 'Reboot') {
@@ -1236,8 +1267,10 @@ function Invoke-StepDisk([string]$Act) {
     if ($g.Code) { Bad (' ' + $g.Why); Write-Log 'Disk' 'Blocked' $g.Why; return $g.Code }
     if ($null -ne $unalloc -and $unalloc -lt 1) { Bad ' There is no free space after C: to extend into. Grow the disk in Azure (or the hypervisor) first.'; Write-Log 'Disk' 'Blocked' 'no free space after C:'; return 5 }
     $msg = 'Extend C: into the free space after it'; if ($null -ne $unalloc) { $msg += (' (+' + $unalloc + ' GB)') }
+    $c = Confirm-Rollback 'Disk'; if ($c) { return $c }
     $c = Confirm-Yes ($msg + '. Online operation, no reboot.')
     if ($c) { Write-Log 'Disk' 'Cancelled' ''; return $c }
+    $c = Test-WindowStill 'Disk'; if ($c) { return $c }
     try {
         if ($null -ne $maxSize) { Resize-Partition -DriveLetter C -Size $maxSize -ErrorAction Stop }
         else {
@@ -1293,7 +1326,7 @@ function Invoke-StepFinish([string]$Act) {
     if ($Act -eq 'Guide') { return (Show-Manual 'Finish' $map $null) }
     $staged = Join-Path $Script:WorkRoot 'Media'
     if ($Act -eq 'Menu') {
-        $c = Read-Choice '[R] delete staged media, [A] delete the whole work folder, [G] guidance only, [B] back'
+        $c = Read-Choice '[R] delete staged media, [A] delete the whole work folder (results and log too, once copied), [G] guidance only, [B] back'
         switch ($c) { 'R' { } 'A' { $Act = 'All' } 'G' { return (Show-Manual 'Finish' $map $null) } default { return 0 } }
     }
     if ($Act -eq 'All') {
@@ -1306,7 +1339,7 @@ function Invoke-StepFinish([string]$Act) {
         return 0
     }
     if (-not (Test-Path -LiteralPath $staged)) { Good ' No staged media to delete.'; Write-Log 'Finish' 'NotNeeded' 'no staged media'; return 0 }
-    $c = Confirm-Yes ('Delete staged media in ' + $staged + '. Result files and the log stay.')
+    $c = Confirm-Yes ('Delete staged media in ' + $staged + '. Result files and the log stay (NOT encrypted: use [A] once they are copied).')
     if ($c) { return $c }
     try { Remove-Item -LiteralPath $staged -Recurse -Force -ErrorAction Stop } catch { Bad (' Could not delete the staged media: ' + (Protect-Text $_.Exception.Message)); return 1 }
     Write-Log 'Finish' 'Success' 'staged media deleted'
@@ -1452,4 +1485,5 @@ try {
 }
 Write-Host ''
 Mute (' Exit code ' + $Script:Exit + ' (' + (Get-CodeName $Script:Exit) + ')')
+if ($Script:Exit -ne 0) { Wait-BeforeClose }
 exit $Script:Exit

@@ -93,7 +93,7 @@ encrypted data and the reports.
 
 ## Status and known limitations
 
-- **Version 2.17.0, alpha.** The tool has passed its automated tests (about 290 offline checks and 140 unit
+- **Version 2.17.1, alpha.** The tool has passed its automated tests (about 290 offline checks and 140 unit
   tests) on Windows PowerShell 5.1 and PowerShell 7 on GitHub's Windows machines. 2.15.0 checked how every
   command ends: an unfinished or failed job is reported as failed, and a disk expansion that stops half way puts
   the servers back in their power state.
@@ -111,4 +111,4 @@ encrypted data and the reports.
 The tool's author and operator: Kay. Problems are logged and can be reported as an issue in the project's
 GitHub repository (public, so anyone can read the issue) with `vmm issue -FromErrorLog` (the text is masked and shown for approval before it is sent).
 
-_Last updated: 2026-11-16 17:04 UTC_
+_Last updated: 2026-11-17 17:20 UTC_
