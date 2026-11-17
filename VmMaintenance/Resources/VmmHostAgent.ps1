@@ -31,7 +31,10 @@
       log in C:\Temp\VmmAgent. A snapshot extractor is built WITHOUT that block: it holds no code that can
       change a host.
 
-    Compatible with Windows PowerShell 2.0 to 5.1.
+    Compatible with Windows PowerShell 2.0 to 5.1 (and 7): Windows Server 2008 R2 to 2025 and later, Windows 7 to 11,
+    32-bit or 64-bit (a 32-bit PowerShell on 64-bit Windows starts the 64-bit one). Windows 7 / Server 2008 R2:
+    if right-click > Run with PowerShell closes at once (execution policy), use the powershell.exe command below.
+    A client OS (Windows 7 to 11) is read like any host; it is never changed without orders.
 
     [SEC] Treat everything shown here as business data carried over the VPN: do not copy it anywhere
     other than the vmm Manager on your laptop.
@@ -59,7 +62,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.17.1'
+$AgentVersion = '2.18.0'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
@@ -162,7 +165,7 @@ function Test-Admin {
     $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 function Get-FileSha256([string]$Path) {
-    $sha = New-Object Security.Cryptography.SHA256Managed
+    $sha = New-Sha256
     $fs = [IO.File]::OpenRead($Path)
     try { return ([BitConverter]::ToString($sha.ComputeHash($fs)) -replace '-', '') }
     finally { $fs.Close(); $sha.Clear() }
@@ -212,6 +215,94 @@ function Get-PlatformName([string]$Manufacturer, [string]$Model, [bool]$AzureAge
         $Manufacturer -like '*Xen*' -or $Manufacturer -like '*QEMU*' -or $Manufacturer -like '*Nutanix*' -or $Manufacturer -like '*innotek*' -or
         $Manufacturer -like '*Red Hat*' -or $Manufacturer -like '*oVirt*' -or $Manufacturer -like '*Amazon EC2*' -or $Manufacturer -like '*Google*') { return 'OtherVirtual' }
     'Physical'
+}
+function ConvertTo-OsName([string]$Caption) {
+    # Win32_OperatingSystem.Caption without the trademark signs: Server 2008 (not R2) and Vista report
+    # "Microsoft(R) Windows Server(R) 2008 ..." with the (R)/(TM) characters, which no '*Server 2008*' pattern matches.
+    $t = "$Caption" -replace '[\u00AE\u2122]', '' -replace '\((R|TM)\)', ''
+    ($t -replace '\s+', ' ').Trim()
+}
+function Test-NewerOs([string]$Caption, [string]$Build, [string]$Target) {
+    # $true when a Windows Server caption/build is newer than the target pattern (e.g. *Server 2019*). No version list
+    # to keep up to date: the year in the name decides (2022, 2025, 2028...), else the build number (Semi-Annual
+    # Channel "Windows Server Datacenter" has no year). Same rules as Test-VmmNewerOs on the laptop.
+    $tb = @{ '2008' = 6002; '2008R2' = 7601; '2012' = 9200; '2012R2' = 9600; '2016' = 14393; '2019' = 17763; '2022' = 20348; '2025' = 26100 }
+    if ($Target -notmatch '(20\d\d)( R2)?') { return $false }
+    $ty = [int]$Matches[1]; $tr = [bool]$Matches[2]
+    $os = ConvertTo-OsName $Caption
+    if (-not $os -or $os -notlike '*Server*' -or $os -like $Target) { return $false }
+    if ($os -match 'Server (20\d\d)( R2)?') {
+        $y = [int]$Matches[1]
+        if ($y -ne $ty) { return ($y -gt $ty) }
+        return ([bool]$Matches[2] -and -not $tr)
+    }
+    $b = 0; try { $b = [int]$Build } catch { }
+    $key = "$ty"; if ($tr) { $key += 'R2' }
+    if ($b -gt 0 -and $tb.ContainsKey($key)) { return ($b -gt $tb[$key]) }
+    $false
+}
+function Get-TlsLegacyText([string]$Build, $Read) {
+    # Inventory column TLS 1.0-1.1 DISABLED from the SCHANNEL ...\TLS 1.x\Server values. $Read = { param($Proto, $Name) }
+    # returns the DWORD or $null. Off = Enabled is 0, or DisabledByDefault is 1 with no Enabled value. No value = the
+    # Windows default for that build: TLS 1.1 is off by default on Windows 7 / Server 2008 R2 (build 7601 and older),
+    # on everything else both are on unless configured. Used by the laptop's terminal check too (one rule).
+    $b = 0; try { $b = [int]$Build } catch { }
+    $on = @()
+    foreach ($t in '1.0', '1.1') {
+        $en = $null; $dd = $null
+        try { $en = & $Read $t 'Enabled' } catch { }
+        try { $dd = & $Read $t 'DisabledByDefault' } catch { }
+        if ($null -ne $en) { $isOn = ([int]$en -ne 0) }
+        elseif ($null -ne $dd) { $isOn = ([int]$dd -eq 0) }
+        else { $isOn = -not ($t -eq '1.1' -and $b -gt 0 -and $b -le 7601) }
+        if ($isOn) { $on += ('TLS ' + $t) }
+    }
+    if ($on.Count) { return ('No (' + ($on -join ', ') + ' enabled)') }
+    'Yes'
+}
+function Get-NativePowerShell {
+    # 32-bit PowerShell on 64-bit Windows sees only the 32-bit registry (64-bit SQL instances and programs are
+    # missing). Returns the 64-bit powershell.exe to start this file again with, or '' when this one is native.
+    if (-not $env:PROCESSOR_ARCHITEW6432) { return '' }
+    if (-not $env:windir) { return '' }
+    $p = Join-Path "$env:windir" 'sysnative\WindowsPowerShell\v1.0\powershell.exe'
+    if (Test-Path -LiteralPath $p) { return $p }
+    ''
+}
+function New-Sha256 {
+    # FIPS-validated SHA-256 first: SHA256Managed throws on hosts with the FIPS policy on.
+    try { [void][Reflection.Assembly]::LoadWithPartialName('System.Core') } catch { }
+    $h = $null
+    try { $h = New-Object Security.Cryptography.SHA256CryptoServiceProvider } catch { }
+    if (-not $h) { $h = New-Object Security.Cryptography.SHA256Managed }
+    $h
+}
+function Get-HmacSha256([byte[]]$Key, [byte[]]$Data) {
+    # HMAC-SHA256 (RFC 2104) on New-Sha256: the managed HMACSHA256 class throws under the FIPS policy on .NET 2.0 to 4.x.
+    $sha = New-Sha256
+    try {
+        $k = $Key
+        if ($k.Length -gt 64) { $k = $sha.ComputeHash($k) }
+        $inner = New-Object byte[] (64 + $Data.Length); $outer = New-Object byte[] 96
+        for ($i = 0; $i -lt 64; $i++) {
+            $b = 0; if ($i -lt $k.Length) { $b = [int]$k[$i] }
+            $inner[$i] = [byte]($b -bxor 0x36); $outer[$i] = [byte]($b -bxor 0x5c)
+        }
+        [Array]::Copy($Data, 0, $inner, 64, $Data.Length)
+        $ih = $sha.ComputeHash($inner)
+        [Array]::Copy($ih, 0, $outer, 64, 32)
+        $mac = $sha.ComputeHash($outer)
+        [Array]::Clear($inner, 0, $inner.Length); [Array]::Clear($outer, 0, 96)
+        return , $mac
+    } finally { $sha.Clear() }
+}
+function New-Aes {
+    # FIPS-validated AES first (AesCryptoServiceProvider, .NET 3.5+); RijndaelManaged throws under the FIPS policy.
+    try { [void][Reflection.Assembly]::LoadWithPartialName('System.Core') } catch { }
+    $a = $null
+    if (-not $Script:AesManagedOnly) { try { $a = New-Object Security.Cryptography.AesCryptoServiceProvider } catch { } }   # tests set AesManagedOnly
+    if (-not $a) { $a = New-Object Security.Cryptography.RijndaelManaged }
+    $a
 }
 function Test-UnderTemp([string]$Path) {
     # A folder below C:\Temp (not C:\Temp itself), no '..' segment
@@ -298,7 +389,7 @@ function Get-AgentVerdict($Svc, $Version, $DriversDown, $PortsClosed, $LogAgeH, 
     if ($issues.Count) { $t += ': ' + ($issues -join '; ') }
     @{ Status = $status; State = "$($Svc.State)"; StartMode = "$($Svc.StartMode)"; Version = "$Version"; Issues = ($issues -join '; '); Text = $t }
 }
-function Get-InvProbe($Services, $Agents, $SkipLicence) {
+function Get-InvProbe($Services, $Agents, $SkipLicence, $Build) {
     # Inventory columns readable on this host (PowerShell 2.0+, read-only). Returns 'Inv.<Key>=<value>' lines,
     # 'Agent.<Key>=Status|State|StartMode|Version|Issues' per agent when $Agents (health specs) is given, and a
     # 'Problem=<what>: <why>' line for each read that failed (the other reads still run).
@@ -388,13 +479,14 @@ function Get-InvProbe($Services, $Agents, $SkipLicence) {
             $out += 'Inv.' + $k + '=' + $v
         }
     }
-    $on = @()
-    foreach ($t in '1.0', '1.1') {
-        $e = $null
-        try { $e = (Get-ItemProperty ('HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS ' + $t + '\Server') -Name Enabled -ErrorAction Stop).Enabled } catch { }
-        if ($e -ne 0) { $on += ('TLS ' + $t) }   # no key = Windows default = enabled
+    $rd = { param($t, $n) $v = $null; try { $v = (Get-ItemProperty ('HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS ' + $t + '\Server') -Name $n -ErrorAction Stop).$n } catch { }; $v }
+    if (-not $Build) { try { $Build = "$((& $wmi 'Win32_OperatingSystem').BuildNumber)" } catch { } }
+    if (Get-Command Get-TlsLegacyText -ErrorAction SilentlyContinue) { $out += ('Inv.TlsLegacyDisabled=' + (Get-TlsLegacyText $Build $rd)) }
+    else {
+        $on = @()   # RDP collector without the shared function: Enabled values only, no key = enabled
+        foreach ($t in '1.0', '1.1') { if ((& $rd $t 'Enabled') -ne 0) { $on += ('TLS ' + $t) } }
+        if ($on.Count) { $out += ('Inv.TlsLegacyDisabled=No (' + ($on -join ', ') + ' enabled)') } else { $out += 'Inv.TlsLegacyDisabled=Yes' }
     }
-    if ($on.Count) { $out += ('Inv.TlsLegacyDisabled=No (' + ($on -join ', ') + ' enabled)') } else { $out += 'Inv.TlsLegacyDisabled=Yes' }
     $out
 }
 function Get-Facts {
@@ -402,12 +494,14 @@ function Get-Facts {
     $f = @{
         Name = $env:COMPUTERNAME; OS = ''; Lang = ''; Version = ''; Build = ''; SP = ''; Manufacturer = ''; Model = ''
         Platform = 'Unknown'; CTotalGB = $null; CFreeGB = $null; PendingReboot = $false; Sql = ''; LastBoot = ''
-        TempExists = $false; PSVersion = "$($PSVersionTable.PSVersion)"; Admin = $false
+        TempExists = $false; PSVersion = "$($PSVersionTable.PSVersion)"; Admin = $false; ProductType = ''
     }
+    if ($env:PROCESSOR_ARCHITEW6432) { Add-Problem '32-bit PowerShell on 64-bit Windows' '64-bit SQL instances and programs are not visible; run the 64-bit Windows PowerShell (System32)' }
     try { $f.Admin = (Test-Admin) } catch { }
     try {
         $os = Get-Wmi 'Win32_OperatingSystem'
-        $f.OS = "$($os.Caption)".Trim(); $f.Version = $os.Version; $f.Build = $os.BuildNumber; $f.SP = $os.ServicePackMajorVersion
+        $f.OS = ConvertTo-OsName $os.Caption; $f.Version = $os.Version; $f.Build = $os.BuildNumber; $f.SP = $os.ServicePackMajorVersion
+        $f.ProductType = "$($os.ProductType)"   # 1 = workstation (Windows 7 to 11), 2 = domain controller, 3 = server
         try { $f.Lang = (New-Object Globalization.CultureInfo([int]$os.OSLanguage)).Name } catch { }
         try {
             # Get-WmiObject gives the DMTF text, Get-CimInstance a DateTime
@@ -450,14 +544,15 @@ function Get-Policy($Facts) {
     $scope = $Card.PolicyScope; $why = $Card.PolicyWhy
     if (-not $scope -or $scope -eq 'Unknown') {
         $scope = 'InScope'; $why = 'Upgrade to ' + $Card.TargetOs + '.'
-        if ($Facts.OS -notlike '*Server*') { $scope = 'ClientOs'; $why = "Client OS ($($Facts.OS)): not touched without orders." }
-        elseif ($Facts.OS -like $Card.TargetOs) { $scope = 'AtTarget'; $why = "Already on the target OS ($($Facts.OS))." }
-        elseif ($Facts.OS -like '*Server 2022*' -or $Facts.OS -like '*Server 2025*') { $scope = 'NewerThanTarget'; $why = 'Newer than the target: never downgraded.' }
+        $osn = ConvertTo-OsName $Facts.OS
+        if ("$($Facts.ProductType)" -eq '1' -or $osn -notlike '*Server*') { $scope = 'ClientOs'; $why = "Client OS ($osn): not touched without orders." }
+        elseif ($osn -like $Card.TargetOs) { $scope = 'AtTarget'; $why = "Already on the target OS ($osn)." }
+        elseif (Test-NewerOs $osn $Facts.Build $Card.TargetOs) { $scope = 'NewerThanTarget'; $why = "Newer than the target ($osn): never downgraded." }
     }
     $warn = @()
     if ($Card.PolicyWarnings) { $warn = @($Card.PolicyWarnings -split ' / ') }
     else {
-        if ($Facts.OS -like '*Server 2008*' -and $Facts.OS -notlike '*2008 R2*') { $warn += 'Windows Server 2008 (not R2): warn management before any change.' }
+        if ((ConvertTo-OsName $Facts.OS) -like '*Server 2008*' -and (ConvertTo-OsName $Facts.OS) -notlike '*2008 R2*') { $warn += 'Windows Server 2008 (not R2): warn management before any change.' }
         if ($Facts.Platform -eq 'Physical') { $warn += 'Physical machine: warn management (no Azure snapshot or disk resize).' }
     }
     $ok = ($scope -eq 'InScope' -or $scope -eq 'ClientOsOrdered')
@@ -781,7 +876,7 @@ function Protect-Result([string]$Text) {
     $rng.GetBytes($keys)
     $ek = New-Object byte[] 32; $mk = New-Object byte[] 32
     [Array]::Copy($keys, 0, $ek, 0, 32); [Array]::Copy($keys, 32, $mk, 0, 32)
-    $aes = New-Object Security.Cryptography.RijndaelManaged
+    $aes = New-Aes
     $rsa = New-Object Security.Cryptography.RSACryptoServiceProvider
     try {
         $aes.KeySize = 256; $aes.BlockSize = 128
@@ -800,8 +895,7 @@ function Protect-Result([string]$Text) {
         $ms.Write($aes.IV, 0, 16)
         $ms.Write($ct, 0, $ct.Length)
         $body = $ms.ToArray()
-        $h = New-Object Security.Cryptography.HMACSHA256 -ArgumentList (, $mk)
-        $mac = $h.ComputeHash($body)
+        $mac = Get-HmacSha256 $mk $body
         $all = New-Object byte[] ($body.Length + 32)
         [Array]::Copy($body, 0, $all, 0, $body.Length); [Array]::Copy($mac, 0, $all, $body.Length, 32)
         return ('VMM2|' + [Convert]::ToBase64String($all))
@@ -831,17 +925,19 @@ function Export-Result([switch]$Auto) {
     $f = Get-Facts
     $Script:LastFacts = $f
     $mode = 'Snapshot'; if ($Script:StepsMode) { $mode = 'Steps' }
+    # One element per field: in a list ',' binds tighter than '+', so 'a=' + $x, 'b=' + $y would be ONE string
+    # ("a=x b=y ...") and the laptop would reject the result (no valid host name). Each pair is in ( ).
     $lines = @(
-        'Name=' + $f.Name, 'OS=' + $f.OS, 'Lang=' + $f.Lang, 'Version=' + $f.Version, 'Build=' + $f.Build, 'SP=' + $f.SP,
-        'Manufacturer=' + $f.Manufacturer, 'Model=' + $f.Model, 'Platform=' + $f.Platform,
-        'CTotalGB=' + (Num $f.CTotalGB), 'CFreeGB=' + (Num $f.CFreeGB),
-        'PendingReboot=' + $(if ($f.PendingReboot) { 'Yes' } else { 'No' }), 'Sql=' + $f.Sql, 'LastBoot=' + $f.LastBoot,
-        'TempExists=' + $f.TempExists, 'PSVersion=' + $f.PSVersion, 'Elevated=' + $(if ($f.Admin) { 'Yes' } else { 'No' }),
-        'Mode=' + $mode, 'AgentVersion=' + $AgentVersion, 'ExportedAt=' + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        ('Name=' + $f.Name), ('OS=' + $f.OS), ('Lang=' + $f.Lang), ('Version=' + $f.Version), ('Build=' + $f.Build), ('SP=' + $f.SP),
+        ('Manufacturer=' + $f.Manufacturer), ('Model=' + $f.Model), ('Platform=' + $f.Platform),
+        ('CTotalGB=' + (Num $f.CTotalGB)), ('CFreeGB=' + (Num $f.CFreeGB)),
+        ('PendingReboot=' + $(if ($f.PendingReboot) { 'Yes' } else { 'No' })), ('Sql=' + $f.Sql), ('LastBoot=' + $f.LastBoot),
+        ('TempExists=' + $f.TempExists), ('PSVersion=' + $f.PSVersion), ('Elevated=' + $(if ($f.Admin) { 'Yes' } else { 'No' })),
+        ('ProductType=' + $f.ProductType), ('Mode=' + $mode), ('AgentVersion=' + $AgentVersion), ('ExportedAt=' + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))
     )
     $Script:LastInv = @()
     try {
-        foreach ($l in @(Get-InvProbe $Card.Services $Card.Agents ($Card.Licence -eq 'False'))) {
+        foreach ($l in @(Get-InvProbe $Card.Services $Card.Agents ($Card.Licence -eq 'False') $f.Build)) {
             if ($l -like 'Problem=*') { $Script:Problems += (Protect-Text $l.Substring(8)) } else { $lines += $l; $Script:LastInv += $l }
         }
     } catch { Add-Problem 'Inventory columns' $_ }
@@ -925,7 +1021,8 @@ function Show-Header {
         if ($pb) { Bad (' CHANGE STEPS BLOCKED: ' + $pb) }
     }
     try {
-        $pf = New-Object PSObject -Property @{ OS = "$((Get-Wmi 'Win32_OperatingSystem').Caption)"; Platform = $Card.Platform }
+        $wo = Get-Wmi 'Win32_OperatingSystem'
+        $pf = New-Object PSObject -Property @{ OS = "$($wo.Caption)"; Build = "$($wo.BuildNumber)"; ProductType = "$($wo.ProductType)"; Platform = $Card.Platform }
         $pol = Get-Policy $pf
         if (-not $pol.Workable) { Warn (' POLICY: ' + $pol.Why) }
         foreach ($x in $pol.Warnings) { Bad (' WARN MANAGEMENT: ' + $x) }
@@ -952,7 +1049,7 @@ function Show-Inventory {
     # Shows what the last snapshot read (no second read of the host)
     Info ' Inventory (in the result file)'
     $src = @($Script:LastInv)
-    if (-not $src.Count) { $src = @(Get-InvProbe $Card.Services $Card.Agents ($Card.Licence -eq 'False')) }
+    if (-not $src.Count) { $src = @(Get-InvProbe $Card.Services $Card.Agents ($Card.Licence -eq 'False') '') }
     foreach ($l in $src) {
         if ($l -notlike 'Inv.*') { continue }
         $i = $l.IndexOf('='); $k = $l.Substring(4, $i - 4); $v = $l.Substring($i + 1)
@@ -963,6 +1060,20 @@ function Show-Inventory {
 function Pause-Agent { Write-Host ''; Read-Host ' Enter to continue' | Out-Null }
 
 # ============================================================== main
+# 32-bit PowerShell on 64-bit Windows (Windows PowerShell (x86), some remote tools): start again in the 64-bit one,
+# same switches, so the 64-bit registry (SQL instances, installed agents) is read. Get-Facts reports it otherwise.
+$native = Get-NativePowerShell
+if ($native -and $Script:SelfPath) {
+    $relaunch = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Script:SelfPath)
+    foreach ($k in @($PSBoundParameters.Keys)) {
+        $v = $PSBoundParameters[$k]
+        if ($v -is [System.Management.Automation.SwitchParameter]) { if ($v.IsPresent) { $relaunch += ('-' + $k) } }
+        else { $relaunch += ('-' + $k); $relaunch += "$v" }
+    }
+    Mute ' 32-bit PowerShell on 64-bit Windows: starting the 64-bit Windows PowerShell.'
+    & $native $relaunch
+    exit $LASTEXITCODE
+}
 try {
     if ($Finish) { if (-not (Invoke-Finish -Force)) { exit 1 }; return }
     if ($Extract) {

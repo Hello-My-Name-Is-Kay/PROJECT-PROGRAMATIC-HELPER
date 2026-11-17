@@ -18,10 +18,11 @@ foreach ($rt in @(@('HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server', ''), @('HKL
 $pend = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
 $lang = ''; try { $lang = (New-Object Globalization.CultureInfo([int]$os.OSLanguage)).Name } catch { }
 $plat = 'Physical'; if ($cs.Manufacturer -like '*VMware*') { $plat = 'VMware' } elseif ($cs.Model -like '*Virtual Machine*') { if (Get-Service WindowsAzureGuestAgent) { $plat = 'Azure' } else { $plat = 'Hyper-V' } }
-$f = @('Name=' + $env:COMPUTERNAME, 'OS=' + $os.Caption, 'Lang=' + $lang, 'Version=' + $os.Version, 'Build=' + $os.BuildNumber, 'SP=' + $os.ServicePackMajorVersion,
-  'Manufacturer=' + $cs.Manufacturer, 'Model=' + $cs.Model, 'Platform=' + $plat, 'CTotalGB=' + ([math]::Round($c.Size / 1GB, 1)).ToString([Globalization.CultureInfo]::InvariantCulture),
-  'CFreeGB=' + ([math]::Round($c.FreeSpace / 1GB, 1)).ToString([Globalization.CultureInfo]::InvariantCulture), 'PendingReboot=' + $(if ($pend) { 'Yes' } else { 'No' }), 'Sql=' + ($sql -join '; '),
-  'TempExists=' + (Test-Path 'C:\Temp'))
+# One element per line: in a list, ',' binds tighter than '+' ('a=' + $x, 'b=' + $y is ONE string), so each pair is in ( )
+$f = @(('Name=' + $env:COMPUTERNAME), ('OS=' + $os.Caption), ('Lang=' + $lang), ('Version=' + $os.Version), ('Build=' + $os.BuildNumber), ('SP=' + $os.ServicePackMajorVersion),
+  ('Manufacturer=' + $cs.Manufacturer), ('Model=' + $cs.Model), ('Platform=' + $plat), ('CTotalGB=' + ([math]::Round($c.Size / 1GB, 1)).ToString([Globalization.CultureInfo]::InvariantCulture)),
+  ('CFreeGB=' + ([math]::Round($c.FreeSpace / 1GB, 1)).ToString([Globalization.CultureInfo]::InvariantCulture)), ('PendingReboot=' + $(if ($pend) { 'Yes' } else { 'No' })), ('Sql=' + ($sql -join '; ')),
+  ('TempExists=' + (Test-Path 'C:\Temp')))
 # VMM-INVPROBE
 $line = 'VMM1|' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($f -join "`n")))
 $line | clip.exe
@@ -32,13 +33,14 @@ $file = Join-Path $desk ('VMM_' + $env:COMPUTERNAME + '_' + (Get-Date).ToString(
 Write-Host ('Saved on the desktop: ' + [IO.Path]::GetFileName($file) + ' - copy it to your laptop''s Desktop or Downloads (vmm imports it).') -ForegroundColor Green
 Write-Host 'Also on the clipboard: P on the host screen in vmm. Delete the .vmm file from this desktop afterwards.' -ForegroundColor Green
 '@
-    # Inventory columns and agent health: reuse the host agent's Get-InvProbe + Get-AgentVerdict (one implementation, PowerShell 2.0 compatible)
+    # Inventory columns and agent health: reuse the host agent's Get-InvProbe + Get-AgentVerdict + Get-TlsLegacyText (one implementation, PowerShell 2.0 compatible)
     $probe = ''
     try {
         $agent = Join-Path $script:ModuleRoot 'Resources\VmmHostAgent.ps1'
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($agent, [ref]$null, [ref]$null)
         $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-InvProbe' }, $true) | Select-Object -First 1
         $vd = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-AgentVerdict' }, $true) | Select-Object -First 1
+        $tl = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-TlsLegacyText' }, $true) | Select-Object -First 1
         $svc = Get-VmmInventoryServiceMap
         $q = { param($v) "'" + ("$v" -replace "'", "''") + "'" }
         $list = { param($a) '@(' + ((@($a) | Where-Object { $_ } | ForEach-Object { & $q $_ }) -join ', ') + ')' }
@@ -49,7 +51,7 @@ Write-Host 'Also on the clipboard: P on the host screen in vmm. Delete the .vmm 
             $s = $ag[$k]
             "'$k' = @{ Services = $(& $list $s.Services); Products = $(& $list $s.Products); Drivers = $(& $list $s.Drivers); Ports = $(& $list $s.Ports); Log = $(& $q $s.Log); LogMaxAgeHours = $(& $q $s.LogMaxAgeHours); MinVersion = $(& $q $s.MinVersion) }"
         }) -join '; ')
-        if ($fn -and $vd) { $probe = $vd.Extent.Text + "`r`n" + $fn.Extent.Text + "`r`n`$InvServices = @{ $map }`r`n`$InvAgents = @{ $amap }`r`ntry { `$f += @(Get-InvProbe `$InvServices `$InvAgents) } catch { }" }
+        if ($fn -and $vd) { $probe = $vd.Extent.Text + "`r`n" + $(if ($tl) { $tl.Extent.Text + "`r`n" }) + $fn.Extent.Text + "`r`n`$InvServices = @{ $map }`r`n`$InvAgents = @{ $amap }`r`ntry { `$f += @(Get-InvProbe `$InvServices `$InvAgents) } catch { }" }
     } catch { }
     $text.Replace('# VMM-INVPROBE', $probe)
 }

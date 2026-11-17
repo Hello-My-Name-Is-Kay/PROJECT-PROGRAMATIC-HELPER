@@ -8,7 +8,7 @@
 BeforeAll {
     $script:agentPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'VmMaintenance\Resources\VmmHostAgent.ps1'
     $script:agentAst = [System.Management.Automation.Language.Parser]::ParseFile($script:agentPath, [ref]$null, [ref]$null)
-    foreach ($name in 'Get-Wmi', 'Get-SqlInstanceNames', 'Get-SqlInstanceLines', 'Get-ExtractExitCode', 'Save-ResultFile', 'Get-AgentVerdict', 'Get-InvProbe') {
+    foreach ($name in 'Get-Wmi', 'Get-SqlInstanceNames', 'Get-SqlInstanceLines', 'Get-ExtractExitCode', 'Save-ResultFile', 'Get-AgentVerdict', 'Get-InvProbe', 'ConvertTo-OsName', 'Test-NewerOs', 'Get-TlsLegacyText', 'Get-NativePowerShell', 'New-Sha256', 'Get-HmacSha256', 'New-Aes') {
         $fn = $script:agentAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true) | Select-Object -First 1
         if (-not $fn) { throw "Extractor function $name not found" }
         . ([scriptblock]::Create($fn.Extent.Text))
@@ -329,5 +329,71 @@ Describe 'Platform and work folder guards' {
         $a = ($script:agentAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-PlatformName' }, $true) | Select-Object -First 1).Body.Extent.Text
         $b = ($fbAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-PlatformName' }, $true) | Select-Object -First 1).Body.Extent.Text
         ($a -replace 'Fallback|Extractor', 'X') | Should -Be ($b -replace 'Fallback|Extractor', 'X')
+    }
+}
+
+Describe 'Windows versions: Server 2008 R2 to 2029 and later, Windows 7 to 11' {
+    It 'removes the (R)/(TM) signs of a Server 2008 caption' {
+        $r = [string][char]0xAE
+        ConvertTo-OsName ('Microsoft' + $r + ' Windows Server' + $r + ' 2008 Standard ') | Should -Be 'Microsoft Windows Server 2008 Standard'
+        ConvertTo-OsName 'Microsoft(R) Windows(R) Server 2008 Enterprise' | Should -Be 'Microsoft Windows Server 2008 Enterprise'
+    }
+    It '<Os> (build <Build>) newer than Server 2019 = <Newer>' -ForEach @(
+        @{ Os = 'Microsoft Windows Server 2008 R2 Standard'; Build = '7601'; Newer = $false }
+        @{ Os = 'Microsoft Windows Server 2012 R2 Datacenter'; Build = '9600'; Newer = $false }
+        @{ Os = 'Microsoft Windows Server 2016 Standard'; Build = '14393'; Newer = $false }
+        @{ Os = 'Microsoft Windows Server 2019 Datacenter'; Build = '17763'; Newer = $false }
+        @{ Os = 'Microsoft Windows Server 2022 Standard'; Build = '20348'; Newer = $true }
+        @{ Os = 'Microsoft Windows Server 2025 Datacenter'; Build = '26100'; Newer = $true }
+        @{ Os = 'Microsoft Windows Server 2029 Datacenter'; Build = '31000'; Newer = $true }
+        @{ Os = 'Microsoft Windows Server Datacenter'; Build = '19042'; Newer = $true }
+        @{ Os = 'Microsoft Windows Server Datacenter'; Build = '17763'; Newer = $false }
+        @{ Os = 'Microsoft Windows 11 Pro'; Build = '26100'; Newer = $false }
+    ) { Test-NewerOs $Os $Build '*Server 2019*' | Should -Be $Newer }
+    It 'TLS: no value = enabled, except TLS 1.1 on Windows 7 / Server 2008 R2 (off by default)' {
+        $none = { param($t, $n) $null }
+        Get-TlsLegacyText '14393' $none | Should -Be 'No (TLS 1.0, TLS 1.1 enabled)'
+        Get-TlsLegacyText '7601' $none | Should -Be 'No (TLS 1.0 enabled)'
+        Get-TlsLegacyText '' $none | Should -Be 'No (TLS 1.0, TLS 1.1 enabled)'
+    }
+    It 'TLS: Enabled=0 or DisabledByDefault=1 turns it off, Enabled=1 wins over DisabledByDefault' {
+        Get-TlsLegacyText '17763' { param($t, $n) if ($n -eq 'Enabled') { 0 } } | Should -Be 'Yes'
+        Get-TlsLegacyText '17763' { param($t, $n) if ($n -eq 'DisabledByDefault') { 1 } } | Should -Be 'Yes'
+        Get-TlsLegacyText '17763' { param($t, $n) if ($n -eq 'Enabled') { 1 } else { 1 } } | Should -Be 'No (TLS 1.0, TLS 1.1 enabled)'
+    }
+    It 'a 32-bit PowerShell on 64-bit Windows is sent to the 64-bit one; a native one is left alone' {
+        $saved = $env:PROCESSOR_ARCHITEW6432
+        try {
+            $env:PROCESSOR_ARCHITEW6432 = $null
+            Get-NativePowerShell | Should -Be ''
+            $env:PROCESSOR_ARCHITEW6432 = 'AMD64'
+            $env:windir = (Join-Path ([IO.Path]::GetTempPath()) "nowin-$PID")   # no sysnative folder here: stays native
+            Get-NativePowerShell | Should -Be ''
+        } finally { $env:PROCESSOR_ARCHITEW6432 = $saved }
+    }
+    It 'the hand-written HMAC-SHA256 (FIPS hosts) equals the .NET one, short, 64-byte and long keys' {
+        foreach ($kl in 32, 64, 100) {
+            $k = New-Object byte[] $kl; (New-Object Random 7).NextBytes($k)
+            $d = [Text.Encoding]::UTF8.GetBytes('Name=HOSTA' * 40)
+            $h = New-Object System.Security.Cryptography.HMACSHA256 -ArgumentList (, $k)
+            [BitConverter]::ToString((Get-HmacSha256 $k $d)) | Should -Be ([BitConverter]::ToString($h.ComputeHash($d)))
+        }
+    }
+    It 'AES falls back to RijndaelManaged when AesCryptoServiceProvider is not there, and both decrypt each other' {
+        $Script:AesManagedOnly = $true; $a = New-Aes; $Script:AesManagedOnly = $false
+        $a.GetType().Name | Should -Be 'RijndaelManaged'
+        $b = New-Aes
+        $k = New-Object byte[] 32; $iv = New-Object byte[] 16
+        foreach ($x in $a, $b) { $x.KeySize = 256; $x.Mode = 'CBC'; $x.Padding = 'PKCS7'; $x.Key = $k; $x.IV = $iv }
+        $ct = $a.CreateEncryptor().TransformFinalBlock([byte[]](1..40), 0, 40)
+        ($b.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length) -join ',') | Should -Be ((1..40) -join ',')
+    }
+    It 'every list of result lines pairs each text with its value in ( ): a bare "a=" + $x, "b=" + $y is ONE string' {
+        # PowerShell binds , tighter than +, so the laptop got one line and refused the whole result (no valid host name)
+        foreach ($file in @($script:agentPath, (Join-Path (Split-Path -Parent $script:agentPath) '..\Private\Get-VmmCollectorScript.ps1'))) {
+            $t = [IO.File]::ReadAllText($file)
+            $m = [regex]::Matches($t, "(?m)^\s*'[A-Za-z.]+=' \+ [^\r\n]*, '[A-Za-z.]+=' \+")
+            $m.Count | Should -Be 0 -Because $file
+        }
     }
 }
