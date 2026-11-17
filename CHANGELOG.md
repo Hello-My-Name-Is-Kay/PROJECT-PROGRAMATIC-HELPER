@@ -1,5 +1,26 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.17.1 - 2026-11-17:4-34 | 2.17.0 - 2026-11-16:35-65 | 2.16.0 - 2026-11-16:66-93 | 2.15.2 - 2026-11-16:94-108 | 2.15.1 - 2026-11-16:109-129 | 2.15.0 - 2026-11-16:130-187 | 2.14.0 - 2026-11-15:188-208 | 2.13.0 - 2026-11-15:209-238 | 2.12.0 - 2026-11-14:239-261 | 2.11.0 - 2026-11-14:262-280 | 2.10.0 - 2026-11-14:281-299 | 2.9.0 - 2026-11-14:300-312 | 2.8.0 - 2026-11-14:313-326 | 2.7.0 - 2026-11-14:327-344 | 2.6.0 - 2026-11-14:345-352 | 2.5.0 - 2026-11-14:353-365 | 2.4.0 - 2026-11-14:366-376 | 2.3.0 - 2026-11-14:377-391 | 2.2.1 - 2026-11-14:392-398 | 2.2.0 - 2026-11-14:399-406 | 2.1.0 - 2026-11-14:407-424 | 2.0.0 - 2026-11-14:425-430 | 1.0.0 - 2026-11-14:431-435 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.18.0 - 2026-11-18:4-24 | 2.17.1 - 2026-11-17:25-55 | 2.17.0 - 2026-11-16:35-65 | 2.16.0 - 2026-11-16:66-93 | 2.15.2 - 2026-11-16:94-108 | 2.15.1 - 2026-11-16:109-129 | 2.15.0 - 2026-11-16:130-187 | 2.14.0 - 2026-11-15:188-208 | 2.13.0 - 2026-11-15:209-238 | 2.12.0 - 2026-11-14:239-261 | 2.11.0 - 2026-11-14:262-280 | 2.10.0 - 2026-11-14:281-299 | 2.9.0 - 2026-11-14:300-312 | 2.8.0 - 2026-11-14:313-326 | 2.7.0 - 2026-11-14:327-344 | 2.6.0 - 2026-11-14:345-352 | 2.5.0 - 2026-11-14:353-365 | 2.4.0 - 2026-11-14:366-376 | 2.3.0 - 2026-11-14:377-391 | 2.2.1 - 2026-11-14:392-398 | 2.2.0 - 2026-11-14:399-406 | 2.1.0 - 2026-11-14:407-424 | 2.0.0 - 2026-11-14:425-430 | 1.0.0 - 2026-11-14:431-435 -->
 # Changelog
+
+## 2.18.0 - 2026-11-18
+
+Extractor: Windows Server 2008 R2 to 2029 and later, Windows 7 to 11, and the end-to-end test from Extractor to the
+fleet table. Still **alpha**. Rebuild the Extractor with `vmm extractor`.
+
+- **Fixed: the Extractor result was rejected by the laptop.** In a PowerShell list, `'a=' + $x, 'b=' + $y` is ONE
+  string (the comma binds tighter than `+`), so the result carried the whole snapshot on the first line and the
+  laptop answered "Result has no valid host name". Every field is now its own element (Extractor and RDP collector).
+  Found by the new end-to-end test (`tests/EndToEnd.Tests.ps1`): it builds the Extractor, runs the built file as on a
+  host for 13 Windows versions (Server 2008, 2008 R2, 2012 R2, 2016, 2019, 2022, 2025, 2029, a Semi-Annual build,
+  Windows 7, 8.1, 10, 11), imports the result files and checks the fleet table, the 24 inventory columns and the policy.
+- **Server 2008 (not R2) caption.** `Microsoft(R) Windows Server(R) 2008` carries (R) signs, so `*Server 2008*` never
+  matched and the management warning was lost. Captions are cleaned on the host and on the laptop.
+- **No version cap.** "Newer than the target, never downgraded" is decided from the year in the name (2022, 2025,
+  2029...) or the build number (Semi-Annual "Windows Server Datacenter"), not from a fixed list. Client OS is detected
+  by `ProductType` as well as by name.
+- **TLS 1.0/1.1 column** now reads `Enabled` and `DisabledByDefault`, and knows TLS 1.1 is off by default on Windows 7 /
+  Server 2008 R2. One function for the Extractor, the RDP collector and the terminal check.
+- **32-bit PowerShell on 64-bit Windows** starts the 64-bit one (otherwise 64-bit SQL instances and agents are invisible).
+- **FIPS policy hosts:** SHA-256, HMAC and AES use the FIPS-validated classes first (the managed ones throw there).
 
 ## 2.17.1 - 2026-11-17
 

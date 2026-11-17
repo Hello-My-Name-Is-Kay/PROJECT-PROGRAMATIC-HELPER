@@ -8,7 +8,7 @@ the exact steps to make the release. Nothing here is done automatically: the rel
 
 | | |
 |---|---|
-| Version | 2.17.1 |
+| Version | 2.18.0 |
 | Stage | **alpha** (`PrivateData.PSData.Prerelease = 'alpha'` in the manifest, "alpha" in the README header) |
 | Automated tests | GitHub checks on Windows PowerShell 5.1 and PowerShell 7: leak scan (files and full history), offline smoke test, Pester, script analyzer (errors) |
 | Real environment | **Not run yet** on a real host, Azure subscription, VPN, Lansweeper database or interactive console |

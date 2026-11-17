@@ -1,7 +1,7 @@
 <!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-256 | Last fallback no vmm no lapt:257-268 | Console UI:269-310 | CLI:311-377 | GitHub integration:378-394 | OS policy:395-409 | Workflow per host:410-427 | Directory tree:428-461 | Where your data lives never:462-478 | Testing:479-492 | Errors:493-507 | Public repository and licenc:508-521 | Future your work AI model wi:522-531 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.17.1 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-17
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.18.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-18
 
 ## TL;DR
 
@@ -249,7 +249,9 @@ plan made for another host or older than its `ValidHours` (you type the plan's h
 overrides disk expansion in business hours, and reads the time window again after you confirm. The any-host
 Extractor never carries steps.
 
-The Extractor works on Windows PowerShell 2.0 to 5.1 (from 2.17.1: earlier builds stopped with a parse error on
+The Extractor reads Windows Server 2008 R2 to 2025 and later (no version cap) and Windows 7 to 11, 32-bit or 64-bit, with
+Windows PowerShell 2.0 to 5.1 (a 32-bit PowerShell on 64-bit Windows starts the 64-bit one by itself). It works on
+Windows PowerShell 2.0 to 5.1 (from 2.17.1: earlier builds stopped with a parse error on
 PowerShell 2.0, the default on Server 2008 R2, so build a new one with `vmm extractor`). On Server 2008 R2 the
 default execution policy is Restricted and right-click > Run with PowerShell may refuse the file: use the
 command line above. When it stops with an error, the window waits for Enter so the message stays readable.
@@ -486,7 +488,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1 -History                                # before a release: whole git history
 ```
 
-Status (2.17.1, alpha): the offline smoke test and Pester pass on GitHub's Windows runners in
+Status (2.18.0, alpha): the offline smoke test and Pester pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 

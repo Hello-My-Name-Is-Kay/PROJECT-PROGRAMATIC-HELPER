@@ -1,6 +1,7 @@
 function Get-VmmHostPolicy {
     # Fleet OS policy for one host (config section Policy):
     #   - goal: every machine on Policy.TargetOs (Windows Server 2019)
+    #   - newer than the target (2022, 2025 and any later year or build) is never downgraded
     #   - client OS (Windows 10/11...) is never touched unless the host carries an order (Set-VmmHostOrder)
     #   - management is warned about Windows Server 2008 (not R2) and about physical machines
     # Scope: Unknown (no check yet) | InScope | AtTarget | NewerThanTarget | ClientOs (excluded) | ClientOsOrdered
@@ -15,6 +16,8 @@ function Get-VmmHostPolicy {
     $warnPhy = [bool](Get-VmmSetting 'Policy.WarnPhysical' -Default $true)
 
     $os = if ($Record.Baseline -and $Record.Baseline.OS) { "$($Record.Baseline.OS)" } elseif ($Record.Check -and $Record.Check.OS) { "$($Record.Check.OS)" } else { '' }
+    $os = ConvertTo-VmmOsName $os   # (R)/(TM) signs: Server 2008 (not R2) captions carry them
+    $build = if ($Record.Baseline -and $Record.Baseline.OS) { "$($Record.Baseline.Build)" } elseif ($Record.Check) { "$($Record.Check.Build)" } else { '' }
     $like = { param($v, $pats) foreach ($p in $pats) { if ($p -and $v -like $p) { return $true } }; $false }
     $ordered = $Record.PSObject.Properties['Order'] -and $Record.Order -and -not $Record.Order.Cleared
 
@@ -25,7 +28,7 @@ function Get-VmmHostPolicy {
         else { $scope = 'ClientOs'; $why = "Client OS ($os): not touched without orders (vmm order -HostName $($Record.Name) -Reason '...')." }
     }
     elseif ($os -like $target) { $scope = 'AtTarget'; $why = "Already on the target OS ($os): nothing to upgrade." }
-    elseif (& $like $os $newer) { $scope = 'NewerThanTarget'; $why = "Newer than the target ($os): never downgraded." }
+    elseif ((& $like $os $newer) -or (Test-VmmNewerOs -Caption $os -Build $build -Target $target)) { $scope = 'NewerThanTarget'; $why = "Newer than the target ($os): never downgraded." }
 
     $warn = @()
     if ($os -and (& $like $os $warnOs) -and -not (& $like $os $okOs)) {

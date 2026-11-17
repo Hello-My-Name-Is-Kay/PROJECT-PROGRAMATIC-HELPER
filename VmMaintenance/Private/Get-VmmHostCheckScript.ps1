@@ -223,12 +223,9 @@ try {
             }
         } catch { }
     }
-    $on = @()
-    foreach ($t in '1.0', '1.1') {
-        $q = & $reg 'GetDWORDValue' @{ hDefKey = $hk; sSubKeyName = "SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS $t\Server"; sValueName = 'Enabled' }
-        if (-not ($q.ReturnValue -eq 0 -and $q.uValue -eq 0)) { $on += "TLS $t" }   # no key = Windows default = enabled
-    }
-    $inv.TlsLegacyDisabled = if ($on) { "No ($($on -join ', ') enabled)" } else { 'Yes' }
+    # Same rule as the Extractor (Get-TlsLegacyText): Enabled / DisabledByDefault, else the default of that Windows build
+    $rd = { param($t, $n) $q = & $reg 'GetDWORDValue' @{ hDefKey = $hk; sSubKeyName = "SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS $t\Server"; sValueName = $n }; if ($q.ReturnValue -eq 0) { [int]$q.uValue } else { $null } }
+    if (Get-Command Get-TlsLegacyText -ErrorAction SilentlyContinue) { $inv.TlsLegacyDisabled = Get-TlsLegacyText "$($r.Build)" $rd }
     $r.Inv = [pscustomobject]$inv
 
     # Watched software (only names matching Fleet.SoftwareWatch)
@@ -247,13 +244,15 @@ try {
 } finally { if ($s) { Remove-CimSession -CimSession $s -ErrorAction SilentlyContinue } }
 [pscustomobject]$r
 '@
-    # Paste the Extractor's verdict function in (same OK / WARN / FAIL rules on the host and from the laptop)
+    # Paste the Extractor's verdict and TLS functions in (same rules on the host and from the laptop)
     $verdict = ''
     try {
         $agent = Join-Path $script:ModuleRoot 'Resources\VmmHostAgent.ps1'
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($agent, [ref]$null, [ref]$null)
-        $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-AgentVerdict' }, $true) | Select-Object -First 1
-        if ($fn) { $verdict = $fn.Extent.Text }
+        foreach ($name in 'Get-AgentVerdict', 'Get-TlsLegacyText') {
+            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true) | Select-Object -First 1
+            if ($fn) { $verdict += $fn.Extent.Text + "`r`n" }
+        }
     } catch { }
     $text.Replace('# VMM-AGENTVERDICT', $verdict)
 }

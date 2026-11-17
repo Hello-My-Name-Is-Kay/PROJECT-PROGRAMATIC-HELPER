@@ -301,12 +301,12 @@ if (-not $isWin) {
             }
         }
         Test-Step 'Host agent: VMM2 result encrypted on the host decrypts on the laptop' {
-            # Load only Protect-Result from the agent script (AST), feed it this laptop's public key
+            # Load only Protect-Result and its helpers (AES, SHA-256, HMAC) from the agent script (AST), feed it this laptop's public key
             $agentPath = Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'
             $ast = [System.Management.Automation.Language.Parser]::ParseFile($agentPath, [ref]$null, [ref]$null)
-            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Protect-Result' }, $true) | Select-Object -First 1
-            if (-not $fn) { throw 'Protect-Result not found in the agent' }
-            . ([scriptblock]::Create($fn.Extent.Text))
+            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Protect-Result', 'New-Aes', 'New-Sha256', 'Get-HmacSha256' }, $true)
+            if (@($fn).Count -lt 4) { throw 'Protect-Result and its helpers not found in the agent' }
+            foreach ($one in @($fn)) { . ([scriptblock]::Create($one.Extent.Text)) }
             $rsa = & $m { Get-VmmAgentKey }
             try { $Card = @{ PublicKey = $rsa.ToXmlString($false) } } finally { $rsa.Clear() }
             $script:agentLine = Protect-Result "Name=SMOKE-HOST`nOS=Test"
@@ -323,8 +323,8 @@ if (-not $isWin) {
         Test-Step 'Extractor result file on the laptop Desktop/Downloads is imported and removed' {
             $agentPath = Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'
             $ast = [System.Management.Automation.Language.Parser]::ParseFile($agentPath, [ref]$null, [ref]$null)
-            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Protect-Result' }, $true) | Select-Object -First 1
-            . ([scriptblock]::Create($fn.Extent.Text))
+            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Protect-Result', 'New-Aes', 'New-Sha256', 'Get-HmacSha256' }, $true)
+            foreach ($one in @($fn)) { . ([scriptblock]::Create($one.Extent.Text)) }
             $rsa = & $m { Get-VmmAgentKey }
             try { $Card = @{ PublicKey = $rsa.ToXmlString($false) } } finally { $rsa.Clear() }
             $inbox = Join-Path $tmpRoot 'inbox'; New-Item -ItemType Directory -Path $inbox -Force | Out-Null
@@ -389,8 +389,8 @@ if (-not $isWin) {
         Test-Step 'Extractor result with failed reads: imported, gaps listed, route = Hands-on' {
             $agentPath = Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'
             $ast = [System.Management.Automation.Language.Parser]::ParseFile($agentPath, [ref]$null, [ref]$null)
-            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Protect-Result' }, $true) | Select-Object -First 1
-            . ([scriptblock]::Create($fn.Extent.Text))
+            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Protect-Result', 'New-Aes', 'New-Sha256', 'Get-HmacSha256' }, $true)
+            foreach ($one in @($fn)) { . ([scriptblock]::Create($one.Extent.Text)) }
             $rsa = & $m { Get-VmmAgentKey }
             try { $Card = @{ PublicKey = $rsa.ToXmlString($false) } } finally { $rsa.Clear() }
             $line = Protect-Result ("Name=SMOKE-HOST`nOS=Microsoft Windows Server 2016 Standard`nLang=fr-FR`nBuild=14393`nCTotalGB=`nCFreeGB=`nSql=`nMode=Snapshot`nProblem=C: drive: Access denied`nProblem=Windows licence: provider load failure`nSeconds=4")
@@ -404,8 +404,8 @@ if (-not $isWin) {
         Test-Step 'Host result claiming SnapPreSql done and an override: not applied while steps are off' {
             $agentPath = Join-Path $repo 'VmMaintenance\Resources\VmmHostAgent.ps1'
             $ast = [System.Management.Automation.Language.Parser]::ParseFile($agentPath, [ref]$null, [ref]$null)
-            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Protect-Result' }, $true) | Select-Object -First 1
-            . ([scriptblock]::Create($fn.Extent.Text))
+            $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -in 'Protect-Result', 'New-Aes', 'New-Sha256', 'Get-HmacSha256' }, $true)
+            foreach ($one in @($fn)) { . ([scriptblock]::Create($one.Extent.Text)) }
             $rsa = & $m { Get-VmmAgentKey }
             try { $Card = @{ PublicKey = $rsa.ToXmlString($false) } } finally { $rsa.Clear() }
             $before = @(& $m { (Read-VmmStore).Overrides }).Count
