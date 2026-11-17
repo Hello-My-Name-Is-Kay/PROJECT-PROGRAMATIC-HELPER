@@ -534,7 +534,8 @@ function Get-Facts($Data) {
     try {
         $cs = Get-Wmi 'Win32_ComputerSystem'
         $f.Manufacturer = "$($cs.Manufacturer)"; $f.Model = "$($cs.Model)"
-        $f.Platform = Get-PlatformName "$($cs.Manufacturer)" "$($cs.Model)" ([bool](Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue))
+        $az = $false; try { $az = [bool](Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue) } catch { }
+        $f.Platform = Get-PlatformName "$($cs.Manufacturer)" "$($cs.Model)" $az
         $f.Domain = "$($cs.Domain)"; if (-not $cs.PartOfDomain) { $f.Domain = 'WORKGROUP (' + $cs.Domain + ')' }
         $f.DomainController = 'No'; if ([int]$cs.DomainRole -ge 4) { $f.DomainController = 'Yes' }
         try { $f.Cpus = "$($cs.NumberOfLogicalProcessors)" } catch { }

@@ -419,8 +419,8 @@ function Get-Facts {
     try {
         $cs = Get-Wmi 'Win32_ComputerSystem'
         $f.Manufacturer = $cs.Manufacturer; $f.Model = $cs.Model
-        $f.Platform = 'Physical'
-        $f.Platform = Get-PlatformName "$($cs.Manufacturer)" "$($cs.Model)" ([bool](Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue))
+        $az = $false; try { $az = [bool](Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue) } catch { }
+        $f.Platform = Get-PlatformName "$($cs.Manufacturer)" "$($cs.Model)" $az
     } catch { Add-Problem 'Computer model' $_ }
     try {
         $c = Get-Wmi 'Win32_LogicalDisk' "DeviceID='C:'"
