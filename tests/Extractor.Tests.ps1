@@ -174,6 +174,7 @@ Describe 'The repository template and Windows PowerShell 2.0' {
             foreach ($n in $ast.FindAll({ $true }, $true)) {
                 $at = 'line ' + $n.Extent.StartLineNumber + ': '
                 if ($n -is [System.Management.Automation.Language.BinaryExpressionAst] -and ('' + $n.Operator) -in 'Iin', 'Inotin', 'Cin', 'Cnotin') { $found += $at + '-in/-notin' }
+                if ($n -is [System.Management.Automation.Language.BinaryExpressionAst] -and ('' + $n.Operator) -in 'Shl', 'Shr') { $found += $at + '-shl/-shr' }
                 if ($n -is [System.Management.Automation.Language.ConvertExpressionAst] -and $n.Type.TypeName.Name -in 'ordered', 'pscustomobject') { $found += $at + '[' + $n.Type.TypeName.Name + ']' }
                 if ($n -is [System.Management.Automation.Language.InvokeMemberExpressionAst]) {
                     $m = '' + $n.Member
@@ -201,8 +202,8 @@ Describe 'The repository template and Windows PowerShell 2.0' {
         }
     }
     It 'the scan finds what Windows PowerShell 2.0 lacks (it is not blind)' {
-        $code = "`$a = 1 -in @(1)`n`$b = [ordered]@{}`n`$c = @(1).Where({ `$_ })`n`$d = Get-ChildItem -File`n`$e = Get-Item . | Where-Object Name`nGet-CimInstance Win32_BIOS`n"
-        @(Get-Ps2Finding $code).Count | Should -Be 6
+        $code = "`$a = 1 -in @(1)`n`$b = [ordered]@{}`n`$c = @(1).Where({ `$_ })`n`$d = Get-ChildItem -File`n`$e = Get-Item . | Where-Object Name`nGet-CimInstance Win32_BIOS`n`$f = 256 -shr 8`n`$g = 1 -shl 8`n"
+        @(Get-Ps2Finding $code).Count | Should -Be 8
     }
     It 'the Extractor code (steps code cut out, as in a snapshot build) has nothing Windows PowerShell 2.0 lacks' {
         $t = [IO.File]::ReadAllText($script:agentPath)
@@ -211,6 +212,10 @@ Describe 'The repository template and Windows PowerShell 2.0' {
         $e | Should -BeGreaterThan $b
         $snapshot = $t.Substring(0, $b) + $t.Substring($e + '# VMM-STEPS-END'.Length)
         @(Get-Ps2Finding $snapshot) | Should -BeNullOrEmpty
+    }
+    It 'the whole file, steps code included, has no -shl/-shr (PowerShell 3.0 operators: a parse error on 2.0 stops the whole file)' {
+        $t = [IO.File]::ReadAllText($script:agentPath)
+        @(Get-Ps2Finding $t | Where-Object { $_ -like '*-shl/-shr*' }) | Should -BeNullOrEmpty
     }
     It 'the repository file is the generic template: empty plan card, no key, and no address, share, e-mail or id' {
         $t = [IO.File]::ReadAllText($script:agentPath)
@@ -221,5 +226,108 @@ Describe 'The repository template and Windows PowerShell 2.0' {
         $t | Should -Not -Match '\\\\[A-Za-z0-9][\w\.-]*\\'
         $t | Should -Not -Match '[\w\.-]+@[\w\.-]+\.[A-Za-z]{2,}'
         $t | Should -Not -Match '\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b'
+    }
+}
+
+Describe 'Encrypted result header (PowerShell 2.0 safe length bytes)' {
+    BeforeAll {
+        $fn = $script:agentAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Protect-Result' }, $true) | Select-Object -First 1
+        . ([scriptblock]::Create($fn.Extent.Text))
+    }
+    It 'writes the wrapped key length big-endian and the laptop key can unwrap it' {
+        $rsa = New-Object System.Security.Cryptography.RSACryptoServiceProvider 2048
+        try {
+            $script:Card = @{ PublicKey = $rsa.ToXmlString($false) }
+            $line = Protect-Result 'Name=HOSTA'
+            $line | Should -Match '^VMM2\|'
+            $all = [Convert]::FromBase64String($line.Substring(5))
+            [Text.Encoding]::ASCII.GetString($all, 0, 4) | Should -Be 'VMM2'
+            $wl = ([int]$all[4] * 256) + [int]$all[5]
+            $wl | Should -Be 256
+            $wrapped = New-Object byte[] $wl; [Array]::Copy($all, 6, $wrapped, 0, $wl)
+            $rsa.Decrypt($wrapped, $true).Length | Should -Be 64
+        } finally { $rsa.Clear() }
+    }
+}
+
+Describe 'Steps plan: host and age are enforced, not only shown' {
+    BeforeAll {
+        foreach ($name in 'Test-PlanHost', 'Get-PlanProblem') {
+            $fn = $script:agentAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true) | Select-Object -First 1
+            if (-not $fn) { throw "Extractor function $name not found" }
+            . ([scriptblock]::Create($fn.Extent.Text))
+        }
+        $script:Inv = [Globalization.CultureInfo]::InvariantCulture
+        $script:Here = $env:COMPUTERNAME; if (-not $script:Here) { $script:Here = 'HOSTA'; $env:COMPUTERNAME = 'HOSTA' }
+        $script:Fresh = [DateTime]::UtcNow.AddHours(-1).ToString('yyyy-MM-ddTHH:mm:ssZ')
+    }
+    It 'matches short name, FQDN and a NetBIOS name cut at 15 characters, any case' {
+        Test-PlanHost 'hosta' 'HOSTA' | Should -BeTrue
+        Test-PlanHost 'HOSTA.corp.example.com' 'HOSTA' | Should -BeTrue
+        Test-PlanHost 'SQLSERVERPROD0123' 'SQLSERVERPROD01' | Should -BeTrue
+        Test-PlanHost 'HOSTB' 'HOSTA' | Should -BeFalse
+        Test-PlanHost '' 'HOSTA' | Should -BeFalse
+    }
+    It 'a fresh plan for this host has no problem' {
+        $script:Card = @{ Host = $script:Here; Generated = $script:Fresh; ValidHours = '48' }
+        Get-PlanProblem | Should -Be ''
+    }
+    It 'a plan for another host blocks change steps' {
+        $script:Card = @{ Host = 'OTHERHOST'; Generated = $script:Fresh; ValidHours = '48' }
+        Get-PlanProblem | Should -Match 'not this host'
+    }
+    It 'an expired, undated or host-less plan blocks change steps' {
+        $script:Card = @{ Host = $script:Here; Generated = [DateTime]::UtcNow.AddHours(-49).ToString('yyyy-MM-ddTHH:mm:ssZ'); ValidHours = '48' }
+        Get-PlanProblem | Should -Match 'h old'
+        $script:Card = @{ Host = $script:Here; Generated = ''; ValidHours = '48' }
+        Get-PlanProblem | Should -Match 'no build time'
+        $script:Card = @{ Host = ''; Generated = $script:Fresh; ValidHours = '48' }
+        Get-PlanProblem | Should -Match 'names no host'
+    }
+    It 'Get-Plan, Confirm-Change, Stage and the snapshot confirmation all ask Get-PlanProblem' {
+        foreach ($name in 'Get-Plan', 'Confirm-Change', 'Invoke-Stage', 'Invoke-PreSqlSnapshotConfirm') {
+            $fn = $script:agentAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true) | Select-Object -First 1
+            $fn.Extent.Text | Should -Match 'Get-PlanProblem' -Because "$name must refuse a plan for another host"
+        }
+    }
+    It 'Confirm-Change reads the time window again after the prompts, and never overrides disk expansion' {
+        $fn = $script:agentAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Confirm-Change' }, $true) | Select-Object -First 1
+        @([regex]::Matches($fn.Extent.Text, 'Get-Window')).Count | Should -BeGreaterThan 1
+        $fn.Extent.Text | Should -Match "ExpandDisk'\) \{ Bad"
+    }
+}
+
+Describe 'Platform and work folder guards' {
+    BeforeAll {
+        foreach ($name in 'Get-PlatformName', 'Test-UnderTemp') {
+            $fn = $script:agentAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true) | Select-Object -First 1
+            . ([scriptblock]::Create($fn.Extent.Text))
+        }
+    }
+    It 'names hypervisors other than VMware/Hyper-V as OtherVirtual, not Physical' {
+        Get-PlatformName 'QEMU' 'Standard PC (Q35 + ICH9, 2009)' $false | Should -Be 'OtherVirtual'
+        Get-PlatformName 'Nutanix' 'AHV' $false | Should -Be 'OtherVirtual'
+        Get-PlatformName 'Xen' 'HVM domU' $false | Should -Be 'OtherVirtual'
+        Get-PlatformName 'VMware, Inc.' 'VMware7,1' $false | Should -Be 'VMware'
+        Get-PlatformName 'Microsoft Corporation' 'Virtual Machine' $true | Should -Be 'Azure'
+        Get-PlatformName 'Microsoft Corporation' 'Virtual Machine' $false | Should -Be 'Hyper-V'
+        Get-PlatformName 'Dell Inc.' 'PowerEdge R740' $false | Should -Be 'Physical'
+    }
+    It 'Finish and the steps log only touch a work folder under C:\Temp' {
+        Test-UnderTemp 'C:\Temp\VmmAgent' | Should -BeTrue
+        Test-UnderTemp 'C:\Temp' | Should -BeFalse
+        Test-UnderTemp 'C:\Windows' | Should -BeFalse
+        Test-UnderTemp 'C:\Temp\..\Windows' | Should -BeFalse
+        foreach ($name in 'Invoke-Finish', 'Initialize-WorkDir') {
+            $fn = $script:agentAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true) | Select-Object -First 1
+            $fn.Extent.Text | Should -Match 'Test-UnderTemp'
+        }
+    }
+    It 'the Extractor and the Fallback use the same platform list' {
+        $fbPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'VmMaintenance\Resources\Fallback\VmmFallback.ps1'
+        $fbAst = [System.Management.Automation.Language.Parser]::ParseFile($fbPath, [ref]$null, [ref]$null)
+        $a = ($script:agentAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-PlatformName' }, $true) | Select-Object -First 1).Body.Extent.Text
+        $b = ($fbAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-PlatformName' }, $true) | Select-Object -First 1).Body.Extent.Text
+        ($a -replace 'Fallback|Extractor', 'X') | Should -Be ($b -replace 'Fallback|Extractor', 'X')
     }
 }

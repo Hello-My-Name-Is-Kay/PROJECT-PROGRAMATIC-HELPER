@@ -276,10 +276,11 @@ Describe 'Result file and sanitizing' {
         $l[0] | Should -Be 'Format=VMMF1'
         foreach ($k in 'Name=HOSTA', 'Platform=Azure', 'CTotalGB=127', 'CFreeGB=20.5', 'PendingReboot=Yes', 'Sql=MSSQLSERVER 13.0.5026.0 Standard Edition (32-bit)',
                        'Inv.Domain=corp.example.com', 'Inv.SqlPresent=Yes', 'Inv.Qualys=Running', 'Disk=C:|NTFS|127|20.5', 'Patch=KB5000001|2026-10-15',
-                       'SqlStaleBackup=MSSQLSERVER|AppDb|never', 'Policy.Scope=InScope', 'Policy.NextOs=Windows Server 2019', 'Problem=Event log System: access denied') {
+                       'SqlStaleBackup=MSSQLSERVER|db1|never', 'Policy.Scope=InScope', 'Policy.NextOs=Windows Server 2019', 'Problem=Event log System: access denied') {
             $l | Should -Contain $k
         }
         ($l | Where-Object { $_ -like 'SqlInstance=*' }) | Should -Match '\|PatchFirst$'
+        ($l -join "`n") | Should -Not -Match 'AppDb' -Because 'database names stay out of the unencrypted result file'
     }
     It 'masks secrets, product keys, IP addresses and e-mail addresses in log and Problem lines' {
         $ip = (192, 0, 2, 7) -join '.'
@@ -300,6 +301,8 @@ Describe 'PowerShell 2.0 compatibility and exits (static)' {
         }
         $ops = @($script:fbTokens | Where-Object { $_.Text -eq '-in' -or $_.Text -eq '-notin' -or $_.Text -eq '-iin' -or $_.Text -eq '-inotin' -or $_.Text -eq '-cin' -or $_.Text -eq '-cnotin' })
         $ops.Count | Should -Be 0 -Because 'the -in / -notin operators need PowerShell 3'
+        $sh = @($script:fbTokens | Where-Object { $_.Text -eq '-shl' -or $_.Text -eq '-shr' })
+        $sh.Count | Should -Be 0 -Because 'the -shl / -shr operators need PowerShell 3'
     }
     It 'calls Get-CimInstance only inside Get-Wmi (PowerShell 7 fallback)' {
         $calls = $script:fbAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Get-CimInstance' }, $true)
@@ -386,5 +389,47 @@ Describe 'Process exit codes' {
         $lock = [IO.File]::Open((Join-Path $wd 'fallback.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
         try { (Invoke-Fallback @('-Snapshot', '-WorkDir', $wd)).Code | Should -Be 6 }
         finally { $lock.Close(); Remove-Item -LiteralPath $wd -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+Describe 'Change safety: rollback point, management, time window, local media only' {
+    BeforeAll {
+        function script:Get-FnText([string]$Name) {
+            ($script:fbAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $Name }, $true) | Select-Object -First 1).Extent.Text
+        }
+    }
+    It 'every change step confirms the rollback point, then reads the time window again after YES' {
+        foreach ($id in 'WindowsPatch', 'SqlPatch', 'SqlUpgrade', 'OsUpgrade', 'Disk') {
+            $t = Get-FnText ('Invoke-Step' + $id)
+            $t | Should -Match "Confirm-Rollback '$id'" -Because "$id changes the host"
+            $t | Should -Match "Test-WindowStill '$id'" -Because "$id must not run after the window closed while waiting for YES"
+            $t.IndexOf('Confirm-Rollback') | Should -BeLessThan $t.IndexOf('Confirm-Yes')
+        }
+    }
+    It 'asks SNAPSHOT TAKEN on Azure, BACKUP CONFIRMED elsewhere, and MANAGEMENT INFORMED when warnings apply' {
+        $t = Get-FnText 'Confirm-Rollback'
+        foreach ($p in 'SNAPSHOT TAKEN', 'BACKUP CONFIRMED', 'MANAGEMENT INFORMED') { $t | Should -Match $p }
+    }
+    It 'Test-WindowStill returns 3 in business hours and 0 in the window' {
+        $script:Data = Read-Companion $script:dataPath
+        $script:WorkRoot = Join-Path ([IO.Path]::GetTempPath()) ('vmmf-' + [guid]::NewGuid().ToString('N'))
+        Mock Get-Window { New-Object PSObject -Property @{ ChangesAllowed = $false; Why = 'Business hours' } }
+        Test-WindowStill 'Disk' | Should -Be 3
+        Mock Get-Window { New-Object PSObject -Property @{ ChangesAllowed = $true; Why = 'Maintenance window' } }
+        Test-WindowStill 'Disk' | Should -Be 0
+    }
+    It 'downloads nothing: no Windows Update agent in the script' {
+        $t = [IO.File]::ReadAllText($script:fbPath)
+        $t | Should -Not -Match 'Microsoft\.Update\.'
+        $t | Should -Not -Match 'Invoke-WebRequest|Net\.WebClient|Start-BitsTransfer'
+    }
+    It 'staging onto a client OS without -Order is refused (5)' {
+        $script:Policy = New-Object PSObject -Property @{ Scope = 'ClientOs'; Why = 'Client OS: not touched without orders.' }
+        $script:WorkRoot = Join-Path ([IO.Path]::GetTempPath()) ('vmmf-' + [guid]::NewGuid().ToString('N'))
+        Copy-Media 'Windows' | Should -Be 5
+    }
+    It 'the SQL product key is read without echo' {
+        (Get-FnText 'Read-Secret') | Should -Match 'AsSecureString'
+        (Get-FnText 'Invoke-StepSqlUpgrade') | Should -Match 'Read-Secret'
     }
 }

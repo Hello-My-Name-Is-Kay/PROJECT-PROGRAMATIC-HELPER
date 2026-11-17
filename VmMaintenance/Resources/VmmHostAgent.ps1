@@ -59,7 +59,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.17.0'
+$AgentVersion = '2.17.1'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
@@ -203,6 +203,26 @@ function Get-SqlInstanceLines {
         }
     }
     $lines
+}
+function Get-PlatformName([string]$Manufacturer, [string]$Model, [bool]$AzureAgent) {
+    # Physical only when no known hypervisor shows in the model or manufacturer (same list as the Fallback)
+    if ($Manufacturer -like '*VMware*' -or $Model -like '*VMware*') { return 'VMware' }
+    if ($Model -like '*Virtual Machine*') { if ($AzureAgent) { return 'Azure' }; return 'Hyper-V' }
+    if ($Model -like '*KVM*' -or $Model -like '*VirtualBox*' -or $Model -like '*HVM domU*' -or $Model -like '*AHV*' -or $Model -like '*Standard PC*' -or
+        $Manufacturer -like '*Xen*' -or $Manufacturer -like '*QEMU*' -or $Manufacturer -like '*Nutanix*' -or $Manufacturer -like '*innotek*' -or
+        $Manufacturer -like '*Red Hat*' -or $Manufacturer -like '*oVirt*' -or $Manufacturer -like '*Amazon EC2*' -or $Manufacturer -like '*Google*') { return 'OtherVirtual' }
+    'Physical'
+}
+function Test-UnderTemp([string]$Path) {
+    # A folder below C:\Temp (not C:\Temp itself), no '..' segment
+    $p = "$Path".TrimEnd('\')
+    ($p -match '^(?i)C:\\Temp(\\[^\\/:*?"<>|]+)+$') -and ($p -notmatch '\\\.\.?(\\|$)')
+}
+function Wait-BeforeClose {
+    # Started by right-click > Run with PowerShell, the window closes at exit: keep an error readable
+    if (-not [Environment]::UserInteractive) { return }
+    foreach ($a in [Environment]::GetCommandLineArgs()) { if ($a -like '-NonI*') { return } }
+    try { Write-Host ''; Read-Host ' Enter to close this window' | Out-Null } catch { }
 }
 function Get-ExtractExitCode($File, [int]$Problems) {
     # -Extract exit code: 0 saved and every read worked | 1 not saved | 2 saved, but some reads failed (Problem= lines)
@@ -400,11 +420,7 @@ function Get-Facts {
         $cs = Get-Wmi 'Win32_ComputerSystem'
         $f.Manufacturer = $cs.Manufacturer; $f.Model = $cs.Model
         $f.Platform = 'Physical'
-        if ($cs.Manufacturer -like '*VMware*' -or $cs.Model -like '*VMware*') { $f.Platform = 'VMware' }
-        elseif ($cs.Model -like '*Virtual Machine*') {
-            $f.Platform = 'Hyper-V'
-            if (Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue) { $f.Platform = 'Azure' }
-        }
+        $f.Platform = Get-PlatformName "$($cs.Manufacturer)" "$($cs.Model)" ([bool](Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue))
     } catch { Add-Problem 'Computer model' $_ }
     try {
         $c = Get-Wmi 'Win32_LogicalDisk' "DeviceID='C:'"
@@ -454,6 +470,7 @@ function Get-Policy($Facts) {
 
 # ============================================================== steps: work folder and log
 function Initialize-WorkDir {
+    if (-not (Test-UnderTemp $WorkDir)) { throw "Work folder $WorkDir must be a folder under C:\Temp (project rule)." }
     if (Test-Path -LiteralPath $WorkDir) { return }
     New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
     # [SEC] Only Administrators, SYSTEM and the current user (by SID, no names) can read the folder.
@@ -490,6 +507,25 @@ function Get-Window {
 }
 
 # ============================================================== steps: plan
+function Test-PlanHost([string]$PlanHost, [string]$ThisHost) {
+    # The plan's host (short name or FQDN, from the laptop) against this host's NetBIOS name (cut at 15 characters)
+    $h = ("$PlanHost" -split '\.')[0]
+    if (-not $h -or -not $ThisHost) { return $false }
+    if ($h -ieq $ThisHost) { return $true }
+    ($h.Length -gt 15) -and ($h.Substring(0, 15) -ieq $ThisHost)
+}
+function Get-PlanProblem {
+    # '' when the plan may drive change steps on this host; otherwise why not. Checks and History still work.
+    if (-not $Card.Host) { return 'The plan names no host: build the steps extractor for this host on the laptop (vmm extractor -Name <host>).' }
+    if (-not (Test-PlanHost $Card.Host $env:COMPUTERNAME)) { return "The plan is for $($Card.Host), not this host ($env:COMPUTERNAME). Build an extractor for this host on the laptop." }
+    if (-not $Card.Generated) { return 'The plan has no build time: build a fresh extractor on the laptop.' }
+    $age = $null; $max = 48
+    try { $max = [double]::Parse("$($Card.ValidHours)", $Script:Inv) } catch { }
+    try { $age = ([DateTime]::UtcNow - [DateTime]::Parse($Card.Generated, $Script:Inv).ToUniversalTime()).TotalHours } catch { }
+    if ($null -eq $age) { return "The plan build time '$($Card.Generated)' cannot be read: build a fresh extractor on the laptop." }
+    if ($age -gt $max) { return ('The plan is {0:N0} h old (valid {1} h): build a fresh extractor on the laptop.' -f $age, $max) }
+    ''
+}
 # Host-side steps only. The other snapshot points (SnapStart, SnapPostSql, SnapFinal) and ManualCheck are done
 # from the laptop (vmm step); on Azure every snapshot point is taken from the laptop.
 $StepNames = @('Precheck', 'Stage', 'SnapPreSql', 'ExpandDisk', 'Upgrade', 'Verify')
@@ -508,6 +544,7 @@ function Get-Plan($Facts) {
     $pk = @(Get-PackageState)
     $staged = ($pk.Count -gt 0) -and -not ($pk | Where-Object { $_.State -ne 'Verified' -and $_.State -ne 'Present' })
     $okGB = [double]::Parse($Card.OkGB, $Script:Inv); $critGB = [double]::Parse($Card.CriticalGB, $Script:Inv)
+    $planBad = Get-PlanProblem
     $plan = @()
     foreach ($s in $StepNames) {
         $can = $true; $why = ''; $class = 'ReadOnly'
@@ -543,7 +580,8 @@ function Get-Plan($Facts) {
             }
             'Verify' { $why = 'Read-only. Compares the OS with the expected result.' }
         }
-        if ($class -ne 'ReadOnly' -and -not $pol.Workable) { $can = $false; $why = 'Policy: ' + $pol.Why }
+        if ($class -ne 'ReadOnly' -and $planBad) { $can = $false; $why = 'Plan: ' + $planBad }
+        elseif ($class -ne 'ReadOnly' -and -not $pol.Workable) { $can = $false; $why = 'Policy: ' + $pol.Why }
         elseif ($can -and $s -eq 'ExpandDisk' -and -not $w.ChangesAllowed) { $can = $false; $why = $w.Why + ' Disk expansion is after hours only (the VM is shut down).' }
         elseif ($can -and $class -eq 'Change' -and -not $w.ChangesAllowed) { $can = $false; $why = $w.Why + ' (override possible)' }
         $plan += New-Object PSObject -Property @{ Step = $s; Class = $class; Status = (Get-LastStatus $s); Available = $can; Why = $why }
@@ -553,7 +591,11 @@ function Get-Plan($Facts) {
 
 # ============================================================== steps: confirmations
 function Confirm-Change([string]$Step) {
+    $bad = Get-PlanProblem
+    if ($bad) { Bad $bad; return $false }
     $w = Get-Window
+    if (-not $w.ChangesAllowed -and $Step -eq 'ExpandDisk') { Bad ($w.Why + ' Disk expansion is after hours only (the VM is shut down): no override.'); return $false }
+    $overridden = $false
     if (-not $w.ChangesAllowed) {
         Warn $w.Why
         Warn 'Override only with your manager''s agreement. Type OVERRIDE to continue, anything else cancels.'
@@ -561,9 +603,16 @@ function Confirm-Change([string]$Step) {
         $r = Read-Host ' Reason (who approved, why; 10+ characters)'
         if (-not $r -or $r.Trim().Length -lt 10) { Bad 'Override refused: reason too short.'; return $false }
         Write-Event $Step 'Override' $r
+        $overridden = $true
     }
-    Warn "Type the host name ($env:COMPUTERNAME) to run $Step, anything else cancels."
-    if ((Read-Host ' >') -ne $env:COMPUTERNAME) { Mute 'Cancelled.'; return $false }
+    # The host name from the PLAN (not this host's): a copy on the wrong host is refused above, and the person
+    # confirms which host the plan was built for.
+    Warn "Type the plan's host name ($($Card.Host)) to run $Step, anything else cancels."
+    if (-not (Test-PlanHost (Read-Host ' >') $env:COMPUTERNAME) -or -not (Test-PlanHost $Card.Host $env:COMPUTERNAME)) { Mute 'Cancelled.'; return $false }
+    # The prompts above wait for a person: read the window again, it may have changed while they waited
+    $w2 = Get-Window
+    if (-not $w2.ChangesAllowed -and -not $overridden) { Bad ($w2.Why + ' The window closed while waiting: nothing was run.'); return $false }
+    if (-not $w2.ChangesAllowed -and $Step -eq 'ExpandDisk') { Bad ($w2.Why + ' Nothing was run.'); return $false }
     $true
 }
 
@@ -577,6 +626,7 @@ function Invoke-Check([string]$Step) {
     if ($status -eq 'Success') { Good "$Step recorded: $note" } else { Bad "$Step FAILED: $note" }
 }
 function Invoke-Stage {
+    $pb = Get-PlanProblem; if ($pb) { Bad $pb; return }
     if (-not $Card.Packages.Count) { Warn 'No packages in the plan.'; return }
     if (-not (Test-Path -LiteralPath $Card.TargetFolder)) { New-Item -ItemType Directory -Path $Card.TargetFolder -Force | Out-Null; Info "Created $($Card.TargetFolder)" }
     $bad = 0
@@ -599,6 +649,7 @@ function Invoke-Stage {
     if ($bad) { Write-Event 'Stage' 'Failed' "$bad package(s) missing or invalid" } else { Write-Event 'Stage' 'Success' 'all packages present and verified' }
 }
 function Invoke-PreSqlSnapshotConfirm {
+    $pb = Get-PlanProblem; if ($pb) { Bad $pb; return }
     if ($Card.AzureVm -eq 'Yes') { Warn 'Azure VM: take the snapshot from the laptop (vmm step -Step SnapPreSql).'; return }
     Info 'Take a snapshot/backup of this host in the platform console (vSphere, Hyper-V, backup tool).'
     Info "Name it $($env:COMPUTERNAME)_snap-PreSql_$((Get-Date).ToString('yyyyMMdd'))."
@@ -743,7 +794,8 @@ function Protect-Result([string]$Text) {
         $ms = New-Object IO.MemoryStream
         $hdr = [Text.Encoding]::ASCII.GetBytes('VMM2')
         $ms.Write($hdr, 0, 4)
-        $ms.WriteByte([byte](($wrapped.Length -shr 8) -band 0xFF)); $ms.WriteByte([byte]($wrapped.Length -band 0xFF))
+        # Length as two big-endian bytes with integer maths: -shr/-shl need PowerShell 3.0 (this file must parse on 2.0)
+        $ms.WriteByte([byte]([Math]::Floor($wrapped.Length / 256) % 256)); $ms.WriteByte([byte]($wrapped.Length % 256))
         $ms.Write($wrapped, 0, $wrapped.Length)
         $ms.Write($aes.IV, 0, 16)
         $ms.Write($ct, 0, $ct.Length)
@@ -833,12 +885,13 @@ function Export-Result([switch]$Auto) {
 function Invoke-Finish([switch]$Force) {
     if (-not $Force) {
         Warn ' Deletes this extractor and its result files from this desktop, and clears the clipboard.'
-        if (Test-Path -LiteralPath $WorkDir) { Warn " Also removes $WorkDir (steps log)." }
+        if ((Test-UnderTemp $WorkDir) -and (Test-Path -LiteralPath $WorkDir)) { Warn " Also removes $WorkDir (steps log)." }
         Warn ' Staged install files are NOT touched. Type FINISH to continue.'
         if ((Read-Host ' >') -cne 'FINISH') { Mute 'Cancelled.'; return $false }
     }
     $ok = $true
-    if (Test-Path -LiteralPath $WorkDir) {
+    if (-not (Test-UnderTemp $WorkDir)) { $ok = $false; Bad "Work folder $WorkDir is not under C:\Temp: left alone, check it by hand." }
+    elseif (Test-Path -LiteralPath $WorkDir) {
         try { Remove-Item -LiteralPath $WorkDir -Recurse -Force; Good "Removed $WorkDir" }
         catch { $ok = $false; Bad ('Could not remove the work folder: ' + (Protect-Text $_.Exception.Message)) }
     }
@@ -868,13 +921,8 @@ function Show-Header {
         $w = Get-Window
         if ($w.ChangesAllowed) { Good (' ' + $w.Why) } else { Warn (' ' + $w.Why) }
         if (-not (Test-Admin)) { Warn ' Not elevated: checks and staging only. For changes, run PowerShell as administrator.' }
-        if ($Card.Host -and $Card.Host -ne $env:COMPUTERNAME) { Bad " PLAN IS FOR $($Card.Host), NOT THIS HOST. Do not run change steps here." }
-        elseif ($Card.Generated) {
-            try {
-                $age = ([DateTime]::UtcNow - [DateTime]::Parse($Card.Generated, $Script:Inv).ToUniversalTime()).TotalHours
-                if ($age -gt [double]$Card.ValidHours) { Warn (" Plan is {0:N0} h old: build a fresh extractor on the laptop." -f $age) }
-            } catch { }
-        }
+        $pb = Get-PlanProblem
+        if ($pb) { Bad (' CHANGE STEPS BLOCKED: ' + $pb) }
     }
     try {
         $pf = New-Object PSObject -Property @{ OS = "$((Get-Wmi 'Win32_OperatingSystem').Caption)"; Platform = $Card.Platform }
@@ -944,5 +992,6 @@ try {
     }
 } catch {
     Bad (' ERROR: ' + (Protect-Text $_.Exception.Message))
+    if (-not $Extract -and -not $Finish) { Wait-BeforeClose }
     exit 1
 }

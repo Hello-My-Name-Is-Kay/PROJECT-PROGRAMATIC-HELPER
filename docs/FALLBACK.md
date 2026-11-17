@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmmFallback.ps1, the standalone last fallback on a host (no vmm, no laptop key, no network): files, how to run, steps with run/guidance-only/stage, rules, exit codes, result file, companion .psd1, tests. SECTIONS: Run it:17-38 | Steps:39-60 | Rules same as vmm:61-73 | Exit codes:74-91 | Result file:92-101 | Companion file:102-113 | Tests:114-121 -->
+<!-- SUMMARY: VmmFallback.ps1, the standalone last fallback on a host (no vmm, no laptop key, no network): files, how to run, steps with run/guidance-only/stage, rules, exit codes, result file, companion .psd1, tests. SECTIONS: Run it:17-38 | Steps:39-65 | Rules same as vmm:66-81 | Exit codes:82-99 | Result file:100-110 | Companion file:111-122 | Tests:123-130 -->
 # Last fallback: VmmFallback.ps1 on a host
 
 `VmmFallback.ps1` is the **last fallback**. Use it on a host when nothing else works: vmm cannot reach the host, and
@@ -47,13 +47,18 @@ supported on the target"). Every step shows its advice, then offers **R** run (a
 |---|---|---|---|
 | Snapshot | OS, build, edition, disks, pending reboot, patches, Windows Update, roles, DC, cluster, IIS, Exchange, SQL (64 and 32-bit, level, CU, HADR, backups), software, agents, legacy TLS, licence, .NET, event log errors | Read-only, any time | never |
 | Precheck | Reboot pending, free space, Windows Update service, SQL backup age, warnings | Read-only | (reports exit 5 when something blocks changes) |
-| WindowsPatch | `.msu` / `.cab` in `Media\Windows` in name order (`01-`, `02-`), or Windows Update / WSUS | wusa / DISM, no reboot | hours, policy, admin, pending reboot, no media |
+| WindowsPatch | `.msu` / `.cab` in `Media\Windows` in name order (`01-`, `02-`) | wusa / DISM, no reboot | hours, policy, admin, pending reboot, no media |
 | SqlPatch | SP/CU `.exe` in `Media\Sql` that matches the instance's major version (newest wins) | `/quiet /Action=Patch /InstanceName=` | hours, policy, admin, cluster / Always On, a database without a fresh full backup, pending reboot, low space, already at that level |
 | SqlUpgrade | `Media\SqlUpgrade\<any>\setup.exe` of an allowed target version | `/q /ACTION=Upgrade`; product key asked, used once, never stored or logged | as SqlPatch, plus: no in-place path, source below the minimum level |
-| OsUpgrade | Next hop from `OsPath`, setup in `Media\Os` or a mounted ISO with the right build | Compatibility scan (C), then `/auto upgrade /imageindex <n> /noreboot`; image index picked by edition and Core/Desktop | hours, policy (client OS, target or newer, DC, cluster, Exchange), admin, pending reboot, low space, SQL not supported on the target, wrong media build, setup older than 2016 (no unattended switch: guidance only). Azure asks you to type `SNAPSHOT TAKEN`; management warnings ask for `MANAGEMENT INFORMED` |
-| Disk | C: size and free space, next Azure tier | Extend C: into free space after it (Resize-Partition or diskpart) | hours, admin, no free space after C:. The disk itself is grown in Azure (snapshot, deallocate, resize, start) |
+| OsUpgrade | Next hop from `OsPath`, setup in `Media\Os` or a mounted ISO with the right build | Compatibility scan (C), then `/auto upgrade /imageindex <n> /noreboot`; image index picked by edition and Core/Desktop | hours, policy (client OS, target or newer, DC, cluster, Exchange), admin, pending reboot, low space, SQL not supported on the target, wrong media build, setup older than 2016 (no unattended switch: guidance only) |
+| Disk | C: size and free space, next Azure tier | Extend C: into free space after it (Resize-Partition or diskpart) | hours, policy, admin, no free space after C:. The disk itself is grown in Azure (snapshot, deallocate, resize, start) |
 | Postcheck | Second snapshot, changes since the first, automatic services not running | Read-only | (exit 9 when a reboot is still pending) |
 | Finish | | Delete staged media (R) or the whole work folder (A) | the script is inside the work folder |
+
+Before **every** change (WindowsPatch, SqlPatch, SqlUpgrade, OsUpgrade, Disk) the script asks for a rollback point:
+type `SNAPSHOT TAKEN` on Azure (every disk, in the portal) or `BACKUP CONFIRMED` elsewhere; when management warnings
+apply (Server 2008 non-R2, physical, DC, cluster, Exchange) also `MANAGEMENT INFORMED`. Then `YES`. After `YES` the
+time window is read again: a prompt left open past 08:00 runs nothing (exit 3).
 
 The script **never reboots** the host. Steps that need a reboot end with exit code 9 and tell you to reboot in the
 maintenance window.
@@ -65,11 +70,14 @@ maintenance window.
 - Warnings for Server 2008 (not R2), physical machines, domain controllers, clusters and Exchange.
 - Mon-Fri 08:00-17:00 Lisbon (`Settings.TimeZoneId`, `BusinessDays`, `BusinessStart`, `BusinessEnd`, `Holidays`):
   reads, guidance and staging into `C:\Temp` only. An unknown time zone counts as business hours.
-- Media come from a local folder only (`Settings.MediaDir`, or a mounted ISO). Nothing is downloaded, except what
-  Windows Update / WSUS sends when you pick **W** in WindowsPatch.
+- Media come from a local folder only (`Settings.MediaDir`, or a mounted ISO). Nothing is downloaded (the
+  Windows Update / WSUS option was removed in 2.17.1: it could also install SQL updates past the backup check).
+- Client OS without `-Order`: staging (T) is refused too, because it copies files onto the machine.
 - The work folder (`Settings.WorkDir`, default `C:\Temp\VmmFallback`) holds the result files, the log
   (`fallback_<date>.log`, sanitized), the lock and staged media. Only Administrators, SYSTEM and you can read it.
-- No credentials are stored. The product key for a SQL upgrade is typed, used once and dropped.
+- No credentials are stored. The product key for a SQL upgrade is typed without echo, used once and dropped.
+- Started by right-click > Run with PowerShell, the window waits for Enter when the exit code is not 0, so the
+  last message stays readable.
 
 ## Exit codes
 
@@ -94,7 +102,8 @@ Ctrl+C is logged as `Interrupted`, and the lock is released.
 `VMMF_<HOST>_<kind>_<yyyyMMdd_HHmmss>.txt` in the work folder, `Key=Value` lines, first line `Format=VMMF1`.
 The keys the Extractor also writes are the same (`Name`, `OS`, `Build`, `Platform`, `CTotalGB`, `CFreeGB`,
 `PendingReboot`, `Sql`, `Inv.*`, `Problem`), so vmm can import it later (not built yet). Extra keys:
-`SqlInstance`, `SqlStaleBackup`, `Disk`, `Patch`, `Feature`, `Software`, `Policy.*`.
+`SqlInstance`, `SqlStaleBackup` (`<instance>|db<n>|<age>`: database names stay on screen, out of the file), `Disk`,
+`Patch`, `Feature`, `Software`, `Policy.*`.
 
 The file is **not encrypted** (there is no laptop key on the host). Keep it on the host or carry it only to the
 vmm laptop.
@@ -118,4 +127,4 @@ matrix, the SQL rules, image index choice, native exit codes, the change gate (5
 sanitizing, PowerShell 2.0 syntax, a single `exit`, no reboot command, ASCII only, and process exit codes
 (on Windows also a real read-only snapshot, guidance-only steps and the lock).
 
-_Last updated: 2026-11-16 10:50 UTC_
+_Last updated: 2026-11-17 17:20 UTC_

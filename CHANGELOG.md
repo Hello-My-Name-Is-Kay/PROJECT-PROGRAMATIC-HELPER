@@ -1,5 +1,36 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.17.0 - 2026-11-16:4-34 | 2.16.0 - 2026-11-16:35-62 | 2.15.2 - 2026-11-16:63-77 | 2.15.1 - 2026-11-16:78-98 | 2.15.0 - 2026-11-16:99-156 | 2.14.0 - 2026-11-15:157-177 | 2.13.0 - 2026-11-15:178-207 | 2.12.0 - 2026-11-14:208-230 | 2.11.0 - 2026-11-14:231-249 | 2.10.0 - 2026-11-14:250-268 | 2.9.0 - 2026-11-14:269-281 | 2.8.0 - 2026-11-14:282-295 | 2.7.0 - 2026-11-14:296-313 | 2.6.0 - 2026-11-14:314-321 | 2.5.0 - 2026-11-14:322-334 | 2.4.0 - 2026-11-14:335-345 | 2.3.0 - 2026-11-14:346-360 | 2.2.1 - 2026-11-14:361-367 | 2.2.0 - 2026-11-14:368-375 | 2.1.0 - 2026-11-14:376-393 | 2.0.0 - 2026-11-14:394-399 | 1.0.0 - 2026-11-14:400-404 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.17.1 - 2026-11-17:4-34 | 2.17.0 - 2026-11-16:35-65 | 2.16.0 - 2026-11-16:66-93 | 2.15.2 - 2026-11-16:94-108 | 2.15.1 - 2026-11-16:109-129 | 2.15.0 - 2026-11-16:130-187 | 2.14.0 - 2026-11-15:188-208 | 2.13.0 - 2026-11-15:209-238 | 2.12.0 - 2026-11-14:239-261 | 2.11.0 - 2026-11-14:262-280 | 2.10.0 - 2026-11-14:281-299 | 2.9.0 - 2026-11-14:300-312 | 2.8.0 - 2026-11-14:313-326 | 2.7.0 - 2026-11-14:327-344 | 2.6.0 - 2026-11-14:345-352 | 2.5.0 - 2026-11-14:353-365 | 2.4.0 - 2026-11-14:366-376 | 2.3.0 - 2026-11-14:377-391 | 2.2.1 - 2026-11-14:392-398 | 2.2.0 - 2026-11-14:399-406 | 2.1.0 - 2026-11-14:407-424 | 2.0.0 - 2026-11-14:425-430 | 1.0.0 - 2026-11-14:431-435 -->
 # Changelog
+
+## 2.17.1 - 2026-11-17
+
+Review of the two host-side programs (Extractor and Fallback): every finding fixed. Still **alpha**.
+
+**Extractor (`Resources/VmmHostAgent.ps1`, rebuild it with `vmm extractor`)**
+- **Runs on Windows PowerShell 2.0 again.** The result encryption used `-shr`, a PowerShell 3.0 operator, so every
+  Extractor (snapshot ones too) stopped with a parse error on Server 2008 R2's default PowerShell 2.0. Integer maths
+  now; the PS 2.0 test scans (Extractor and Fallback) flag `-shl`/`-shr`, and a test checks the length bytes.
+- **Steps mode enforces the plan.** Change and staging steps are refused when the plan was built for another host
+  (short name, FQDN or 15-character NetBIOS name) or is older than `ValidHours`; before only a warning was shown and the
+  confirmation asked for the current host's name. You now type the plan's host name.
+- **Disk expansion is never overridden in business hours**, and the time window is read again after the
+  confirmation prompts (a prompt left open past 08:00 runs nothing).
+- Platform: KVM, QEMU, Xen, Nutanix AHV, VirtualBox, oVirt, EC2 and GCE are `OtherVirtual`, no longer `Physical`
+  (which raised a false "warn management"). Same list as the Fallback.
+- `-Finish` and the steps log only touch a `-WorkDir` under `C:\Temp`.
+- A fatal error waits for Enter in an interactive window (right-click > Run with PowerShell closed it at once).
+
+**Fallback (`Resources/Fallback/VmmFallback.ps1` + `.psd1`)**
+- **Windows Update / WSUS option removed** (local media only, Kay's rule). It could also install SQL Server updates
+  past the SQL backup check.
+- **Every change step** (WindowsPatch, SqlPatch, SqlUpgrade, OsUpgrade, Disk) asks for the rollback point
+  (`SNAPSHOT TAKEN` on Azure, `BACKUP CONFIRMED` elsewhere) and, when management warnings apply,
+  `MANAGEMENT INFORMED`. Before only OsUpgrade asked.
+- The time window is read again after `YES` (exit 3 when it closed while waiting).
+- Staging onto a client OS without `-Order` is refused (exit 5).
+- The unencrypted result file no longer names databases (`SqlStaleBackup=<instance>|db<n>|<age>`); Finish points to
+  `[A]` to remove results and log once copied.
+- The SQL product key is typed without echo.
+- Version string 2.17.1 (it still said 2.16.0). Non-zero exits wait for Enter when started by right-click.
 
 ## 2.17.0 - 2026-11-16
 
@@ -401,4 +432,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-16 10:50 UTC_
+_Last updated: 2026-11-17 17:20 UTC_
