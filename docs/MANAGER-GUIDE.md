@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance guide for management: purpose, enforced rules, credentials, data protection, logging, RDP fallback, status/limits. SECTIONS: What it is:7-26 | Rules built into the tool:27-40 | Credentials:41-57 | Where the data is, and how it is protected:58-73 | Logging and accountability:74-82 | When the network route fails: remote desktop fallback:83-93 | Status and known limitations:94-108 | Who to ask:109-114 -->
+<!-- SUMMARY: VmMaintenance guide for management: purpose, enforced rules, credentials, data protection, logging, RDP fallback, status/limits. SECTIONS: What it is:7-34 | Rules built into the tool:35-48 | Credentials:49-65 | Where the data is and how it:66-81 | Logging and accountability:82-90 | When the network route fails:91-101 | Status and known limitations:102-116 | Who to ask:117-122 -->
 # VmMaintenance - guide for management
 
 A two-page overview of what this tool is, what it is allowed to do, and how it protects company data.
@@ -23,6 +23,14 @@ A step cannot run before the one before it has succeeded. On an Azure VM, a copy
 taken at four points: when work starts (unless one was taken in the last hour), just before the steps that stop
 or change SQL Server, just after them, and as the very last step after the engineer has checked the server by
 hand. Any of these copies can be used to roll the server back.
+
+Since 2.19.0 every server is also a **ticket** with a state (new, in progress, failed, blocked, on hold,
+excluded, done), a workflow, a priority and an assignee, with counters per state and per workflow and how many were
+finished today. When a step fails, the engineer sees the fixes colleagues recorded for the same error; when the fix
+needs someone else (an Azure role, VPN, firewall, share access), the tool writes a ready-to-send ticket for that
+person with the exact error, the access requested and the impact. The engineer sends it; the tool never sends
+e-mail. Workflows other than the standard ten steps (for example a read-only check round) can be defined and
+shared between engineers, without any server names in the shared file.
 
 ## Rules built into the tool
 
@@ -93,7 +101,7 @@ encrypted data and the reports.
 
 ## Status and known limitations
 
-- **Version 2.20.0, alpha.** The tool has passed its automated tests (about 290 offline checks and 140 unit
+- **Version 2.20.0, alpha.** The tool has passed its automated tests (about 350 offline checks and 140 unit
   tests) on Windows PowerShell 5.1 and PowerShell 7 on GitHub's Windows machines. 2.15.0 checked how every
   command ends: an unfinished or failed job is reported as failed, and a disk expansion that stops half way puts
   the servers back in their power state.
@@ -111,4 +119,4 @@ encrypted data and the reports.
 The tool's author and operator: Kay. Problems are logged and can be reported as an issue in the project's
 GitHub repository (public, so anyone can read the issue) with `vmm issue -FromErrorLog` (the text is masked and shown for approval before it is sent).
 
-_Last updated: 2026-11-17 17:20 UTC_
+_Last updated: 2026-11-18 00:02 UTC_

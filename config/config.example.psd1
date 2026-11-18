@@ -134,6 +134,7 @@
         # Extractor result files (VMM_<HOST>_<time>.vmm) you copy back from the hosts are picked up here.
         InboxFolders = @('Desktop', 'Downloads')   # Desktop | Downloads | any folder path
         AutoImport   = $true                       # import them when vmm starts (also: E in the menu, vmm inbox)
+        AutoAddHosts = $true                       # a result from a host not in the fleet adds it ($false = refuse it)
     }
 
     Agents = @{
@@ -187,6 +188,10 @@
         # Four Azure snapshot points per host (every disk): SnapStart, SnapPreSql, SnapPostSql, SnapFinal (docs\WORKFLOW.md)
         StartSnapshotMaxAgeMinutes = 60   # SnapStart/SnapPreSql are skipped when every disk has a snapshot this recent (portal ones count)
         SnapshotRetentionDays      = 7    # RetentionDays tag on snapshot-point snapshots (prune uses it)
+        # Workflow manager (2.19.0): shared library of workflows, actions and known fixes (plain JSON, sanitized:
+        # host names and IPs replaced). Put it on the network share so every technician sees the same fixes.
+        # Empty = export/import ask for a path. Your own copy is always kept encrypted in the data folder.
+        LibraryPath                = ''   # e.g. \\<server>\<share>\vmm\vmm-library.json
     }
 
     Upgrade = @{

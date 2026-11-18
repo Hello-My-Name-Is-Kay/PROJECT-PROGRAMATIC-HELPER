@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-47 | Honest limits:48-72 | Untested:73-84 -->
+<!-- SUMMARY: VmMaintenance security: rules, protections per data type, honest limits, untested list. SECTIONS: Rules:6-13 | How:14-62 | Honest limits:63-87 | Untested:88-99 -->
 # Security
 
 Rules this project follows, how each is implemented, and the honest limits.
@@ -45,6 +45,21 @@ Repository: `.gitignore` excludes configs, lists, data, keys, reports and agents
 Azure resource ID or any value from your local config or server lists appears in a file; `-History` checks
 every line ever committed and every commit message too (CI runs it on every pull request).
 
+### Tickets, workflows, known fixes (2.19.0)
+
+- Workflows, actions and known fixes are encrypted in `workflows.vmm` with the fleet store key. Ticket fields live in
+  the encrypted fleet store. No usernames are recorded with a fix or a step (the ticket Assignee is free text).
+- Text that leaves the encrypted stores is sanitized by `ConvertTo-VmmShareableText`: host names, FQDNs, IPv4, GUIDs,
+  UNC server names and secret-looking values become `<HOST>`, `<IP>`, `<ID>`, `\\<server>`, `***`. That covers known
+  fixes (when they are recorded), the shared library (export refused when a fleet host name is still in it) and
+  tickets for IT (unless `-IncludeTarget`).
+- A shared library cannot replace built-in items; actions with an unknown category become `Change`, and only
+  `ReadOnly` actions may run commands on a host from a runbook.
+- Host runbook: plaintext plan for one host (no credentials); runs only on that computer unless the name is typed;
+  never runs a command of a non-read-only step by itself and shows those commands only after the gate. Its result file
+  is typed by a person, so the import never sets the ten maintenance steps and turns an ungated Change step into
+  Pending.
+
 ## Honest limits
 
 - **SecureString** protects the password buffer, but PowerShell and .NET copy it to plain memory briefly
@@ -81,4 +96,4 @@ port and model names; the host agent on PowerShell 2.0 (Server 2008 R2) and the 
 launching mstsc / Remote Desktop Manager (`/Template:RDP /Host:`) / RDCMan with the generated files, `drivestoredirect`
 through company RDP policy, the handoff script on PowerShell 2.0, and verification over WinRM / admin share / WMI on real hosts.
 
-_Last updated: 2026-11-16 04:02 UTC_
+_Last updated: 2026-11-18 00:02 UTC_

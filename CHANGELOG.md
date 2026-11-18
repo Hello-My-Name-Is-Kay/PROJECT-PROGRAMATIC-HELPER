@@ -1,11 +1,11 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.20.0 - 2026-11-18:4-29 | 2.18.0 - 2026-11-18:30-50 | 2.17.1 - 2026-11-17:51-81 | 2.17.0 - 2026-11-16:82-112 | 2.16.0 - 2026-11-16:113-140 | 2.15.2 - 2026-11-16:141-155 | 2.15.1 - 2026-11-16:156-176 | 2.15.0 - 2026-11-16:177-234 | 2.14.0 - 2026-11-15:235-255 | 2.13.0 - 2026-11-15:256-285 | 2.12.0 - 2026-11-14:286-308 | 2.11.0 - 2026-11-14:309-327 | 2.10.0 - 2026-11-14:328-346 | 2.9.0 - 2026-11-14:347-359 | 2.8.0 - 2026-11-14:360-373 | 2.7.0 - 2026-11-14:374-391 | 2.6.0 - 2026-11-14:392-399 | 2.5.0 - 2026-11-14:400-412 | 2.4.0 - 2026-11-14:413-423 | 2.3.0 - 2026-11-14:424-438 | 2.2.1 - 2026-11-14:439-445 | 2.2.0 - 2026-11-14:446-453 | 2.1.0 - 2026-11-14:454-471 | 2.0.0 - 2026-11-14:472-477 | 1.0.0 - 2026-11-14:478-483 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.20.0 - 2026-11-18:4-29 | 2.19.0 - 2026-11-18:30-93 | 2.18.1 - 2026-11-18:94-109 | 2.18.0 - 2026-11-18:110-130 | 2.17.1 - 2026-11-17:131-161 | 2.17.0 - 2026-11-16:162-192 | 2.16.0 - 2026-11-16:193-220 | 2.15.2 - 2026-11-16:221-235 | 2.15.1 - 2026-11-16:236-256 | 2.15.0 - 2026-11-16:257-314 | 2.14.0 - 2026-11-15:315-335 | 2.13.0 - 2026-11-15:336-365 | 2.12.0 - 2026-11-14:366-388 | 2.11.0 - 2026-11-14:389-407 | 2.10.0 - 2026-11-14:408-426 | 2.9.0 - 2026-11-14:427-439 | 2.8.0 - 2026-11-14:440-453 | 2.7.0 - 2026-11-14:454-471 | 2.6.0 - 2026-11-14:472-479 | 2.5.0 - 2026-11-14:480-492 | 2.4.0 - 2026-11-14:493-503 | 2.3.0 - 2026-11-14:504-518 | 2.2.1 - 2026-11-14:519-525 | 2.2.0 - 2026-11-14:526-533 | 2.1.0 - 2026-11-14:534-551 | 2.0.0 - 2026-11-14:552-557 | 1.0.0 - 2026-11-14:558-562 -->
 # Changelog
 
 ## 2.20.0 - 2026-11-18
 
 Next step per server for SQL Server or Windows, from the Extractor output. Still **alpha**. Rebuild the Extractor
-with `vmm extractor` (it now sends the SQL install language). Numbered 2.20.0 because 2.19.0 is taken by the open
-tickets/workflow manager PR.
+with `vmm extractor` (it now sends the SQL install language). Builds on 2.19.0 (tickets and
+workflow manager).
 
 - **`vmm path` / `N` on a host / status line:** current Windows (version, install language) and every SQL instance
   (version, SP, CU with dbatools, edition, x64/x86, install language), the workflow position, and the ordered path to
@@ -26,6 +26,86 @@ tickets/workflow manager PR.
 - **Tests:** `tests/UpgradePath.Tests.ps1` imports sample results for SQL 2012 SP2 on 2008 R2 (fr-FR), 2016 SP1 on
   2012 R2, 2019 on 2019, 2008 R2 on 2016, 2008 on 2008, Windows 10, a physical es-ES host with an English instance,
   32-bit 2014 Express and a pending reboot, and checks the report files; two smoke checks; Extractor SqlLang test.
+
+## 2.19.0 - 2026-11-18
+
+Hosts are tickets; workflow manager; guided steps for RDP-only work; known fixes when a step fails; tickets for the
+IT person who can fix a failure. Still **alpha**. Backup of 2.17.1 before the change:
+`release/VmMaintenance-backup-2.17.1-2026-11-17.zip` in the project share (not in the repository).
+
+**Tickets (`T` in the main menu, [docs/TICKETS.md](docs/TICKETS.md))**
+- Every host is a ticket: state (New, InProgress, Failed, Blocked, OnHold, Excluded, NotNeeded, Done), workflow,
+  progress, next step, priority, assignee, notes. Board grouped by state, needs-help first; counters in the title.
+- `N` new (adds the host), `E` edit, `W` workflow (DEFAULT or any), `D` delete (type the host name), `H` hold,
+  `F` filter, `O` overview: per state, per workflow (done / open / total), per next step, per priority, tickets
+  done today, steps done and failures today, daily target. Same `N` / `E` / `W` / `D` on the fleet screen (its `D`
+  now asks for the host name); `W` on a host screen.
+- Ticket view: the workflow's steps with state, allowed now (and why not), known-fix count. `A` / `X` / `U` / `J`
+  add, remove, move steps **for this ticket only**, `R` resets to the workflow.
+- Step dialogue (the manual guidance): lines to tick, `C` copies the command for the RDP session, `G` gate for
+  any step that is not read-only (time window or OVERRIDE + reason, MANAGEMENT INFORMED, SNAPSHOT TAKEN /
+  BACKUP CONFIRMED, YES; commands copy only after it), `D` done with what you saw, `F` failed, `S` skip with a reason,
+  `K` known fixes, `T` ticket for IT. The ten maintenance steps keep their own engine (`R` runs, `D` confirms, `G` guide).
+- Rules: client OS without orders = Excluded, nothing allowed; at/over the target OS = no Change step; a Change step
+  only after every earlier step and outside business hours.
+
+**Workflow manager (`K`)**
+- Built-in **Full maintenance** (the ten steps) is the **DEFAULT**; built-in **Read-only snapshot** groups nine
+  non-invasive checks (OS and uptime, disk space, pending reboot, server roles, SQL instances, stopped automatic
+  services, recent errors, last updates, `C:\Temp`), all PowerShell 2.0 read-only commands.
+- Create, copy, rename, delete workflows; `S` sets the default; Enter edits the steps (add from the library, create
+  a new action, remove, move).
+- Action library grouped by category (ReadOnly / Staging / Change) and group: create, edit, copy, delete.
+- Known fixes: record, edit, delete; helped / did not help counters rank them.
+- Shared library: `X` export / `I` import a sanitized JSON file (`Workflow.LibraryPath`, new setting, also in
+  Settings and the setup wizard); export refused when a fleet host name would leak (`VmmLibraryLeak`).
+- Stored encrypted in `workflows.vmm` (same key as the fleet store); built-ins live in code.
+
+**When a step fails**
+- Paste what happened (recorded as Failed); matching known fixes are shown best first, each as a dialogue
+  (`Y` fixed it: step back to Pending, `N` next one). None helped: cause and fix from the error text, then record
+  your fix for the next technician, a ticket for IT, or Blocked (ticket + step Blocked) and move on.
+- Known-fix text is sanitized on entry: host names, FQDNs, IPs, ids, UNC servers, secrets replaced.
+
+**Tickets for IT (Kay's request)**
+- `New-VmmFailureTicket` / `vmm ticket-it`: advice for you plus a ready-to-send ticket text for the person who can fix
+  the failure: subject with urgency, summary, what was attempted, exact error, likely cause, requested action (Azure:
+  role and scope), impact, urgency, known fixes already tried, environment, reference. Saved in `Reports\Tickets`,
+  copied to the clipboard, sanitized unless `-IncludeTarget`; `-FromErrorLog` uses the last logged error.
+- After **any** failed action in the console the pause line offers `T` for it.
+
+**Host runbook (RDP only)**
+- `B` on a ticket / `vmm runbook`: `VmmRunbook_<HOST>_<time>.ps1` + `.cmd` launcher (ExecutionPolicy Bypass for that
+  run), on the clipboard as files. Guides the workflow on the host (PS 2.0+): instructions, commands, `R` runs
+  read-only commands marked for it, gate before other steps, known fixes on a failure, new fixes recorded.
+  Writes one `VMMW_<HOST>_<time>.txt` (and clipboard); `I` on the ticket / `vmm runbook-import` records it. The ten
+  maintenance steps are never set from it; a Change step reported done without its gate becomes Pending.
+
+**Other**
+- CLI: `tickets`, `ticket`, `workflows`, `runbook`, `runbook-import`, `library-export`, `library-import`, `ticket-it`.
+- Public: `Get-VmmTicket`, `Set-VmmTicket`, `Get-VmmWorkflow`, `Export-/Import-VmmWorkflowLibrary`,
+  `Export-VmmWorkflowRunbook`, `Import-VmmRunbookResult`, `New-VmmFailureTicket`.
+- Help screen, README, USAGE, WORKFLOW, ARCHITECTURE, SECURITY, TROUBLESHOOTING, MANAGER-GUIDE, RELEASE, llms.txt,
+  PROJECT.json updated; new docs/TICKETS.md with text captures of the new screens.
+- Smoke test section 12 (14 checks): catalog, read-only commands, ticket states and rules, gates, counters,
+  sanitizing, known-fix ranking, library round trip, runbook build (PS 2.0 scan) and import, ticket for IT.
+- Version line bumped in the Extractor and the Fallback templates (no other change to them).
+
+## 2.18.1 - 2026-11-18
+
+The Extractor is host-agnostic. Still **alpha**. Rebuild the Extractor with `vmm extractor`.
+
+- **Fixed: results from hosts not in the fleet were rejected.** The generic `VmmExtractor.ps1` carries no host name
+  and ran on any host, but the laptop import stopped with "Host '<name>' is not in the fleet", so only hosts added
+  beforehand (`vmm import`) were ever extracted. Now the import finds the host by name, by its full DNS name or by
+  FQDN, and adds a host it does not know yet to the fleet (source `extractor`, FQDN and IP filled in). New setting
+  `Collect.AutoAddHosts` (default `$true`; `$false` = the old behaviour, error `VmmHostUnknown`).
+- **Long host names.** Windows cuts `COMPUTERNAME` at 15 characters. The Extractor now also sends the full DNS host
+  name and the FQDN, and the fleet row carries the full name. A result from an older Extractor that matches several
+  longer fleet names is refused (`VmmHostAmbiguous`) instead of landing on the wrong host.
+- **Tests:** `tests/EndToEnd.Tests.ps1` runs the built generic Extractor under host names that are not in the fleet
+  (a 15-character cut name among them), imports the results and checks the new fleet rows, FQDN, IP, policy and the
+  inventory columns; unit tests for the matching and for `Collect.AutoAddHosts = $false`.
 
 ## 2.18.0 - 2026-11-18
 
@@ -479,4 +559,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-18 00:30 UTC_
+_Last updated: 2026-11-18 01:00 UTC_

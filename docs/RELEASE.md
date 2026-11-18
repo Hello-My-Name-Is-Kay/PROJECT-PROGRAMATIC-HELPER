@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance release readiness: status, checklist, known limitations, first real run, release steps (Kay go only). SECTIONS: Status:7-15 | Readiness checklist (2.15.2):16-36 | Known limitations:37-51 | First run on real hosts (recommended before ending alpha):52-65 | Release steps (only after Kay says go):66-77 -->
+<!-- SUMMARY: VmMaintenance release readiness: status, checklist, known limitations, first real run, release steps (Kay go only). SECTIONS: Status:7-15 | Readiness checklist 2.15.2:16-36 | Known limitations:37-55 | First run on real hosts reco:56-69 | Release steps only after Kay:70-81 -->
 # Release readiness
 
 What has to be true before VmMaintenance leaves **alpha**, what was checked for 2.15.2, what is still open, and
@@ -48,6 +48,10 @@ the exact steps to make the release. Nothing here is done automatically: the rel
 - Group Policy with `AllSigned` needs the scripts signed with a company code-signing certificate (not included).
 - The Windows Server ISO is a manual download; vmm only checks that it is on the share.
 - The override in business hours is a typed confirmation plus a reason, not an approval workflow.
+- Tickets, workflow manager, known fixes, host runbook and tickets for IT (2.19.0): tested offline with mocked
+  stores only; the new screens were rendered in a terminal emulator, not yet on a Windows console or in RDP. The
+  host runbook has not run on a real host (PowerShell 2.0 syntax is checked statically). The Plan screen and
+  `vmm next` follow the ten maintenance steps only.
 
 ## First run on real hosts (recommended before ending alpha)
 
@@ -74,4 +78,4 @@ Record the results in the CHANGELOG under the release that ends alpha.
    (`git archive --format=zip -o VmMaintenance.zip v<version>`).
 5. Send the manager the [manager guide](MANAGER-GUIDE.md) and the release link.
 
-_Last updated: 2026-11-17 17:20 UTC_
+_Last updated: 2026-11-18 00:02 UTC_

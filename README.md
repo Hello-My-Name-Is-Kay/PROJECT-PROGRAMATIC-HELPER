@@ -1,10 +1,14 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TL;DR:6-34 | Overview:35-53 | At a glance:54-70 | Quick start:71-94 | Adding machines external dat:95-117 | Media repository:118-146 | Server inventory:147-180 | Snapshot terminal first hand:181-196 | Handson staging over RDP  RD:197-219 | Extractor the program on the:220-259 | Last fallback no vmm no lapt:260-271 | Console UI:272-313 | CLI:314-382 | GitHub integration:383-399 | OS policy:400-414 | SQL and Windows upgrade path:415-445 | Workflow per host:446-463 | Directory tree:464-497 | Where your data lives never:498-514 | Testing:515-528 | Errors:529-543 | Public repository and licenc:544-557 | Future your work AI model wi:558-568 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; hosts as tickets with counters, workflow manager (DEFAULT + own workflows), guided RDP steps, known fixes, tickets for IT, host runbook; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, next SQL/Windows step per host (vmm path); maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-38 | Overview:39-57 | At a glance:58-74 | Quick start:75-98 | Adding machines external dat:99-121 | Media repository:122-150 | Server inventory:151-184 | Snapshot terminal first hand:185-200 | Hands-on staging over RDP RD:201-223 | Extractor the program on the:224-272 | Last fallback no vmm no lapt:273-284 | Console UI:285-331 | CLI:332-406 | GitHub integration:407-423 | OS policy:424-438 | SQL and Windows upgrade path:439-469 | Workflow per host:470-492 | Directory tree:493-527 | Where your data lives never:528-547 | Testing:548-561 | Errors:562-576 | Public repository and licenc:577-590 | Future your work AI model wi:591-600 -->
 # VmMaintenance
 
 **Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.20.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-18
 
 ## TL;DR
 
+- **Hosts are tickets (2.19.0):** `T` in the menu is the ticket board: every host with its state (new, in progress, failed, blocked, on hold, excluded, done), workflow, progress, next step, priority, assignee and notes, plus counters (`O`: per state, per workflow, per next step, done today, failures today, daily target). `N` new, `E` edit, `D` delete (type the host name), `W` choose the workflow. Enter works on the ticket **step by step for RDP**: each step's instructions, commands to copy into the RDP session, a gate before anything that is not read-only, done / failed / skip. Details: [docs/TICKETS.md](docs/TICKETS.md).
+- **Workflow manager (2.19.0):** `K` in the menu. Workflows are lists of actions: **Full maintenance** (the ten steps) is the **DEFAULT**, **Read-only snapshot** groups the non-invasive checks; create, copy, rename, delete your own, pick the default (`S`). Actions (ReadOnly / Staging / Change, in groups) are created, edited, copied, deleted in the action library; steps are added, removed and moved per workflow or per ticket.
+- **When a step fails:** paste what happened; vmm shows the **known fixes** other technicians recorded for that step, best first, each as a dialogue (it fixed it / it did not). Nothing helped: record your own fix for the next person, or write a **ticket for the IT person who can fix it** (`T`, also after any failed action): a ready-to-send text with summary, what was attempted, exact error, likely cause, requested action (for Azure: the role and its scope), impact and urgency, saved under `Reports\Tickets` and on the clipboard. You send it; vmm never e-mails. Share known fixes and workflows through a sanitized library on the network share (`Workflow.LibraryPath`).
+- **RDP-only hosts:** `B` on a ticket builds a **host runbook** (`.ps1` + `.cmd`): paste both on the RDP desktop, double-click the `.cmd`, and it walks the person through the same workflow on the host (PowerShell 2.0+), with the known fixes inside; it writes one `VMMW_<HOST>_<time>.txt` back (`I` imports it).
 - **Goal:** every server on **Windows Server 2019**. Windows 10/11 and other client OS are skipped unless ordered (`vmm order`).
 - **Warn management** about Windows Server 2008 (not R2; 2008 R2 is fine) and physical machines: `vmm policy -Notice`.
 - **Business hours, Mon-Fri 08:00-17:00 Lisbon:** read-only checks and staging into `C:\Temp` only. Changes off-hours and weekends.
@@ -223,6 +227,15 @@ Only for hosts the terminal cannot read (no WMI/RPC, no WinRM, other domain, RDP
 only**: it reads the host and writes one encrypted result file on the host's desktop. The file holds no code
 that can change a host (the steps code is cut out when it is built), no host name, share path or address.
 
+**Any host.** The same `VmmExtractor.ps1` works on every host it is pasted on, whatever its name, domain or IP,
+and the host does not have to be in the fleet first. On import the laptop finds the host by name, by its full DNS
+name (Windows cuts `COMPUTERNAME` at 15 characters) or by FQDN, and **adds it to the fleet** when it is not there
+yet (source `extractor`, with its FQDN and IP). Everything in scope comes with it: OS, build, language, platform
+(Azure, Hyper-V, VMware, physical), C: size and free space, pending reboot, SQL instances and versions, domain,
+domain controller, IP, Windows licence, Qualys, CrowdStrike, Zabbix, Ivanti, Lansweeper agent health, legacy TLS,
+and the OS policy (in scope, at target, newer, client OS) worked out from those facts.
+`vmm set -Name Collect.AutoAddHosts -Value false` makes import refuse hosts not in the fleet (error `VmmHostUnknown`).
+
 | # | Where | You do | The programs do |
 |---|---|---|---|
 | 1 | Laptop | `vmm snapshot` (or `E` > `B`, `vmm extractor`): one `VmmExtractor.ps1` for every host | Writes the file with this laptop's public key and puts it on the clipboard |
@@ -277,6 +290,8 @@ and today's progress bar with Azure context and credential state.
 
 | Key | Screen |
 |---|---|
+| T | Tickets: every host as a ticket, grouped by state, counters, create / edit / delete, guided workflow per host ([docs/TICKETS.md](docs/TICKETS.md)) |
+| K | Workflow manager: workflows (DEFAULT + your own), their steps, action library, known fixes, shared library |
 | 1 | Plan today: what is allowed now and the next host for each step |
 | 2 | Fleet: every host with health, stage, OS, SQL, C: free; open a host |
 | 3 | Check fleet now (read-only, allowed any time) |
@@ -297,8 +312,11 @@ and today's progress bar with Azure context and credential state.
 | M | Maintenance: diagnose, check / back up / restore the fleet store, clean logs and temp files, log options |
 | H / Q | Help / Quit (clears session credentials) |
 
-On a host screen: Enter run step, `G` RDP guide, `X` Extractor with this host's plan, `P` import result (clipboard, then Desktop/Downloads), `Y` confirm a `N` shows the next SQL/Windows step with file and language (the status line shows it too).
-guided step, `B` blocker report and move on, `R` resolve, `L` remote desktop (RDP / RDM / RDCMan), `T` stage by hand over remote desktop with checks, `H` hold, `C` check, `I` inventory.
+On a host screen: Enter run step, `G` RDP guide, `X` Extractor with this host's plan, `P` import result (clipboard, then Desktop/Downloads), `Y` confirm a
+guided step, `B` blocker report and move on, `R` resolve, `L` remote desktop (RDP / RDM / RDCMan), `T` stage by hand over remote desktop with checks, `H` hold, `C` check, `I` inventory, `W` the ticket view (the host's workflow, guided), `N` the next SQL/Windows step with file and language (the status line shows it too).
+
+On a ticket: Enter opens the step dialogue, `W` workflow, `A` / `X` / `U` / `J` add, remove, move steps for this host only, `R` reset to the workflow, `B` host runbook, `I` import its result, `L` remote desktop, `K` known fixes, `E` edit, `V` the host screen.
+In the step dialogue: Enter ticks a line, `C` copies the command, `G` gate (time window or OVERRIDE, management warnings, `SNAPSHOT TAKEN` / `BACKUP CONFIRMED`, `YES`), `D` done, `F` failed (known fixes, then record a fix / ticket for IT / blocked), `S` skip with a reason, `K` known fixes, `T` ticket for IT. After any failed action: `T` writes advice and a ticket for IT.
 
 Arrows, PgUp/PgDn, Home/End move; Enter opens; Esc goes back; letters run the actions shown
 in the footer. Mouse: click selects, double-click opens, wheel scrolls (classic console and
@@ -323,6 +341,12 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm check [-Name a,b] [-Azure] [-AccessOnly]` | Parallel read-only check (what snapshot runs) |
 | `vmm import -Path hosts.csv [-Preview] [-Update] [-RemoveSource]` | Add/update hosts from a CSV (hostname or FQDN, domain, IP), a .txt list, or `-Name a,b` |
 | `vmm remove -Name a,b` | Remove hosts |
+| `vmm tickets [-State Failed] [-Filter srv*]` / `vmm tickets -Summary` | Hosts as tickets: state, workflow, progress, next step / all counters |
+| `vmm ticket -HostName x [-New] [-Workflow "Read-only snapshot"\|default] [-Priority High] [-Assignee ..] [-Notes ..] [-ResetSteps]` | Create or edit a ticket |
+| `vmm workflows [-Name x]` / `-Actions` / `-Knowledge [-Find "error"]` | Workflows and steps / action library / known fixes |
+| `vmm runbook -HostName x` / `vmm runbook-import [-Path VMMW_x.txt]` | Host runbook (.ps1 + .cmd) for RDP / record what it wrote (default: clipboard) |
+| `vmm library-export [-Path ..]` / `vmm library-import [-Path ..]` | Shared, sanitized library of workflows, actions and known fixes |
+| `vmm ticket-it -Message ".." [-Activity ..] [-HostName x] [-Step y]` / `-FromErrorLog` | Advice + a ready-to-send ticket for the IT person who can fix a failure |
 | `vmm plan` | Work queue: next step per host and whether it is allowed now |
 | `vmm next [-HostName x] [-All]` | Run the next automatic step |
 | `vmm step -HostName x -Step Upgrade` | Run one step (`-Override -OverrideReason ".."` in business hours) |
@@ -461,6 +485,11 @@ it into the e-mail) and `.csv` (one row per step) to `Reports\UpgradePath`. You 
 
 Details: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 
+This is the built-in **Full maintenance** workflow, the DEFAULT for every ticket. Other workflows (built-in
+**Read-only snapshot**, or your own from the workflow manager) are chosen per ticket; the steps above keep their own
+checks and gates in every workflow, and guided actions that are not read-only pass the gate in the step dialogue.
+See [docs/TICKETS.md](docs/TICKETS.md).
+
 ## Directory tree
 
 ```
@@ -477,11 +506,12 @@ VmMaintenance\
     MANAGER-GUIDE.md                for management: what it does, rules, credentials, data, limits
     TROUBLESHOOTING.md              exit codes, common errors, recovery, where to look
     RELEASE.md                      readiness checklist, known limitations, release steps
+    TICKETS.md                      hosts as tickets, workflow manager, known fixes, host runbook, tickets for IT
   VmMaintenance\                    the module
     VmMaintenance.psd1 / .psm1      manifest / loader
     Public\                         exported functions, one per file
     Private\                        helpers and TUI screens, one per file
-    Resources\                      VmmHostAgent.ps1 (program 2, the template: `vmm extractor` builds the host copy), VmmConsoleInput.cs, LansweeperDiskSpace.sql
+    Resources\                      VmmHostAgent.ps1 (program 2, the template: `vmm extractor` builds the host copy), VmmRunbook.ps1 (host runbook template: `vmm runbook` builds it), VmmConsoleInput.cs, LansweeperDiskSpace.sql
   Scripts\
     vmm.ps1                         CLI/UI entry point
     _Bootstrap.ps1 + 10 classic task scripts
@@ -508,6 +538,9 @@ VmMaintenance\
 | Agent key | `%LOCALAPPDATA%\VmMaintenance\data\agent.key` | RSA private key, DPAPI |
 | Built agents | `%LOCALAPPDATA%\VmMaintenance\agents\` | Plaintext plan for one host; older copies deleted on export |
 | Day logs | `%LOCALAPPDATA%\VmMaintenance\logs\vmm_<yyyyMMdd>.log` | Every line masked for secrets, then encrypted per line (store key); kept `Log.KeepDays` (30). `vmm log -Export` writes a plaintext copy to `Reports\Logs` |
+| Workflows, actions, known fixes | `%LOCALAPPDATA%\VmMaintenance\data\workflows.vmm` | AES-256-CBC + HMAC-SHA256 (same key); built-ins live in code. The shared library (`Workflow.LibraryPath`) is plaintext JSON, sanitized |
+| Tickets for IT | `%LOCALAPPDATA%\VmMaintenance\Reports\Tickets\` | Plaintext, sanitized (`<HOST>`, `<IP>`, `<ID>`) unless `-IncludeTarget` |
+| Host runbooks | the outbox (`Handoff.OutboxFolder`) | Plaintext plan for one host (steps, known fixes); no credentials |
 | Store backups | `%LOCALAPPDATA%\VmMaintenance\data\backups\fleet_<time>.vmm` | Encrypted copies of the store, one a day at start, 14 kept |
 | Error log | `%LOCALAPPDATA%\VmMaintenance\logs\errors.log` | Sanitized, 1 MB cap |
 | Credentials | Process memory only, as `PSCredential` | Never written; cleared on quit. VPN credentials go only to the VPN client |
@@ -522,7 +555,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1 -History                                # before a release: whole git history
 ```
 
-Status (2.20.0, alpha): the offline smoke test and Pester pass on GitHub's Windows runners in
+Status (2.20.0, alpha): the offline smoke test (section 12 covers tickets, workflows, known fixes, the host runbook and tickets for IT; 354 checks on PowerShell 7 for Linux, DPAPI section skipped) and Pester pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -564,4 +597,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-18 00:30 UTC_
+_Last updated: 2026-11-18 01:00 UTC_

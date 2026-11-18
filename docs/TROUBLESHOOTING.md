@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance troubleshooting: first steps, exit codes, common errors by id, encrypted file recovery, log locations. SECTIONS: First steps:7-18 | Exit codes (vmm and the entry scripts):19-52 | Common problems:53-86 | Encrypted files:87-97 | Where to look:98-107 -->
+<!-- SUMMARY: VmMaintenance troubleshooting: first steps, exit codes, common errors by id, encrypted file recovery, log locations. SECTIONS: First steps:7-18 | Exit codes vmm and the entry:19-52 | Common problems:53-91 | Encrypted files:92-102 | Where to look:103-112 -->
 # Troubleshooting
 
 Every error vmm raises has the same shape: what failed, on which target, the raw error, the likely cause and the
@@ -57,6 +57,11 @@ host before running it again.
 | `VmmModuleMissing`, `VmmModuleLoad` | Az / dbatools module not installed, or two Az versions in one session | `Install-Module <name> -Scope CurrentUser`; open a fresh window |
 | `VmmSettingMissing`, `VmmSettingPlaceholder` | A setting is empty or still `<placeholder>` from the example | `vmm setup` or `vmm set -Name <Key> -Value <value>` |
 | `VmmConfigParse` | Hand-edited config has a syntax error | Compare with `config\config.example.psd1`; `Import-PowerShellDataFile <path>` shows the line |
+| `VmmWorkflowUnknown` | `vmm ticket -Workflow` name not found or ambiguous | `vmm workflows` lists the names; `default` follows the DEFAULT workflow |
+| `VmmLibraryLeak` | The library export still contains a fleet host name | Edit the known fix or action that names it (workflow manager `K`), then export again |
+| `VmmLibraryInvalid`, `VmmLibraryMissing` | Not a vmm library file / share not reachable | Export it again; check the VPN and `Workflow.LibraryPath` |
+| `VmmRunbookResult` | No `VMMW1` line in what was pasted | Copy the whole `VMMW_<HOST>_<time>.txt` from the host desktop, or `vmm runbook-import -Path <file>` |
+| A failure you cannot fix (Azure role, VPN, firewall) | Access or a setting only IT can change | `T` after the failed action, or `vmm ticket-it -FromErrorLog`: advice + ticket text in `Reports\Tickets` and on the clipboard |
 | `VmmCredCancelled` | The credential prompt was closed | Run again and enter the account, or `Credentials.WindowsMode = CurrentUser` |
 | Access is denied / `0x80070005` / `VmmAdminShare` | Account is not local admin on the host, UAC remote restrictions, SMB 445 blocked | Use an admin credential; `Test-NetConnection <host> -Port 445`; else `B` blocker report |
 | RPC server is unavailable / `0x800706BA` | Host down, wrong name, DCOM blocked | `vmm access` shows which route works; WinRM or hands-on is tried next |
@@ -104,4 +109,4 @@ host before running it again.
 | `%APPDATA%\VmMaintenance\config.psd1` | Your settings (`vmm config`) |
 | `%LOCALAPPDATA%\VmMaintenance\data\` | Encrypted store, keys, backups, `vmm.lock` |
 
-_Last updated: 2026-11-16 12:30 UTC_
+_Last updated: 2026-11-18 00:02 UTC_
