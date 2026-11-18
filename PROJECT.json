@@ -1,6 +1,6 @@
 {
   "name": "VmMaintenance",
-  "version": "2.18.0",
+  "version": "2.20.0",
   "stage": "alpha",
   "license": "MIT (LICENSE)",
   "summary": "Fleet maintenance console for Windows servers and Azure VMs, with a host agent run inside RDP/RDM.",
@@ -403,5 +403,29 @@
     "8": "cancelled",
     "9": "reboot needed",
     "10": "needs administrator"
+  },
+  "upgrade_path": {
+    "commands": [
+      "vmm path",
+      "vmm path-report"
+    ],
+    "tui": "N on a host screen, U in Reports",
+    "data": "VmMaintenance/Private/Get-VmmSqlOsMatrix.ps1 (offline; SqlMatrix.* settings override)",
+    "order": [
+      "Snapshot",
+      "Management",
+      "Blocker",
+      "Restart",
+      "SqlServicePack",
+      "WindowsUpgrade",
+      "SqlCumulativeUpdate"
+    ],
+    "language": "Windows ISO = OS install language; SQL SP = SQL instance install language (Extractor SqlLang=), else OS language",
+    "references": [
+      "https://learn.microsoft.com/en-us/troubleshoot/sql/database-engine/install/windows/use-sql-server-in-windows",
+      "https://learn.microsoft.com/en-us/windows-server/get-started/install-upgrade-migrate",
+      "https://www.catalog.update.microsoft.com/"
+    ],
+    "report": "Reports/UpgradePath/UpgradePath_<date>.txt + .csv"
   }
 }

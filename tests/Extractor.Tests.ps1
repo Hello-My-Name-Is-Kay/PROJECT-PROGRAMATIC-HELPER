@@ -8,7 +8,7 @@
 BeforeAll {
     $script:agentPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'VmMaintenance\Resources\VmmHostAgent.ps1'
     $script:agentAst = [System.Management.Automation.Language.Parser]::ParseFile($script:agentPath, [ref]$null, [ref]$null)
-    foreach ($name in 'Get-Wmi', 'Get-SqlInstanceNames', 'Get-SqlInstanceLines', 'Get-ExtractExitCode', 'Save-ResultFile', 'Get-AgentVerdict', 'Get-InvProbe', 'ConvertTo-OsName', 'Test-NewerOs', 'Get-TlsLegacyText', 'Get-NativePowerShell', 'New-Sha256', 'Get-HmacSha256', 'New-Aes') {
+    foreach ($name in 'Get-Wmi', 'Get-SqlInstanceNames', 'Get-SqlInstanceLines', 'Get-SqlLanguageLine', 'Get-ExtractExitCode', 'Save-ResultFile', 'Get-AgentVerdict', 'Get-InvProbe', 'ConvertTo-OsName', 'Test-NewerOs', 'Get-TlsLegacyText', 'Get-NativePowerShell', 'New-Sha256', 'Get-HmacSha256', 'New-Aes') {
         $fn = $script:agentAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true) | Select-Object -First 1
         if (-not $fn) { throw "Extractor function $name not found" }
         . ([scriptblock]::Create($fn.Extent.Text))
@@ -145,6 +145,16 @@ Describe 'SQL instances in both registry views' {
         $lines | Should -Contain 'MSSQLSERVER 15.0.4000.1 Standard Edition'
         $lines | Should -Contain 'PSQL01 (setup key unreadable)'
         $lines | Should -Contain 'OLD32 10.50.6000.34 Express Edition (32-bit)'
+    }
+    It 'reads the SQL install language per instance (Setup\Language), both views, a name once' {
+        $script:Reg['HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL15.MSSQLSERVER\Setup'] | Add-Member -NotePropertyName Language -NotePropertyValue 1036 -Force
+        $script:Reg['HKLM:\SOFTWARE\Wow6432Node\Microsoft\Microsoft SQL Server\MSSQL10.OLD32\Setup'] | Add-Member -NotePropertyName Language -NotePropertyValue 1033 -Force
+        function Test-Path { param($Path) $script:Reg.ContainsKey($Path) }
+        function Get-ItemProperty { param($Path) if ($script:Reg.ContainsKey($Path)) { $script:Reg[$Path] } else { throw 'not found' } }
+        $parts = @((Get-SqlLanguageLine) -split '; ' | Sort-Object)
+        $parts | Should -Contain 'MSSQLSERVER=1036'
+        $parts | Should -Contain 'OLD32=1033'
+        @($parts | Where-Object { $_ -like 'MSSQLSERVER=*' }).Count | Should -Be 1
     }
     It 'returns nothing when neither view has SQL Server' {
         function Test-Path { param($Path) $false }

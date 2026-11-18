@@ -62,7 +62,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.18.0'
+$AgentVersion = '2.20.0'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
@@ -206,6 +206,22 @@ function Get-SqlInstanceLines {
         }
     }
     $lines
+}
+function Get-SqlLanguageLine {
+    # 'Name=LCID; ...' install language of every SQL Server instance (Setup\Language, e.g. 1036 = French): service
+    # packs before SQL 2017 come in one file per language, so the laptop names the right file. Read-only.
+    $roots = @('HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server', 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Microsoft SQL Server')
+    $out = @(); $seen = @()
+    foreach ($r in $roots) {
+        $k = $r + '\Instance Names\SQL'
+        if (-not (Test-Path $k)) { continue }
+        foreach ($n in @(Get-SqlInstanceNames (Get-ItemProperty $k))) {
+            if ($seen -contains $n.Name) { continue }
+            $seen += $n.Name
+            try { $lc = (Get-ItemProperty ($r + '\' + $n.Value + '\Setup') -Name Language -ErrorAction Stop).Language; if ($lc) { $out += ($n.Name + '=' + $lc) } } catch { }
+        }
+    }
+    $out -join '; '
 }
 function Get-PlatformName([string]$Manufacturer, [string]$Model, [bool]$AzureAgent) {
     # Physical only when no known hypervisor shows in the model or manufacturer (same list as the Fallback)
@@ -493,7 +509,7 @@ function Get-Facts {
     # Each read stands alone: one that fails leaves its fields empty, is listed as a Problem, and the rest still run.
     $f = @{
         Name = $env:COMPUTERNAME; OS = ''; Lang = ''; Version = ''; Build = ''; SP = ''; Manufacturer = ''; Model = ''
-        Platform = 'Unknown'; CTotalGB = $null; CFreeGB = $null; PendingReboot = $false; Sql = ''; LastBoot = ''
+        Platform = 'Unknown'; CTotalGB = $null; CFreeGB = $null; PendingReboot = $false; Sql = ''; SqlLang = ''; LastBoot = ''
         TempExists = $false; PSVersion = "$($PSVersionTable.PSVersion)"; Admin = $false; ProductType = ''
     }
     if ($env:PROCESSOR_ARCHITEW6432) { Add-Problem '32-bit PowerShell on 64-bit Windows' '64-bit SQL instances and programs are not visible; run the 64-bit Windows PowerShell (System32)' }
@@ -523,6 +539,7 @@ function Get-Facts {
     try {
         $f.Sql = (@(Get-SqlInstanceLines) -join '; ')
     } catch { Add-Problem 'SQL instances' $_ }
+    try { if ($f.Sql) { $f.SqlLang = Get-SqlLanguageLine } } catch { Add-Problem 'SQL language' $_ }
     try {
         # Pending reboot: servicing, Windows Update, file renames queued for the next boot (same three as the laptop check)
         $pend = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or
@@ -931,7 +948,7 @@ function Export-Result([switch]$Auto) {
         ('Name=' + $f.Name), ('OS=' + $f.OS), ('Lang=' + $f.Lang), ('Version=' + $f.Version), ('Build=' + $f.Build), ('SP=' + $f.SP),
         ('Manufacturer=' + $f.Manufacturer), ('Model=' + $f.Model), ('Platform=' + $f.Platform),
         ('CTotalGB=' + (Num $f.CTotalGB)), ('CFreeGB=' + (Num $f.CFreeGB)),
-        ('PendingReboot=' + $(if ($f.PendingReboot) { 'Yes' } else { 'No' })), ('Sql=' + $f.Sql), ('LastBoot=' + $f.LastBoot),
+        ('PendingReboot=' + $(if ($f.PendingReboot) { 'Yes' } else { 'No' })), ('Sql=' + $f.Sql), ('SqlLang=' + $f.SqlLang), ('LastBoot=' + $f.LastBoot),
         ('TempExists=' + $f.TempExists), ('PSVersion=' + $f.PSVersion), ('Elevated=' + $(if ($f.Admin) { 'Yes' } else { 'No' })),
         ('ProductType=' + $f.ProductType), ('Mode=' + $mode), ('AgentVersion=' + $AgentVersion), ('ExportedAt=' + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))
     )

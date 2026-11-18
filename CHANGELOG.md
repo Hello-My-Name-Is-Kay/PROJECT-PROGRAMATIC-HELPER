@@ -1,5 +1,31 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.18.0 - 2026-11-18:4-24 | 2.17.1 - 2026-11-17:25-55 | 2.17.0 - 2026-11-16:35-65 | 2.16.0 - 2026-11-16:66-93 | 2.15.2 - 2026-11-16:94-108 | 2.15.1 - 2026-11-16:109-129 | 2.15.0 - 2026-11-16:130-187 | 2.14.0 - 2026-11-15:188-208 | 2.13.0 - 2026-11-15:209-238 | 2.12.0 - 2026-11-14:239-261 | 2.11.0 - 2026-11-14:262-280 | 2.10.0 - 2026-11-14:281-299 | 2.9.0 - 2026-11-14:300-312 | 2.8.0 - 2026-11-14:313-326 | 2.7.0 - 2026-11-14:327-344 | 2.6.0 - 2026-11-14:345-352 | 2.5.0 - 2026-11-14:353-365 | 2.4.0 - 2026-11-14:366-376 | 2.3.0 - 2026-11-14:377-391 | 2.2.1 - 2026-11-14:392-398 | 2.2.0 - 2026-11-14:399-406 | 2.1.0 - 2026-11-14:407-424 | 2.0.0 - 2026-11-14:425-430 | 1.0.0 - 2026-11-14:431-435 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.20.0 - 2026-11-18:4-29 | 2.18.0 - 2026-11-18:30-50 | 2.17.1 - 2026-11-17:51-81 | 2.17.0 - 2026-11-16:82-112 | 2.16.0 - 2026-11-16:113-140 | 2.15.2 - 2026-11-16:141-155 | 2.15.1 - 2026-11-16:156-176 | 2.15.0 - 2026-11-16:177-234 | 2.14.0 - 2026-11-15:235-255 | 2.13.0 - 2026-11-15:256-285 | 2.12.0 - 2026-11-14:286-308 | 2.11.0 - 2026-11-14:309-327 | 2.10.0 - 2026-11-14:328-346 | 2.9.0 - 2026-11-14:347-359 | 2.8.0 - 2026-11-14:360-373 | 2.7.0 - 2026-11-14:374-391 | 2.6.0 - 2026-11-14:392-399 | 2.5.0 - 2026-11-14:400-412 | 2.4.0 - 2026-11-14:413-423 | 2.3.0 - 2026-11-14:424-438 | 2.2.1 - 2026-11-14:439-445 | 2.2.0 - 2026-11-14:446-453 | 2.1.0 - 2026-11-14:454-471 | 2.0.0 - 2026-11-14:472-477 | 1.0.0 - 2026-11-14:478-483 -->
 # Changelog
+
+## 2.20.0 - 2026-11-18
+
+Next step per server for SQL Server or Windows, from the Extractor output. Still **alpha**. Rebuild the Extractor
+with `vmm extractor` (it now sends the SQL install language). Numbered 2.20.0 because 2.19.0 is taken by the open
+tickets/workflow manager PR.
+
+- **`vmm path` / `N` on a host / status line:** current Windows (version, install language) and every SQL instance
+  (version, SP, CU with dbatools, edition, x64/x86, install language), the workflow position, and the ordered path to
+  Windows Server 2019 with the exact file and language per step: warn management (2008 non-R2, physical) -> SQL
+  blocker (SQL not supported on a hop) -> restart (pending reboot) -> SQL service pack before the first hop
+  (`SQLServer2012SP4-KB4018073-x64-FRA.exe`) -> Windows in-place hop(s) (`Win_Server_2012R2_FR_FR.iso`,
+  `Win_Server_2019_FR_FR.iso`) -> latest SQL CU/GDR after the last hop.
+- **Cross-reference data** (`Private/Get-VmmSqlOsMatrix.ps1`): minimum SQL service pack per Windows Server from
+  Microsoft's support table (2012 SP4, 2014 SP3, 2016 SP3 on 2016/2019; 2008 / 2008 R2 not on 2016+; 2019/2022 not on
+  2012 R2), in-place hops (2012 R2 and 2016 straight to 2019, 2012 via 2016, 2008 R2 via 2012 R2), last-SP KBs and
+  Microsoft file names. Works offline; `SqlMatrix.Sql.<ver>` settings can override a row.
+- **Language:** Windows ISO in the OS install language (no fallback); SQL service pack in the instance's install
+  language (from the Extractor's new `SqlLang=` field, else the OS language); a difference is called out.
+- **`vmm path-report` / `U` in Reports:** `Reports\UpgradePath\UpgradePath_<date>.txt` (ready to paste into the
+  manager e-mail, with references) and `.csv` (one row per step). Nothing is sent by vmm.
+- **Extractor:** new read-only `SqlLang=` line (`Setup\Language` per instance, both registry views); the laptop
+  accepts only `name=LCID` pairs.
+- **Tests:** `tests/UpgradePath.Tests.ps1` imports sample results for SQL 2012 SP2 on 2008 R2 (fr-FR), 2016 SP1 on
+  2012 R2, 2019 on 2019, 2008 R2 on 2016, 2008 on 2008, Windows 10, a physical es-ES host with an English instance,
+  32-bit 2014 Express and a pending reboot, and checks the report files; two smoke checks; Extractor SqlLang test.
 
 ## 2.18.0 - 2026-11-18
 
@@ -453,4 +479,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-17 17:20 UTC_
+_Last updated: 2026-11-18 00:30 UTC_

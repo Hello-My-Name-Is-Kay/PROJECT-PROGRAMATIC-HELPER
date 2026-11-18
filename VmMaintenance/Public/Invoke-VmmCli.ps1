@@ -60,6 +60,8 @@ function Invoke-VmmCli {
         'inventory-set' = @{ F = 'Set-VmmInventoryValue'; D = 'set a column by hand   -HostName x[,y] -Field "Server Owner" -Value ".." | -Clear' }
         'helptext' = @{ F = 'New-VmmHelpTextIssue';       D = 'ask for a help text change on GitHub -Field "<column>" | -Screen "<name>" [-Proposed ..]' }
         'fetch'    = @{ F = 'Save-VmmSqlUpdate';          D = 'SQL Server SP/CU per host: download once (cache on the share), copy into host folders [-Preview] [-HostName a,b]' }
+        'path'     = @{ F = 'Get-VmmUpgradePath';         D = 'next step per host for SQL or Windows: state, workflow position, file + language [-HostName a,b] [-NoBuildList]' }
+        'path-report' = @{ F = 'Export-VmmUpgradePathReport'; D = 'upgrade path report for the manager e-mail (TXT + CSV) [-HostName a,b] [-Open] [-Clipboard]' }
         'media'    = @{ F = 'Get-VmmMediaReport';         D = 'media repository: OS images by language, host folders, what is missing' }
         'blocker'  = @{ F = 'New-VmmBlockerReport';       D = 'report for manager     -HostName x -Step y -Message ".." [-Contact Sent|Later|Bypass]' }
         'resolve'  = @{ F = 'Resolve-VmmBlocker';         D = 'access granted         -HostName x [-Step y]' }
@@ -97,7 +99,7 @@ function Invoke-VmmCli {
     $fn = $map[$Command].F
     # One vmm at a time: every command that can change something takes the lock first, so a second window
     # stops here instead of overwriting the first one's work. Read-only commands run beside a busy vmm.
-    $readOnly = 'log', 'status', 'plan', 'time', 'progress', 'vpn', 'guide', 'agents', 'media', 'github', 'policy', 'inventory', 'config', 'stage', 'rdp'
+    $readOnly = 'log', 'status', 'plan', 'time', 'progress', 'vpn', 'guide', 'agents', 'media', 'github', 'policy', 'inventory', 'config', 'stage', 'rdp', 'path'
     $locked = $false
     if ($Command -notin $readOnly) { $locked = Enter-VmmInstanceLock -Owner "vmm $Command" }
     if ($Command -eq 'ui') { try { & $fn @p } finally { if ($locked) { Exit-VmmInstanceLock } }; return }
