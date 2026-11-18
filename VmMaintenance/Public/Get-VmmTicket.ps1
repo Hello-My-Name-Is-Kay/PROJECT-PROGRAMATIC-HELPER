@@ -43,12 +43,14 @@ function Get-VmmTicket {
     $rows = @($rows | Sort-Object @{ e = { if ($prio.ContainsKey("$($_.Priority)")) { $prio["$($_.Priority)"] } else { 1 } } }, Name)
     if ($State) { $rows = @($rows | Where-Object { $_.State -like $State }) }
     if (-not $Summary) { return $rows }
-    $count = { param($prop) $o = [ordered]@{}; foreach ($g in ($rows | Group-Object $prop | Sort-Object Name)) { $o["$($g.Name)"] = $g.Count }; $o }
+    # counted by hand, not with Group-Object: rows whose value is $null (no next step) must count under ''
+    $count = { param($prop) $o = [ordered]@{}; foreach ($k in @($rows | ForEach-Object { "$($_.$prop)" } | Sort-Object -Unique)) { $o[$k] = @($rows | Where-Object { "$($_.$prop)" -eq $k }).Count }; $o }
     $byState = [ordered]@{}
     foreach ($s in 'New', 'InProgress', 'Blocked', 'Failed', 'OnHold', 'Excluded', 'NotNeeded', 'Done') { $byState[$s] = @($rows | Where-Object State -eq $s).Count }
     $byWf = [ordered]@{}
-    foreach ($g in ($rows | Group-Object Workflow | Sort-Object Name)) {
-        $byWf["$($g.Name)"] = [pscustomobject]@{ Total = $g.Count; Done = @($g.Group | Where-Object State -eq 'Done').Count; Open = @($g.Group | Where-Object { $_.State -in 'New', 'InProgress', 'Blocked', 'Failed' }).Count }
+    foreach ($k in @($rows | ForEach-Object { "$($_.Workflow)" } | Sort-Object -Unique)) {
+        $g = @($rows | Where-Object { "$($_.Workflow)" -eq $k })
+        $byWf[$k] = [pscustomobject]@{ Total = $g.Count; Done = @($g | Where-Object State -eq 'Done').Count; Open = @($g | Where-Object { $_.State -in 'New', 'InProgress', 'Blocked', 'Failed' }).Count }
     }
     $prog = try { Get-VmmDailyProgress -Store $Store } catch { $null }
     [pscustomobject]@{

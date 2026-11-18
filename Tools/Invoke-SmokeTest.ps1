@@ -40,6 +40,8 @@ function Test-Step {
         $lines = @($_.Exception.Message -split '\r?\n' | Where-Object { $_ })
         Write-Host ('  [FAIL] ' + $Name + ' - ' + $lines[0]) -ForegroundColor Red
         foreach ($l in ($lines | Select-Object -Skip 1)) { Write-Host ('         ' + $l.Trim()) -ForegroundColor DarkRed }
+        $at = @("$($_.ScriptStackTrace)" -split '\r?\n' | Where-Object { $_ -match 'VmMaintenance' } | Select-Object -First 2)
+        foreach ($l in $at) { Write-Host ('         ' + $l.Trim()) -ForegroundColor DarkRed }   # where it failed in the module
     }
 }
 
@@ -1199,7 +1201,7 @@ try {
             $script:WfStore = [pscustomobject]@{ Version = 1; Updated = $null; Default = 'wf-default'; Actions = @(); Workflows = @(); Kb = @(); LibraryImported = $null }
             $i = Import-VmmWorkflowLibrary -Path $p 6>$null
             $i2 = Import-VmmWorkflowLibrary -Path $p 6>$null
-            "$($json -match 'TK-RULES')|$($json -match '<HOST> was rebooting')|$($x.Kb) $($x.Actions) $($x.Workflows)|$($i.New) $($i2.Unchanged)|$(@($script:WfStore.Kb).Count)"
+            "$($json -match 'TK-RULES')|$((ConvertFrom-Json $json).Kb[0].Cause -eq '<HOST> was rebooting')|$($x.Kb) $($x.Actions) $($x.Workflows)|$($i.New) $($i2.Unchanged)|$(@($script:WfStore.Kb).Count)"
         } $wfRoot
         Assert-Equal $o 'False|True|1 2 1|4 4|1' 'library'
     }
