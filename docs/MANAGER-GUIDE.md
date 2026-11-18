@@ -93,7 +93,7 @@ encrypted data and the reports.
 
 ## Status and known limitations
 
-- **Version 2.18.0, alpha.** The tool has passed its automated tests (about 290 offline checks and 140 unit
+- **Version 2.18.1, alpha.** The tool has passed its automated tests (about 290 offline checks and 140 unit
   tests) on Windows PowerShell 5.1 and PowerShell 7 on GitHub's Windows machines. 2.15.0 checked how every
   command ends: an unfinished or failed job is reported as failed, and a disk expansion that stops half way puts
   the servers back in their power state.

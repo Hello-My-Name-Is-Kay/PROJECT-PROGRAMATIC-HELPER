@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-256 | Last fallback no vmm no lapt:257-268 | Console UI:269-310 | CLI:311-377 | GitHub integration:378-394 | OS policy:395-409 | Workflow per host:410-427 | Directory tree:428-461 | Where your data lives never:462-478 | Testing:479-492 | Errors:493-507 | Public repository and licenc:508-521 | Future your work AI model wi:522-531 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-33 | Overview:34-52 | At a glance:53-69 | Quick start:70-93 | Adding machines external dat:94-116 | Media repository:117-145 | Server inventory:146-179 | Snapshot terminal first hand:180-195 | Hands-on staging over RDP RD:196-218 | Extractor the program on the:219-267 | Last fallback no vmm no lapt:268-279 | Console UI:280-321 | CLI:322-388 | GitHub integration:389-405 | OS policy:406-420 | Workflow per host:421-438 | Directory tree:439-472 | Where your data lives never:473-489 | Testing:490-503 | Errors:504-518 | Public repository and licenc:519-532 | Future your work AI model wi:533-542 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.18.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-18
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.18.1 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-18
 
 ## TL;DR
 
@@ -221,6 +221,15 @@ on the host). `vmm rdp -List` shows which clients this laptop has. Everything go
 Only for hosts the terminal cannot read (no WMI/RPC, no WinRM, other domain, RDP-only). It is **snapshot
 only**: it reads the host and writes one encrypted result file on the host's desktop. The file holds no code
 that can change a host (the steps code is cut out when it is built), no host name, share path or address.
+
+**Any host.** The same `VmmExtractor.ps1` works on every host it is pasted on, whatever its name, domain or IP,
+and the host does not have to be in the fleet first. On import the laptop finds the host by name, by its full DNS
+name (Windows cuts `COMPUTERNAME` at 15 characters) or by FQDN, and **adds it to the fleet** when it is not there
+yet (source `extractor`, with its FQDN and IP). Everything in scope comes with it: OS, build, language, platform
+(Azure, Hyper-V, VMware, physical), C: size and free space, pending reboot, SQL instances and versions, domain,
+domain controller, IP, Windows licence, Qualys, CrowdStrike, Zabbix, Ivanti, Lansweeper agent health, legacy TLS,
+and the OS policy (in scope, at target, newer, client OS) worked out from those facts.
+`vmm set -Name Collect.AutoAddHosts -Value false` makes import refuse hosts not in the fleet (error `VmmHostUnknown`).
 
 | # | Where | You do | The programs do |
 |---|---|---|---|
@@ -488,7 +497,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1 -History                                # before a release: whole git history
 ```
 
-Status (2.18.0, alpha): the offline smoke test and Pester pass on GitHub's Windows runners in
+Status (2.18.1, alpha): the offline smoke test and Pester pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -530,4 +539,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-17 17:20 UTC_
+_Last updated: 2026-11-18 01:00 UTC_

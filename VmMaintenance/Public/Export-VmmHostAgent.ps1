@@ -19,8 +19,8 @@ function Export-VmmHostAgent {
         A per-host steps extractor holds the share path and step notes for that host; the extractor's
         Finish removes it and its result files from the host.
     .PARAMETER Generic
-        One extractor for every host (VmmExtractor.ps1): snapshot and encrypt, no per-host plan. Copy the
-        same file to each host.
+        One extractor for every host (VmmExtractor.ps1): snapshot and encrypt, no per-host plan, no host name.
+        Copy the same file to any host, in the fleet or not: the import adds a host the fleet does not know yet.
     .EXAMPLE
         Export-VmmHostAgent -HostName srv01
     .EXAMPLE
@@ -144,7 +144,7 @@ function Export-VmmHostAgent {
     if (-not $NoClipboard -and (Get-Command Set-Clipboard -ErrorAction SilentlyContinue).Parameters.ContainsKey('Path')) {
         try { Set-Clipboard -Path $out; $copied = $true } catch { }
     }
-    Write-VmmLog "Extractor written: $out ($(if ($withSteps) { 'WITH STEPS for this host' } else { 'snapshot only, read-only' })$(if ($Generic) { ', works on any host of your fleet' }))" -Level Success
+    Write-VmmLog "Extractor written: $out ($(if ($withSteps) { 'WITH STEPS for this host' } else { 'snapshot only, read-only' })$(if ($Generic) { ', works on any host: one the fleet does not know yet is added when its result is imported' }))" -Level Success
     if ($copied) { Write-VmmLog '1. It is on the clipboard: in RDP/RDM paste it on the host''s desktop (Ctrl+V).' -Level Info }
     else { Write-VmmLog '1. Copy that file to the host''s desktop (RDP clipboard or RDM file transfer).' -Level Info }
     Write-VmmLog '2. On the host: right-click the file > Run with PowerShell. It reads the host and saves VMM_<HOST>_<time>.vmm on the desktop - the only thing it writes.' -Level Info
