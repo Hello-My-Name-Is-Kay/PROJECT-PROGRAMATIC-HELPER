@@ -35,11 +35,12 @@ function Show-VmmHostScreen {
             $ab = @($c.Agents.PSObject.Properties | Where-Object { $_.Value.Status -ne 'OK' } | ForEach-Object { "$($_.Name) $($_.Value.Status)" })
             if ($ab) { $status = "Agents: $($ab -join ', ') (A for detail)" }
         }
+        if (-not $status -and $c) { try { $status = "Next: $((Get-VmmHostUpgradePath -Record $rec -NoBuildList).NextStep) (N for the full path)" } catch { } }
         $open = @($rec.Blockers | Where-Object { -not $_.Resolved })
         if ($open) { $status = "Open blocker: $($open[-1].Step) - $($open[-1].Summary) (contact: $($open[-1].Contact))" }
         $r = Invoke-VmmListView -Title $facts -ColumnHeader ('   {0,-12} {1,-10} {2,-7} {3,-8} {4}' -f 'Step', 'Status', 'Mode', 'Allowed', 'Note') `
-             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X', 'I', 'A', 'S', 'T', 'W') `
-             -Help 'Enter run | W ticket: guided workflow | S snapshot (terminal first) | G guide | X extractor | Y confirm | P import result | B blocker | R resolve | L remote desktop | T stage by hand (RDP/RDM) | H hold | C check | I inventory | A agents | Esc'
+             -Rows @($rows) -Selected $sel -Status $status -Hotkeys @('G', 'P', 'B', 'R', 'L', 'H', 'C', 'Y', 'X', 'I', 'A', 'S', 'T', 'W', 'N') `
+             -Help 'Enter run | W ticket: guided workflow | S snapshot (terminal first) | G guide | X extractor | Y confirm | P import result | B blocker | R resolve | L remote desktop | T stage by hand (RDP/RDM) | H hold | C check | I inventory | A agents | N next SQL/Windows step | Esc'
         $sel = $r.Index; $status = ''
         $step = $steps[$r.Index].Name
         switch ($r.Action) {
@@ -67,6 +68,7 @@ function Show-VmmHostScreen {
             'S'     { [void](Invoke-VmmTuiAction -Title "Snapshot $HostName (terminal first)" -TicketHost $HostName -Action { Invoke-VmmSnapshot -Name $HostName }) }
             'C'     { [void](Invoke-VmmTuiAction -Title "Check $HostName" -Action { Invoke-VmmFleetCheck -Name $HostName }) }
             'I'     { Show-VmmInventoryScreen -HostName $HostName }
+            'N'     { [void](Invoke-VmmTuiAction -Title "Upgrade path - $HostName" -Action { Get-VmmUpgradePath -HostName $HostName }) }
             'A'     { [void](Invoke-VmmTuiAction -Title "Agent health - $HostName" -Action { Get-VmmAgentHealth -HostName $HostName }) }
         }
     }

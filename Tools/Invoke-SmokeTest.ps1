@@ -1252,6 +1252,27 @@ try {
     Remove-Item -LiteralPath $wfRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# ---------------------------------------------------------------- Upgrade path (SQL/Windows next step)
+Write-Host ''
+Write-Host 'Upgrade path report' -ForegroundColor Cyan
+Test-Step 'SQL 2012 SP2 on 2008 R2 fr-FR: SQL SP4 (FRA) first, then 2012 R2 and 2019 ISOs in fr-FR' {
+    $o = & $m {
+        $rec = [pscustomobject]@{ Name = 'SMK-PATH'; Platform = 'Hyper-V'; Steps = [pscustomobject]@{}; History = @(); Blockers = @(); Baseline = $null
+            Check = [pscustomobject]@{ OS = 'Microsoft Windows Server 2008 R2 Standard'; Build = '7601'; Lang = 'fr-FR'; PendingReboot = 'No'; Sql = 'MSSQLSERVER 11.2.5058.0 Standard Edition'; SqlLang = 'MSSQLSERVER=1036'; CheckedAt = '' } }
+        $p = Get-VmmHostUpgradePath -Record $rec -NoBuildList
+        (@($p.Steps | ForEach-Object Kind) -join ',') + ' | ' + (@($p.Steps | Where-Object File | ForEach-Object File) -join ',')
+    }
+    Assert-Equal $o 'SqlServicePack,WindowsUpgrade,WindowsUpgrade,SqlCumulativeUpdate | SQLServer2012SP4-KB4018073-x64-FRA.exe,Win_Server_2012R2_FR_FR.iso,Win_Server_2019_FR_FR.iso' 'path'
+}
+Test-Step 'SQL 2008 R2 on 2016: blocker (not supported on 2019), no service pack offered' {
+    $o = & $m {
+        $rec = [pscustomobject]@{ Name = 'SMK-PATH2'; Platform = 'Hyper-V'; Steps = [pscustomobject]@{}; History = @(); Blockers = @(); Baseline = $null
+            Check = [pscustomobject]@{ OS = 'Microsoft Windows Server 2016 Standard'; Build = '14393'; Lang = 'en-US'; PendingReboot = 'No'; Sql = 'MSSQLSERVER 10.53.6000.34 Standard Edition'; CheckedAt = '' } }
+        @((Get-VmmHostUpgradePath -Record $rec -NoBuildList).Steps | ForEach-Object Kind) -join ','
+    }
+    Assert-Equal $o 'Blocker,WindowsUpgrade' 'kinds'
+}
+
 # ---------------------------------------------------------------- Result
 Write-Host ''
 if ($script:fail -eq 0) {

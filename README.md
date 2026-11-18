@@ -1,7 +1,7 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; hosts as tickets with counters, workflow manager (DEFAULT + own workflows), guided RDP steps, known fixes, tickets for IT, host runbook; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-37 | Overview:38-56 | At a glance:57-73 | Quick start:74-97 | Adding machines external dat:98-120 | Media repository:121-149 | Server inventory:150-183 | Snapshot terminal first hand:184-199 | Hands-on staging over RDP RD:200-222 | Extractor the program on the:223-271 | Last fallback no vmm no lapt:272-283 | Console UI:284-330 | CLI:331-403 | GitHub integration:404-420 | OS policy:421-435 | Workflow per host:436-458 | Directory tree:459-493 | Where your data lives never:494-513 | Testing:514-527 | Errors:528-542 | Public repository and licenc:543-556 | Future your work AI model wi:557-566 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; hosts as tickets with counters, workflow manager (DEFAULT + own workflows), guided RDP steps, known fixes, tickets for IT, host runbook; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, next SQL/Windows step per host (vmm path); maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-38 | Overview:39-57 | At a glance:58-74 | Quick start:75-98 | Adding machines external dat:99-121 | Media repository:122-150 | Server inventory:151-184 | Snapshot terminal first hand:185-200 | Hands-on staging over RDP RD:201-223 | Extractor the program on the:224-272 | Last fallback no vmm no lapt:273-284 | Console UI:285-331 | CLI:332-406 | GitHub integration:407-423 | OS policy:424-438 | SQL and Windows upgrade path:439-469 | Workflow per host:470-492 | Directory tree:493-527 | Where your data lives never:528-547 | Testing:548-561 | Errors:562-576 | Public repository and licenc:577-590 | Future your work AI model wi:591-600 -->
 # VmMaintenance
 
-**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.19.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-18
+**Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.20.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-18
 
 ## TL;DR
 
@@ -23,6 +23,7 @@
 - **One vmm at a time:** a second vmm that could change something stops and says which process is running; read-only commands (`vmm log -Follow`, `vmm status`, `vmm plan`) still work beside it.
 - **Agent health:** Qualys, CrowdStrike, Zabbix, Ivanti and Lansweeper agents are reported as OK / WARN / FAIL with version and reason (stopped, start type, driver, port, silent log, old version), by the fleet check and by the Extractor. `vmm agents -Problems`, `A` on a host, and the inventory columns.
 - **SQL Server updates:** `vmm fetch -Preview` shows the SP/CU each SQL instance needs; `vmm fetch` (or `F` on the staging screen) downloads each one once into `<share>\_Downloads`, checks Microsoft's signature, and copies it into the host folders, so staging and RDP users find it there. Needs `Install-Module dbatools -Scope CurrentUser` once. The Windows Server ISO stays a manual download.
+- **Next step per server (SQL or Windows):** `vmm path` (or `N` on a host) reads the last snapshot, Extractor results included, and shows the current Windows and SQL Server (instance, version, SP, edition, install language), the workflow position and the ordered path to 2019: SQL service pack first where the next Windows needs it, then each in-place hop with the ISO in the OS install language, then the latest SQL CU. Exact file names (`SQLServer2012SP4-KB4018073-x64-FRA.exe`, `Win_Server_2019_FR_FR.iso`); SQL that 2019 does not support is a blocker. `vmm path-report` (or `U` in Reports) writes the TXT + CSV for the manager e-mail.
 - **Server inventory:** the 24-column team sheet per host. Read automatically where possible (check, Extractor), worked out from the workflow, else typed by you with a help window per column. `N` in the menu, `I` on a host, `vmm inventory -Export`. Help text unclear? `T` opens a GitHub issue.
 - **Live log on every screen:** the bottom rows show what vmm is doing right now; long operations (fleet check, staging copies, Azure jobs) print each host's step, each finished host with its time, and every 5 s who is still running. `F2` hides/shows it on any screen, `F3` opens the full log. Everything also goes to an encrypted day log: `vmm log`, `vmm log -Follow` in a second window.
 - **Maintenance:** `M` in the menu or `vmm maint`: diagnose vmm, check / back up / restore the fleet store (one backup a day is automatic), clean old logs and temp files.
@@ -297,7 +298,7 @@ and today's progress bar with Azure context and credential state.
 | 4 | Staging gate: OS images and host files on the media repository? `M` media report |
 | 5 | Azure: sign in, pick tenant + subscription |
 | 6 | Credentials: set or clear this session's Windows / SQL credentials |
-| 7 | Reports: daily CSV + HTML, blocker reports |
+| 7 | Reports: daily CSV + HTML, blocker reports, `U` upgrade path report (next SQL/Windows step per host) |
 | 8 | Snapshots: preview and prune expired |
 | 9 | Settings: every option, saved to your local config |
 | 0 | Import hosts |
@@ -312,7 +313,7 @@ and today's progress bar with Azure context and credential state.
 | H / Q | Help / Quit (clears session credentials) |
 
 On a host screen: Enter run step, `G` RDP guide, `X` Extractor with this host's plan, `P` import result (clipboard, then Desktop/Downloads), `Y` confirm a
-guided step, `B` blocker report and move on, `R` resolve, `L` remote desktop (RDP / RDM / RDCMan), `T` stage by hand over remote desktop with checks, `H` hold, `C` check, `I` inventory, `W` the ticket view (the host's workflow, guided).
+guided step, `B` blocker report and move on, `R` resolve, `L` remote desktop (RDP / RDM / RDCMan), `T` stage by hand over remote desktop with checks, `H` hold, `C` check, `I` inventory, `W` the ticket view (the host's workflow, guided), `N` the next SQL/Windows step with file and language (the status line shows it too).
 
 On a ticket: Enter opens the step dialogue, `W` workflow, `A` / `X` / `U` / `J` add, remove, move steps for this host only, `R` reset to the workflow, `B` host runbook, `I` import its result, `L` remote desktop, `K` known fixes, `E` edit, `V` the host screen.
 In the step dialogue: Enter ticks a line, `C` copies the command, `G` gate (time window or OVERRIDE, management warnings, `SNAPSHOT TAKEN` / `BACKUP CONFIRMED`, `YES`), `D` done, `F` failed (known fixes, then record a fix / ticket for IT / blocked), `S` skip with a reason, `K` known fixes, `T` ticket for IT. After any failed action: `T` writes advice and a ticket for IT.
@@ -360,6 +361,8 @@ Every UI action has a command. `vmm help` prints this list.
 | `vmm inventory-set` | Set a column by hand: `-HostName x[,y] -Field "Server Owner" -Value ".."` or `-Clear` |
 | `vmm helptext` | Ask for a help text change on GitHub: `-Field "<column>"` or `-Screen "<name>"` |
 | `vmm fetch [-Preview] [-HostName a,b]` | SQL Server SP/CU per host: download once into the share cache, copy into host folders (never installs) |
+| `vmm path [-HostName a,b] [-NoBuildList]` | Next step per host for SQL or Windows: current state, workflow position, ordered path with file and language (read-only) |
+| `vmm path-report [-HostName a,b] [-Open] [-Clipboard]` | The same as TXT (paste into the manager e-mail) + CSV in `Reports\UpgradePath` |
 | `vmm media` | Media repository: images by version and language, host folders, what the fleet still needs |
 | `vmm blocker -HostName x -Step y -Message ".."` | Manager report for an access problem |
 | `vmm resolve -HostName x` | Access granted, unblock |
@@ -395,7 +398,7 @@ ends. Read the log with `vmm log`; `vmm log -Follow` in a second window shows it
 **One vmm at a time.** The console and every command that can change something hold a lock on the data
 folder. A second one stops (exit code 6) and names the process that holds it. Read-only commands run anyway:
 `log`, `status`, `plan`, `time`, `progress`, `vpn`, `guide`, `agents`, `media`, `github`, `policy`,
-`inventory`, `config`, `stage`.
+`inventory`, `config`, `stage`, `rdp`, `path`.
 Feature flags in the config (`Features.HostAgent`, `Features.Vpn`, `Features.Ai`) switch whole areas on or off.
 
 The classic one-task scripts (`Scripts\Expand-AzOsDisk.ps1`, `CreateSnapshots.ps1`, ...) still
@@ -432,6 +435,37 @@ PowerShell 5.1 and PowerShell 7 for every push and pull request.
 `vmm policy` lists the scope of every host; `vmm policy -Notice` writes the management note, copies it
 and records your Sent / Later / Bypass answer. The daily report has Policy, ManagementWarning and
 ManagementNotified columns.
+
+## SQL and Windows upgrade path
+
+`vmm path` answers "what is next on this server, SQL or Windows, and with which file?" from the last snapshot
+(terminal check, Extractor result or RDP collector). Nothing on the host is read or changed.
+
+**What the Extractor gives:** per SQL instance the name, version (`PatchLevel`), edition, `(32-bit)` tag and, since
+2.20.0, the install language (`Setup\Language`, `SqlLang=`). The service pack is worked out from the build number
+offline; the CU level and the latest CU KB are added when dbatools is installed.
+
+**Order of the steps** (no step leaves SQL on a Windows it is not supported on):
+
+| # | Step | When |
+|---|---|---|
+| 1 | Snapshot | Nothing read yet |
+| 2 | Warn management | Server 2008 (not R2) or physical, until `vmm policy -Notice` recorded it |
+| 3 | SQL blocker | The SQL version is not supported on a Windows hop (e.g. SQL 2008 R2 on 2019): SQL upgrade/migration first; the report says how far Windows can go with it |
+| 4 | Restart | Pending reboot |
+| 5 | SQL service pack | Before the first Windows hop, up to the level every hop needs (the last SP: 2012 SP4, 2014 SP3, 2016 SP3). File in the SQL install language and architecture: `SQLServer2016SP3-KB5003279-x64-ENU.exe` |
+| 6 | Windows in-place hop(s) | 2008 -> 2008 R2 -> 2012 R2 -> 2019, 2012 -> 2016 -> 2019, 2012 R2 / 2016 -> 2019. ISO in the OS install language: `Win_Server_2019_FR_FR.iso` (same language and edition; no language change in place) |
+| 7 | SQL latest CU/GDR | After the last hop (language-neutral; `vmm fetch` downloads it) |
+
+Language: the Windows ISO follows the OS install language; a SQL service pack follows the SQL instance's install
+language (normally the same; the report says when they differ). The data is `Private\Get-VmmSqlOsMatrix.ps1`, taken from
+Microsoft's [SQL Server on Windows support table](https://learn.microsoft.com/en-us/troubleshoot/sql/database-engine/install/windows/use-sql-server-in-windows)
+and [in-place upgrade paths](https://learn.microsoft.com/en-us/windows-server/get-started/install-upgrade-migrate);
+2008 / 2008 R2 hops follow Microsoft's older guidance and are marked so. Stage still copies `Staging.OsMediaVersion`
+(2019): for an intermediate hop the report says to copy that ISO by hand.
+
+`vmm path-report` writes `UpgradePath_<date>.txt` (subject line, summary, one block per server, references; paste
+it into the e-mail) and `.csv` (one row per step) to `Reports\UpgradePath`. You send it; vmm never e-mails.
 
 ## Workflow per host
 
@@ -521,7 +555,7 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1 -History                                # before a release: whole git history
 ```
 
-Status (2.19.0, alpha): the offline smoke test (section 12 covers tickets, workflows, known fixes, the host runbook and tickets for IT; 354 checks on PowerShell 7 for Linux, DPAPI section skipped) and Pester pass on GitHub's Windows runners in
+Status (2.20.0, alpha): the offline smoke test (section 12 covers tickets, workflows, known fixes, the host runbook and tickets for IT; 354 checks on PowerShell 7 for Linux, DPAPI section skipped) and Pester pass on GitHub's Windows runners in
 PowerShell 5.1 and 7. Everything that needs real hosts, Azure, SQL, a VPN or an interactive console is
 still untested: see [docs/SECURITY.md](docs/SECURITY.md).
 

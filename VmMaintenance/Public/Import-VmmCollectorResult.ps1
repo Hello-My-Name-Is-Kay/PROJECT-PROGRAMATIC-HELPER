@@ -73,7 +73,7 @@ function Import-VmmCollectorResult {
         Platform = $(if ($f['Platform'] -in 'Azure', 'Hyper-V', 'VMware', 'Physical') { $f['Platform'] } else { 'Unknown' })
         CTotalGB = (& $num $f['CTotalGB']); CFreeGB = (& $num $f['CFreeGB'])
         PendingReboot = $(if ($f['PendingReboot'] -eq 'Yes') { 'Yes' } else { 'No' })
-        Sql = $(if ($f['Sql']) { & $clean $f['Sql'] 300 } else { 'none' }); Software = (($packages | Select-Object -First 20) -join '; ')
+        Sql = $(if ($f['Sql']) { & $clean $f['Sql'] 300 } else { 'none' }); SqlLang = $(if ("$($f['SqlLang'])" -match '^[A-Za-z0-9_#$\-]{1,40}=\d{1,5}(; ?[A-Za-z0-9_#$\-]{1,40}=\d{1,5}){0,19}$') { $f['SqlLang'] } else { '' }); Software = (($packages | Select-Object -First 20) -join '; ')
         Error = $null; Via = $via; Inv = $null; Agents = $null
         Route = 'Hands-on'; Problems = ($problems -join ' | ')   # reads that failed on the host; the rest of the snapshot is complete
     }

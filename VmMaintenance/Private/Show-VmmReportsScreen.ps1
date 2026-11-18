@@ -9,9 +9,10 @@ function Show-VmmReportsScreen {
             @{ K = 'F'; T = 'Open the reports folder' }
             @{ K = 'B'; T = 'Open blocker reports (send them from Outlook)' }
             @{ K = 'P'; T = 'Show progress against today''s target' }
+            @{ K = 'U'; T = 'Upgrade path report: next SQL/Windows step per host, file + language (TXT + CSV for the e-mail)' }
         )
         $r = Invoke-VmmListView -Title 'Reports (plaintext by design: host names, never credentials)' -Rows @($items | ForEach-Object { @{ Text = "[$($_.K)] $($_.T)" } }) `
-             -Selected $sel -Hotkeys @('E', 'F', 'B', 'P') -Help 'Letter or Enter | Esc back'
+             -Selected $sel -Hotkeys @('E', 'F', 'B', 'P', 'U') -Help 'Letter or Enter | Esc back'
         $sel = $r.Index
         $k = if ($r.Action -eq 'Enter') { $items[$r.Index].K } else { $r.Action }
         switch ($k) {
@@ -20,6 +21,7 @@ function Show-VmmReportsScreen {
             'F' { Start-Process explorer.exe -ArgumentList (Get-VmmPath -Name Reports) }
             'B' { Start-Process explorer.exe -ArgumentList (Get-VmmPath -Name Blockers) }
             'P' { [void](Invoke-VmmTuiAction -Title 'Progress' -Action { Get-VmmDailyProgress | Format-List }) }
+            'U' { [void](Invoke-VmmTuiAction -Title 'Upgrade path report' -Action { Export-VmmUpgradePathReport -Open -Clipboard | Format-List }) }
         }
     }
 }

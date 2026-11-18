@@ -22,6 +22,13 @@ check the preview, confirm, let it delete the plaintext file. Then `3` Check fle
 missing KBs once into `<share>\_Downloads`, then copies them into the host folders. Re-run it any time: nothing is
 downloaded twice. One-time setup: `Install-Module dbatools -Scope CurrentUser`.
 
+## What is next on a server (SQL or Windows)
+
+`vmm path` (or `N` on a host) shows, from the last snapshot or Extractor result, the current Windows and SQL
+Server, the workflow position and the next step with the exact file and language: SQL service pack first when the
+next Windows needs it, then the in-place upgrade ISO in the OS install language, then the latest SQL CU.
+`vmm path-report` (or `U` in Reports) writes the TXT + CSV for the manager e-mail.
+
 ## Tickets (2.19.0)
 
 `T` is the ticket board: every host with its state, workflow, progress and next step; `O` shows the counters

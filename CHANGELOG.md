@@ -1,5 +1,31 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.19.0 - 2026-11-18:4-67 | 2.18.1 - 2026-11-18:68-83 | 2.18.0 - 2026-11-18:84-104 | 2.17.1 - 2026-11-17:105-135 | 2.17.0 - 2026-11-16:136-166 | 2.16.0 - 2026-11-16:167-194 | 2.15.2 - 2026-11-16:195-209 | 2.15.1 - 2026-11-16:210-230 | 2.15.0 - 2026-11-16:231-288 | 2.14.0 - 2026-11-15:289-309 | 2.13.0 - 2026-11-15:310-339 | 2.12.0 - 2026-11-14:340-362 | 2.11.0 - 2026-11-14:363-381 | 2.10.0 - 2026-11-14:382-400 | 2.9.0 - 2026-11-14:401-413 | 2.8.0 - 2026-11-14:414-427 | 2.7.0 - 2026-11-14:428-445 | 2.6.0 - 2026-11-14:446-453 | 2.5.0 - 2026-11-14:454-466 | 2.4.0 - 2026-11-14:467-477 | 2.3.0 - 2026-11-14:478-492 | 2.2.1 - 2026-11-14:493-499 | 2.2.0 - 2026-11-14:500-507 | 2.1.0 - 2026-11-14:508-525 | 2.0.0 - 2026-11-14:526-531 | 1.0.0 - 2026-11-14:532-536 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.20.0 - 2026-11-18:4-29 | 2.19.0 - 2026-11-18:30-93 | 2.18.1 - 2026-11-18:94-109 | 2.18.0 - 2026-11-18:110-130 | 2.17.1 - 2026-11-17:131-161 | 2.17.0 - 2026-11-16:162-192 | 2.16.0 - 2026-11-16:193-220 | 2.15.2 - 2026-11-16:221-235 | 2.15.1 - 2026-11-16:236-256 | 2.15.0 - 2026-11-16:257-314 | 2.14.0 - 2026-11-15:315-335 | 2.13.0 - 2026-11-15:336-365 | 2.12.0 - 2026-11-14:366-388 | 2.11.0 - 2026-11-14:389-407 | 2.10.0 - 2026-11-14:408-426 | 2.9.0 - 2026-11-14:427-439 | 2.8.0 - 2026-11-14:440-453 | 2.7.0 - 2026-11-14:454-471 | 2.6.0 - 2026-11-14:472-479 | 2.5.0 - 2026-11-14:480-492 | 2.4.0 - 2026-11-14:493-503 | 2.3.0 - 2026-11-14:504-518 | 2.2.1 - 2026-11-14:519-525 | 2.2.0 - 2026-11-14:526-533 | 2.1.0 - 2026-11-14:534-551 | 2.0.0 - 2026-11-14:552-557 | 1.0.0 - 2026-11-14:558-562 -->
 # Changelog
+
+## 2.20.0 - 2026-11-18
+
+Next step per server for SQL Server or Windows, from the Extractor output. Still **alpha**. Rebuild the Extractor
+with `vmm extractor` (it now sends the SQL install language). Builds on 2.19.0 (tickets and
+workflow manager).
+
+- **`vmm path` / `N` on a host / status line:** current Windows (version, install language) and every SQL instance
+  (version, SP, CU with dbatools, edition, x64/x86, install language), the workflow position, and the ordered path to
+  Windows Server 2019 with the exact file and language per step: warn management (2008 non-R2, physical) -> SQL
+  blocker (SQL not supported on a hop) -> restart (pending reboot) -> SQL service pack before the first hop
+  (`SQLServer2012SP4-KB4018073-x64-FRA.exe`) -> Windows in-place hop(s) (`Win_Server_2012R2_FR_FR.iso`,
+  `Win_Server_2019_FR_FR.iso`) -> latest SQL CU/GDR after the last hop.
+- **Cross-reference data** (`Private/Get-VmmSqlOsMatrix.ps1`): minimum SQL service pack per Windows Server from
+  Microsoft's support table (2012 SP4, 2014 SP3, 2016 SP3 on 2016/2019; 2008 / 2008 R2 not on 2016+; 2019/2022 not on
+  2012 R2), in-place hops (2012 R2 and 2016 straight to 2019, 2012 via 2016, 2008 R2 via 2012 R2), last-SP KBs and
+  Microsoft file names. Works offline; `SqlMatrix.Sql.<ver>` settings can override a row.
+- **Language:** Windows ISO in the OS install language (no fallback); SQL service pack in the instance's install
+  language (from the Extractor's new `SqlLang=` field, else the OS language); a difference is called out.
+- **`vmm path-report` / `U` in Reports:** `Reports\UpgradePath\UpgradePath_<date>.txt` (ready to paste into the
+  manager e-mail, with references) and `.csv` (one row per step). Nothing is sent by vmm.
+- **Extractor:** new read-only `SqlLang=` line (`Setup\Language` per instance, both registry views); the laptop
+  accepts only `name=LCID` pairs.
+- **Tests:** `tests/UpgradePath.Tests.ps1` imports sample results for SQL 2012 SP2 on 2008 R2 (fr-FR), 2016 SP1 on
+  2012 R2, 2019 on 2019, 2008 R2 on 2016, 2008 on 2008, Windows 10, a physical es-ES host with an English instance,
+  32-bit 2014 Express and a pending reboot, and checks the report files; two smoke checks; Extractor SqlLang test.
 
 ## 2.19.0 - 2026-11-18
 
