@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | SQL Server updates:19-24 | Every morning business hours:25-42 | Evening weekend all steps:43-51 | Problems:52-64 | End of day:65-69 | Updates and GitHub:70-74 | Tests:75-83 -->
+<!-- SUMMARY: VmMaintenance daily runbook: install, morning (checks+staging), evening (changes), problems, end of day, tests. SECTIONS: Once:4-13 | New machines:14-18 | SQL Server updates:19-24 | Tickets 2.19.0:25-33 | Every morning business hours:34-51 | Evening weekend all steps:52-60 | Problems:61-75 | End of day:76-80 | Updates and GitHub:81-85 | Tests:86-94 -->
 # Usage - daily runbook
 
 ## Once
@@ -21,6 +21,15 @@ check the preview, confirm, let it delete the plaintext file. Then `3` Check fle
 `vmm fetch -Preview` lists what each SQL instance needs and what is already cached. `vmm fetch` downloads the
 missing KBs once into `<share>\_Downloads`, then copies them into the host folders. Re-run it any time: nothing is
 downloaded twice. One-time setup: `Install-Module dbatools -Scope CurrentUser`.
+
+## Tickets (2.19.0)
+
+`T` is the ticket board: every host with its state, workflow, progress and next step; `O` shows the counters
+(per state, per workflow, done today, failures today, target). Work a host from there: Enter, then Enter on a step,
+follow the lines, `C` copies each command for the RDP session, `D` done, `F` failed. A failed step shows the known
+fixes other technicians recorded; if none helps, record your fix (`R`) or write a ticket for IT (`T`). RDP-only
+host: `B` builds a host runbook (.ps1 + .cmd) that guides you on the host; `I` brings its result back. Workflows,
+actions and known fixes: `K`. Details: [TICKETS.md](TICKETS.md).
 
 ## Every morning (business hours: checks + staging only)
 
@@ -60,6 +69,8 @@ downloaded twice. One-time setup: `Install-Module dbatools -Scope CurrentUser`.
 | VPN up but hosts time out | `vmm vpn` shows Degraded when the probe host does not answer: DNS / split tunnel |
 | Store cannot be decrypted | See SECURITY.md (DPAPI limits); `M` > `R` restores a daily backup (or `fleet.vmm.bak`), else re-import |
 | Looks stuck | Watch the live log (bottom of the screen, `F2` if hidden): it names the host and step it is waiting on every 5 s. `vmm log -Follow` in a second window shows the same |
+| A step failed and you do not know why | `F` in the step dialogue: paste the error, try the suggested known fixes; `R` records your own fix for the next person |
+| Someone else must fix it (Azure role, VPN, share, firewall) | `T` after the failed action (or `vmm ticket-it -FromErrorLog`): advice plus a ticket text for IT in `Reports\Tickets` and on the clipboard; paste it into the ticket system |
 | vmm itself misbehaves | `M` > `D` diagnose; `vmm log -Level Error`; `vmm issue -FromErrorLog` sends the errors as a ticket |
 
 ## End of day
@@ -80,4 +91,4 @@ Invoke-Pester -Path .\tests -Output Detailed
 .\Tools\Test-Sanitized.ps1      # before any commit or push
 ```
 
-_Last updated: 2026-11-16 12:30 UTC_
+_Last updated: 2026-11-18 00:02 UTC_

@@ -1,5 +1,69 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.18.0 - 2026-11-18:4-24 | 2.17.1 - 2026-11-17:25-55 | 2.17.0 - 2026-11-16:35-65 | 2.16.0 - 2026-11-16:66-93 | 2.15.2 - 2026-11-16:94-108 | 2.15.1 - 2026-11-16:109-129 | 2.15.0 - 2026-11-16:130-187 | 2.14.0 - 2026-11-15:188-208 | 2.13.0 - 2026-11-15:209-238 | 2.12.0 - 2026-11-14:239-261 | 2.11.0 - 2026-11-14:262-280 | 2.10.0 - 2026-11-14:281-299 | 2.9.0 - 2026-11-14:300-312 | 2.8.0 - 2026-11-14:313-326 | 2.7.0 - 2026-11-14:327-344 | 2.6.0 - 2026-11-14:345-352 | 2.5.0 - 2026-11-14:353-365 | 2.4.0 - 2026-11-14:366-376 | 2.3.0 - 2026-11-14:377-391 | 2.2.1 - 2026-11-14:392-398 | 2.2.0 - 2026-11-14:399-406 | 2.1.0 - 2026-11-14:407-424 | 2.0.0 - 2026-11-14:425-430 | 1.0.0 - 2026-11-14:431-435 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.19.0 - 2026-11-18:4-67 | 2.18.0 - 2026-11-18:68-88 | 2.17.1 - 2026-11-17:89-119 | 2.17.0 - 2026-11-16:120-150 | 2.16.0 - 2026-11-16:151-178 | 2.15.2 - 2026-11-16:179-193 | 2.15.1 - 2026-11-16:194-214 | 2.15.0 - 2026-11-16:215-272 | 2.14.0 - 2026-11-15:273-293 | 2.13.0 - 2026-11-15:294-323 | 2.12.0 - 2026-11-14:324-346 | 2.11.0 - 2026-11-14:347-365 | 2.10.0 - 2026-11-14:366-384 | 2.9.0 - 2026-11-14:385-397 | 2.8.0 - 2026-11-14:398-411 | 2.7.0 - 2026-11-14:412-429 | 2.6.0 - 2026-11-14:430-437 | 2.5.0 - 2026-11-14:438-450 | 2.4.0 - 2026-11-14:451-461 | 2.3.0 - 2026-11-14:462-476 | 2.2.1 - 2026-11-14:477-483 | 2.2.0 - 2026-11-14:484-491 | 2.1.0 - 2026-11-14:492-509 | 2.0.0 - 2026-11-14:510-515 | 1.0.0 - 2026-11-14:516-520 -->
 # Changelog
+
+## 2.19.0 - 2026-11-18
+
+Hosts are tickets; workflow manager; guided steps for RDP-only work; known fixes when a step fails; tickets for the
+IT person who can fix a failure. Still **alpha**. Backup of 2.17.1 before the change:
+`release/VmMaintenance-backup-2.17.1-2026-11-17.zip` in the project share (not in the repository).
+
+**Tickets (`T` in the main menu, [docs/TICKETS.md](docs/TICKETS.md))**
+- Every host is a ticket: state (New, InProgress, Failed, Blocked, OnHold, Excluded, NotNeeded, Done), workflow,
+  progress, next step, priority, assignee, notes. Board grouped by state, needs-help first; counters in the title.
+- `N` new (adds the host), `E` edit, `W` workflow (DEFAULT or any), `D` delete (type the host name), `H` hold,
+  `F` filter, `O` overview: per state, per workflow (done / open / total), per next step, per priority, tickets
+  done today, steps done and failures today, daily target. Same `N` / `E` / `W` / `D` on the fleet screen (its `D`
+  now asks for the host name); `W` on a host screen.
+- Ticket view: the workflow's steps with state, allowed now (and why not), known-fix count. `A` / `X` / `U` / `J`
+  add, remove, move steps **for this ticket only**, `R` resets to the workflow.
+- Step dialogue (the manual guidance): lines to tick, `C` copies the command for the RDP session, `G` gate for
+  any step that is not read-only (time window or OVERRIDE + reason, MANAGEMENT INFORMED, SNAPSHOT TAKEN /
+  BACKUP CONFIRMED, YES; commands copy only after it), `D` done with what you saw, `F` failed, `S` skip with a reason,
+  `K` known fixes, `T` ticket for IT. The ten maintenance steps keep their own engine (`R` runs, `D` confirms, `G` guide).
+- Rules: client OS without orders = Excluded, nothing allowed; at/over the target OS = no Change step; a Change step
+  only after every earlier step and outside business hours.
+
+**Workflow manager (`K`)**
+- Built-in **Full maintenance** (the ten steps) is the **DEFAULT**; built-in **Read-only snapshot** groups nine
+  non-invasive checks (OS and uptime, disk space, pending reboot, server roles, SQL instances, stopped automatic
+  services, recent errors, last updates, `C:\Temp`), all PowerShell 2.0 read-only commands.
+- Create, copy, rename, delete workflows; `S` sets the default; Enter edits the steps (add from the library, create
+  a new action, remove, move).
+- Action library grouped by category (ReadOnly / Staging / Change) and group: create, edit, copy, delete.
+- Known fixes: record, edit, delete; helped / did not help counters rank them.
+- Shared library: `X` export / `I` import a sanitized JSON file (`Workflow.LibraryPath`, new setting, also in
+  Settings and the setup wizard); export refused when a fleet host name would leak (`VmmLibraryLeak`).
+- Stored encrypted in `workflows.vmm` (same key as the fleet store); built-ins live in code.
+
+**When a step fails**
+- Paste what happened (recorded as Failed); matching known fixes are shown best first, each as a dialogue
+  (`Y` fixed it: step back to Pending, `N` next one). None helped: cause and fix from the error text, then record
+  your fix for the next technician, a ticket for IT, or Blocked (ticket + step Blocked) and move on.
+- Known-fix text is sanitized on entry: host names, FQDNs, IPs, ids, UNC servers, secrets replaced.
+
+**Tickets for IT (Kay's request)**
+- `New-VmmFailureTicket` / `vmm ticket-it`: advice for you plus a ready-to-send ticket text for the person who can fix
+  the failure: subject with urgency, summary, what was attempted, exact error, likely cause, requested action (Azure:
+  role and scope), impact, urgency, known fixes already tried, environment, reference. Saved in `Reports\Tickets`,
+  copied to the clipboard, sanitized unless `-IncludeTarget`; `-FromErrorLog` uses the last logged error.
+- After **any** failed action in the console the pause line offers `T` for it.
+
+**Host runbook (RDP only)**
+- `B` on a ticket / `vmm runbook`: `VmmRunbook_<HOST>_<time>.ps1` + `.cmd` launcher (ExecutionPolicy Bypass for that
+  run), on the clipboard as files. Guides the workflow on the host (PS 2.0+): instructions, commands, `R` runs
+  read-only commands marked for it, gate before other steps, known fixes on a failure, new fixes recorded.
+  Writes one `VMMW_<HOST>_<time>.txt` (and clipboard); `I` on the ticket / `vmm runbook-import` records it. The ten
+  maintenance steps are never set from it; a Change step reported done without its gate becomes Pending.
+
+**Other**
+- CLI: `tickets`, `ticket`, `workflows`, `runbook`, `runbook-import`, `library-export`, `library-import`, `ticket-it`.
+- Public: `Get-VmmTicket`, `Set-VmmTicket`, `Get-VmmWorkflow`, `Export-/Import-VmmWorkflowLibrary`,
+  `Export-VmmWorkflowRunbook`, `Import-VmmRunbookResult`, `New-VmmFailureTicket`.
+- Help screen, README, USAGE, WORKFLOW, ARCHITECTURE, SECURITY, TROUBLESHOOTING, MANAGER-GUIDE, RELEASE, llms.txt,
+  PROJECT.json updated; new docs/TICKETS.md with text captures of the new screens.
+- Smoke test section 12 (14 checks): catalog, read-only commands, ticket states and rules, gates, counters,
+  sanitizing, known-fix ranking, library round trip, runbook build (PS 2.0 scan) and import, ticket for IT.
+- Version line bumped in the Extractor and the Fallback templates (no other change to them).
 
 ## 2.18.0 - 2026-11-18
 
@@ -453,4 +517,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-17 17:20 UTC_
+_Last updated: 2026-11-18 00:02 UTC_

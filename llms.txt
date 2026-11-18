@@ -23,6 +23,7 @@ Rules an assistant must keep when changing this code:
 - [Manager guide](docs/MANAGER-GUIDE.md): for management: what it does, enforced rules, credentials, data, limits
 - [Troubleshooting](docs/TROUBLESHOOTING.md): exit codes, common errors, encrypted file recovery
 - [Fallback](docs/FALLBACK.md): VmmFallback.ps1, the standalone last fallback on a host (companion .psd1, steps, exit codes)
+- [Tickets](docs/TICKETS.md): hosts as tickets, workflow manager (DEFAULT + own workflows, actions), known fixes, host runbook, tickets for IT
 - [Release](docs/RELEASE.md): readiness checklist, known limitations, release steps (stage: alpha)
 
 ## Code entry points
@@ -34,6 +35,8 @@ Rules an assistant must keep when changing this code:
 - [VmMaintenance/Resources/VmmHostAgent.ps1](VmMaintenance/Resources/VmmHostAgent.ps1): program 2 (remote host)
 - [VmMaintenance/Private/Add-VmmLogEntry.ps1](VmMaintenance/Private/Add-VmmLogEntry.ps1): every log line (live pane buffer + encrypted day log)
 - [VmMaintenance/Public/Invoke-VmmMaintenance.ps1](VmMaintenance/Public/Invoke-VmmMaintenance.ps1): maintenance of vmm itself
+- [VmMaintenance/Private/Resolve-VmmHostWorkflow.ps1](VmMaintenance/Private/Resolve-VmmHostWorkflow.ps1): a ticket's workflow, step states and rules (Get-VmmWorkflowCatalog = built-ins + workflows.vmm)
+- [VmMaintenance/Resources/VmmRunbook.ps1](VmMaintenance/Resources/VmmRunbook.ps1): host runbook template (PS 2.0+, data block replaced by Get-VmmRunbookScript)
 - [PROJECT.json](PROJECT.json): machine-readable summary
 
 ## CI

@@ -20,6 +20,20 @@ function Show-VmmHelpScreen {
         '  Terminal copy failed? T (or: vmm handoff) opens RDP / RDM / RDCMan, lists the files, then verifies size + SHA256 on the host.'
         '  Missing access? B writes a report for your manager (you send it from Outlook) and you move on.'
         ''
+        'TICKETS (T in the main menu): every host is a ticket. N new, E edit (priority, assignee, notes, workflow),'
+        '  D delete (type the host name), W workflow, H hold, O overview (counters per state, workflow, next step, today).'
+        '  Enter works on it: the workflow steps one by one. On a step: Enter ticks a line, C copies the command for the'
+        '  RDP session, G = gate for steps that are not read-only (time window / OVERRIDE, SNAPSHOT TAKEN or BACKUP'
+        '  CONFIRMED, YES), D done, F failed, S skip with a reason, K known fixes, T ticket for IT.'
+        '  A / X / U / J on the ticket add, remove and move steps for that host only; R resets to the workflow.'
+        '  B builds the host runbook (.ps1 + .cmd to paste over RDP); I imports the VMMW_*.txt it writes.'
+        'FAILED STEP: paste what happened; vmm shows the known fixes other technicians recorded, best first.'
+        '  None helped: R record your fix for the next person, T ticket for the IT person who can fix it, B blocked.'
+        '  After ANY failed action, T writes advice + a ticket text (Reports\Tickets, clipboard; you send it).'
+        'WORKFLOW MANAGER (K): workflows (Full maintenance = DEFAULT, Read-only snapshot, your own), S sets the'
+        '  default, N/C/E/D create/copy/rename/delete; Enter edits the steps; A action library (ReadOnly / Staging /'
+        '  Change, groups); K known fixes; X/I export/import the shared library (Workflow.LibraryPath, sanitized).'
+        ''
         'TARGET: Target.MachinesPerDay (default 10). Counted when Stage or Verify succeeds that day.'
         ''
         'SECURITY: usernames/passwords are asked each session, kept only in memory, cleared on Quit.'
@@ -30,6 +44,7 @@ function Show-VmmHelpScreen {
         "       data   $(Get-VmmPath -Name Data)"
         "       reports $(Get-VmmPath -Name Reports)"
         "       logs   $(Get-VmmPath -Name Logs)"
+        "       tickets for IT $(Get-VmmPath -Name Tickets)"
         ''
         'CLI: every action exists as a command - run: vmm help'
     )
