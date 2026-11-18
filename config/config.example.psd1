@@ -134,6 +134,7 @@
         # Extractor result files (VMM_<HOST>_<time>.vmm) you copy back from the hosts are picked up here.
         InboxFolders = @('Desktop', 'Downloads')   # Desktop | Downloads | any folder path
         AutoImport   = $true                       # import them when vmm starts (also: E in the menu, vmm inbox)
+        AutoAddHosts = $true                       # a result from a host not in the fleet adds it ($false = refuse it)
     }
 
     Agents = @{

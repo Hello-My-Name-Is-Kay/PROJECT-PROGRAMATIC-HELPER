@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; hosts as tickets with counters, workflow manager (DEFAULT + own workflows), guided RDP steps, known fixes, tickets for IT, host runbook; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-37 | Overview:38-56 | At a glance:57-73 | Quick start:74-97 | Adding machines external dat:98-120 | Media repository:121-149 | Server inventory:150-183 | Snapshot terminal first hand:184-199 | Hands-on staging over RDP RD:200-222 | Extractor the program on the:223-262 | Last fallback no vmm no lapt:263-274 | Console UI:275-321 | CLI:322-394 | GitHub integration:395-411 | OS policy:412-426 | Workflow per host:427-449 | Directory tree:450-484 | Where your data lives never:485-504 | Testing:505-518 | Errors:519-533 | Public repository and licenc:534-547 | Future your work AI model wi:548-557 -->
+<!-- SUMMARY: VmMaintenance: Windows PowerShell fleet console (vmm) + remote host Extractor for pre-upgrade server maintenance; hosts as tickets with counters, workflow manager (DEFAULT + own workflows), guided RDP steps, known fixes, tickets for IT, host runbook; encrypted store, no stored credentials, environment-agnostic, GitHub updates/issues/PRs; 24-column server inventory; live log pane on every screen, encrypted day logs, maintenance tools; TL;DR at the top. SECTIONS: TLDR:6-37 | Overview:38-56 | At a glance:57-73 | Quick start:74-97 | Adding machines external dat:98-120 | Media repository:121-149 | Server inventory:150-183 | Snapshot terminal first hand:184-199 | Hands-on staging over RDP RD:200-222 | Extractor the program on the:223-271 | Last fallback no vmm no lapt:272-283 | Console UI:284-330 | CLI:331-403 | GitHub integration:404-420 | OS policy:421-435 | Workflow per host:436-458 | Directory tree:459-493 | Where your data lives never:494-513 | Testing:514-527 | Errors:528-542 | Public repository and licenc:543-556 | Future your work AI model wi:557-566 -->
 # VmMaintenance
 
 **Creator:** Kay (GitHub: Hello-My-Name-Is-Kay) &nbsp;|&nbsp; **Version:** 2.19.0 (alpha) &nbsp;|&nbsp; **This file:** 2026-11-18
@@ -225,6 +225,15 @@ on the host). `vmm rdp -List` shows which clients this laptop has. Everything go
 Only for hosts the terminal cannot read (no WMI/RPC, no WinRM, other domain, RDP-only). It is **snapshot
 only**: it reads the host and writes one encrypted result file on the host's desktop. The file holds no code
 that can change a host (the steps code is cut out when it is built), no host name, share path or address.
+
+**Any host.** The same `VmmExtractor.ps1` works on every host it is pasted on, whatever its name, domain or IP,
+and the host does not have to be in the fleet first. On import the laptop finds the host by name, by its full DNS
+name (Windows cuts `COMPUTERNAME` at 15 characters) or by FQDN, and **adds it to the fleet** when it is not there
+yet (source `extractor`, with its FQDN and IP). Everything in scope comes with it: OS, build, language, platform
+(Azure, Hyper-V, VMware, physical), C: size and free space, pending reboot, SQL instances and versions, domain,
+domain controller, IP, Windows licence, Qualys, CrowdStrike, Zabbix, Ivanti, Lansweeper agent health, legacy TLS,
+and the OS policy (in scope, at target, newer, client OS) worked out from those facts.
+`vmm set -Name Collect.AutoAddHosts -Value false` makes import refuse hosts not in the fleet (error `VmmHostUnknown`).
 
 | # | Where | You do | The programs do |
 |---|---|---|---|
@@ -554,4 +563,4 @@ model), signed in with your work account. Every change would come back as a diff
 in the console; no credentials, and no write access outside the vmm config and reports folders.
 Details and the access request text: [docs/AI.md](docs/AI.md).
 
-_Last updated: 2026-11-18 00:02 UTC_
+_Last updated: 2026-11-18 01:00 UTC_

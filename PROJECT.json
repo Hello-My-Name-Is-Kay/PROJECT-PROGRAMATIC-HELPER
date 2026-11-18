@@ -10,7 +10,7 @@
   },
   "programs": {
     "manager": "vmm (module VmMaintenance) on the laptop",
-    "extractor": "Resources/VmmHostAgent.ps1 template -> VmmExtractor.ps1 (any host) / VmmExtractor_<HOST>_<time>.ps1 (with plan); writes VMM_<HOST>_<time>.vmm on the host desktop; Manager imports from Collect.InboxFolders",
+    "extractor": "Resources/VmmHostAgent.ps1 template -> VmmExtractor.ps1 (any host) / VmmExtractor_<HOST>_<time>.ps1 (with plan); writes VMM_<HOST>_<time>.vmm on the host desktop; Manager imports from Collect.InboxFolders; any host: Resolve-VmmResultHost matches name / DNS name (15-char NetBIOS cut) / FQDN and adds an unknown host to the fleet (Source=extractor) unless Collect.AutoAddHosts=false",
     "fallback": "Resources/Fallback/VmmFallback.ps1 + VmmFallback.psd1 (companion data file): standalone last fallback on a host, no vmm/laptop/network; read-only snapshot VMMF_<HOST>_<kind>_<time>.txt (Key=Value, VMMF1, not encrypted) in C:\\Temp\\VmmFallback; guide steps Snapshot, Precheck, WindowsPatch, SqlPatch, SqlUpgrade, OsUpgrade, Disk, Postcheck, Finish with run / guidance-only / stage",
     "runbook": "Resources/VmmRunbook.ps1 template -> VmmRunbook_<HOST>_<time>.ps1 + .cmd (vmm runbook / B on a ticket): guides one ticket workflow on the host over RDP (PS 2.0+), writes VMMW_<HOST>_<time>.txt; vmm runbook-import records it"
   },
@@ -209,6 +209,7 @@
     "Get-VmmHostHealth",
     "Get-VmmHostPolicy",
     "Get-VmmHostRecord",
+    "Resolve-VmmResultHost",
     "Get-VmmHostStage",
     "Get-VmmInventoryCatalog",
     "Get-VmmInventoryRow",

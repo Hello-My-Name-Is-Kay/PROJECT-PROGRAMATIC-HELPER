@@ -53,7 +53,7 @@ BeforeAll {
 function global:Get-TestRow([string]`$Class) {
     switch (`$Class) {
         'Win32_OperatingSystem' { New-Object PSObject -Property @{ Caption = `$env:E2E_CAPTION; Version = `$env:E2E_VERSION; BuildNumber = `$env:E2E_BUILD; ServicePackMajorVersion = 0; OSLanguage = 1033; LastBootUpTime = [datetime]'2026-11-01T06:00:00'; ProductType = [int]`$env:E2E_PT } }
-        'Win32_ComputerSystem' { New-Object PSObject -Property @{ Manufacturer = 'Microsoft Corporation'; Model = 'Virtual Machine'; Domain = 'corp.example.com'; PartOfDomain = `$true; DomainRole = 3 } }
+        'Win32_ComputerSystem' { New-Object PSObject -Property @{ Manufacturer = 'Microsoft Corporation'; Model = 'Virtual Machine'; Domain = 'corp.example.com'; PartOfDomain = `$true; DomainRole = 3; DNSHostName = `$env:E2E_DNS } }
         'Win32_LogicalDisk' { New-Object PSObject -Property @{ Size = 127GB; FreeSpace = 38GB } }
         'Win32_NetworkAdapterConfiguration' { New-Object PSObject -Property @{ IPAddress = @('$ip', 'fe80::1') } }
         'SoftwareLicensingProduct' { New-Object PSObject -Property @{ LicenseStatus = 1 } }
@@ -73,6 +73,7 @@ function global:Get-Service { param([string]`$Name, `$ErrorAction) if (`$Name -e
     function script:Invoke-Extractor($P) {
         # Runs the built Extractor as on the host, in a child PowerShell with that host's name and version
         $env:E2E_CAPTION = $P.Caption; $env:E2E_VERSION = $P.Version; $env:E2E_BUILD = $P.Build; $env:E2E_PT = "$($P.PT)"
+        $env:E2E_DNS = "$($P.Dns)"   # '' = the host's DNS name is read from .NET (the runner's own name: the laptop ignores it)
         $savedName = $env:COMPUTERNAME; $env:COMPUTERNAME = $P.Name
         $savedProfile = $env:USERPROFILE
         if (-not $script:isWin) { $env:USERPROFILE = $script:root }   # no Desktop folder outside Windows: <root>/Desktop
@@ -92,7 +93,7 @@ function global:Get-Service { param([string]`$Name, `$ErrorAction) if (`$Name -e
 AfterAll {
     InModuleScope VmMaintenance { Exit-VmmInstanceLock; $script:VmmConfig = $script:SavedCfg }
     Remove-Item -LiteralPath $script:root -Recurse -Force -ErrorAction SilentlyContinue
-    foreach ($p in $script:Profiles) { Find-Result $p.Name | Remove-Item -Force -ErrorAction SilentlyContinue }
+    foreach ($p in @($script:Profiles) + @($script:NewProfiles)) { Find-Result $p.Name | Remove-Item -Force -ErrorAction SilentlyContinue }
     Remove-Module VmMaintenance -ErrorAction SilentlyContinue
 }
 
@@ -144,5 +145,86 @@ Describe 'Extractor to fleet table, Windows Server 2008 to 2029 and Windows 7 to
         $col['Zabbix'].Value | Should -Match '^FAIL'
         $col['TlsLegacyDisabled'].Value | Should -Match '^(Yes|No)'
         $col['Domain'].Origin | Should -Be 'host agent (encrypted)'
+    }
+}
+
+Describe 'Any host: the generic Extractor on hosts the fleet does not know yet' {
+    BeforeAll {
+        # Not imported into the fleet first: the import must add them. One has a DNS name longer than the
+        # 15-character COMPUTERNAME Windows keeps; the fleet row must carry the full name.
+        $script:NewProfiles = @(
+            @{ Name = 'E2E-NEW-S2016'; Dns = 'e2e-new-s2016'; Caption = 'Microsoft Windows Server 2016 Standard'; Version = '10.0.14393'; Build = '14393'; PT = 3; Row = 'E2E-NEW-S2016'; Scope = 'InScope' }
+            @{ Name = 'E2E-NEW-LONGNAM'; Dns = 'e2e-new-longname-sql01'; Caption = 'Microsoft Windows Server 2012 R2 Standard'; Version = '6.3.9600'; Build = '9600'; PT = 3; Row = 'E2E-NEW-LONGNAME-SQL01'; Scope = 'InScope' }
+            @{ Name = 'E2E-NEW-W11'; Dns = ''; Caption = 'Microsoft Windows 11 Pro'; Version = '10.0.26100'; Build = '26100'; PT = 1; Row = 'E2E-NEW-W11'; Scope = 'ClientOs' }
+        )
+    }
+    It '<Row>: not in the fleet, the result adds it with name, FQDN, IP and every column' -ForEach @(
+        @{ Name = 'E2E-NEW-S2016'; Row = 'E2E-NEW-S2016' }, @{ Name = 'E2E-NEW-LONGNAM'; Row = 'E2E-NEW-LONGNAME-SQL01' }, @{ Name = 'E2E-NEW-W11'; Row = 'E2E-NEW-W11' }
+    ) {
+        $p = $script:NewProfiles | Where-Object { $_.Name -eq $Name }
+        $before = & $script:mod { param($n) @((Read-VmmStore).Hosts | Where-Object { $_.Name -eq $n }).Count } $Row
+        $before | Should -Be 0
+        $run = Invoke-Extractor $p
+        $run.Code | Should -BeIn @(0, 2) -Because $run.Out
+        $files = @(Find-Result $Name)
+        $files.Count | Should -Be 1 -Because $run.Out
+
+        $r = & $script:mod { param($f) Import-VmmResultInbox -Path $f -Quiet -PassThru } $files[0].FullName
+        @($r.Failed).Count | Should -Be 0 -Because (@($r.Failed | ForEach-Object Reason) -join '; ')
+        @($r.Imported).Count | Should -Be 1
+        $r.Imported[0].New | Should -BeTrue
+        $r.Imported[0].Host | Should -Be $Row
+
+        $h = @(& $script:mod { param($n) (Read-VmmStore).Hosts | Where-Object { $_.Name -eq $n } } $Row)
+        $h.Count | Should -Be 1
+        $h[0].Source | Should -Be 'extractor'
+        $h[0].IPv4 | Should -Match '^\d{1,3}(\.\d{1,3}){3}$'
+        if ($p.Dns) { $h[0].Fqdn | Should -Be ($p.Dns + '.corp.example.com') } else { $h[0].Fqdn | Should -BeNullOrEmpty }
+        $h[0].Check.Build | Should -Be $p.Build
+        $h[0].Steps.Precheck.Status | Should -Be 'Success'
+        (& $script:mod { param($rec) Get-VmmHostPolicy -Record $rec } $h[0]).Scope | Should -Be $p.Scope
+
+        $inv = & $script:mod { param($n) Get-VmmInventory -HostName $n -PassThru 6>$null } $Row
+        $col = @{}; foreach ($f in $inv) { $col[$f.Key] = $f }
+        $col['Hostname'].Value | Should -Be $Row
+        $col['Domain'].Value | Should -Be 'corp.example.com'
+        $col['WindowsLicense'].Value | Should -Be 'Licensed'
+        $col['Qualys'].Value | Should -Match '^OK'
+        $col['TlsLegacyDisabled'].Value | Should -Match '^(Yes|No)'
+    }
+    It 'a second result from the same host updates its row, no duplicate' {
+        $p = $script:NewProfiles[1]
+        $null = Invoke-Extractor $p
+        $f = @(Find-Result $p.Name)[0]
+        $r = & $script:mod { param($x) Import-VmmResultInbox -Path $x -Quiet -PassThru } $f.FullName
+        $r.Imported[0].New | Should -BeFalse
+        @(& $script:mod { param($n) (Read-VmmStore).Hosts | Where-Object { $_.Name -eq $n } } $p.Row).Count | Should -Be 1
+    }
+}
+
+Describe 'Resolve-VmmResultHost' {
+    It 'matches by name, by the 15-character NetBIOS name, by FQDN; adds unknown hosts' {
+        InModuleScope VmMaintenance {
+            $a = New-VmmHostRecord -Name 'APP-SERVER-PRODUCTION'
+            $b = New-VmmHostRecord -Name 'DB01'; $b | Add-Member -NotePropertyName Fqdn -NotePropertyValue 'db01.corp.example.com' -Force
+            $st = [pscustomobject]@{ Hosts = @($a, $b) }
+            (Resolve-VmmResultHost -Store $st -Name 'APP-SERVER-PROD').Record.Name | Should -Be 'APP-SERVER-PRODUCTION'
+            (Resolve-VmmResultHost -Store $st -Name 'app-server-prod' -DnsName 'app-server-production').Record.Name | Should -Be 'APP-SERVER-PRODUCTION'
+            (Resolve-VmmResultHost -Store $st -Name 'db01').New | Should -BeFalse
+            $n = Resolve-VmmResultHost -Store $st -Name 'WEB07' -DnsName 'OTHER-NAME' -Fqdn 'other-name.corp.example.com' -IPv4 'x'
+            $n.New | Should -BeTrue
+            $n.Record.Name | Should -Be 'WEB07'          # a DNS name that is not this host's own is ignored
+            $n.Record.Fqdn | Should -BeNullOrEmpty       # and so is an FQDN for another name
+            $n.Record.IPv4 | Should -BeNullOrEmpty
+            @($st.Hosts).Count | Should -Be 3
+            { Resolve-VmmResultHost -Store $st -Name 'bad name' } | Should -Throw -ErrorId 'VmmCollectorName*'
+        }
+    }
+    It 'Collect.AutoAddHosts = false keeps unknown hosts out' {
+        InModuleScope VmMaintenance {
+            Mock Get-VmmSetting { $false } -ParameterFilter { $Name -eq 'Collect.AutoAddHosts' }
+            $st = [pscustomobject]@{ Hosts = @() }
+            { Resolve-VmmResultHost -Store $st -Name 'WEB08' } | Should -Throw -ErrorId 'VmmHostUnknown*'
+        }
     }
 }

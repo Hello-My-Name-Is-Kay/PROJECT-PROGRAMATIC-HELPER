@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.19.0 - 2026-11-18:4-67 | 2.18.0 - 2026-11-18:68-88 | 2.17.1 - 2026-11-17:89-119 | 2.17.0 - 2026-11-16:120-150 | 2.16.0 - 2026-11-16:151-178 | 2.15.2 - 2026-11-16:179-193 | 2.15.1 - 2026-11-16:194-214 | 2.15.0 - 2026-11-16:215-272 | 2.14.0 - 2026-11-15:273-293 | 2.13.0 - 2026-11-15:294-323 | 2.12.0 - 2026-11-14:324-346 | 2.11.0 - 2026-11-14:347-365 | 2.10.0 - 2026-11-14:366-384 | 2.9.0 - 2026-11-14:385-397 | 2.8.0 - 2026-11-14:398-411 | 2.7.0 - 2026-11-14:412-429 | 2.6.0 - 2026-11-14:430-437 | 2.5.0 - 2026-11-14:438-450 | 2.4.0 - 2026-11-14:451-461 | 2.3.0 - 2026-11-14:462-476 | 2.2.1 - 2026-11-14:477-483 | 2.2.0 - 2026-11-14:484-491 | 2.1.0 - 2026-11-14:492-509 | 2.0.0 - 2026-11-14:510-515 | 1.0.0 - 2026-11-14:516-520 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.19.0 - 2026-11-18:4-67 | 2.18.1 - 2026-11-18:68-83 | 2.18.0 - 2026-11-18:84-104 | 2.17.1 - 2026-11-17:105-135 | 2.17.0 - 2026-11-16:136-166 | 2.16.0 - 2026-11-16:167-194 | 2.15.2 - 2026-11-16:195-209 | 2.15.1 - 2026-11-16:210-230 | 2.15.0 - 2026-11-16:231-288 | 2.14.0 - 2026-11-15:289-309 | 2.13.0 - 2026-11-15:310-339 | 2.12.0 - 2026-11-14:340-362 | 2.11.0 - 2026-11-14:363-381 | 2.10.0 - 2026-11-14:382-400 | 2.9.0 - 2026-11-14:401-413 | 2.8.0 - 2026-11-14:414-427 | 2.7.0 - 2026-11-14:428-445 | 2.6.0 - 2026-11-14:446-453 | 2.5.0 - 2026-11-14:454-466 | 2.4.0 - 2026-11-14:467-477 | 2.3.0 - 2026-11-14:478-492 | 2.2.1 - 2026-11-14:493-499 | 2.2.0 - 2026-11-14:500-507 | 2.1.0 - 2026-11-14:508-525 | 2.0.0 - 2026-11-14:526-531 | 1.0.0 - 2026-11-14:532-536 -->
 # Changelog
 
 ## 2.19.0 - 2026-11-18
@@ -64,6 +64,22 @@ IT person who can fix a failure. Still **alpha**. Backup of 2.17.1 before the ch
 - Smoke test section 12 (14 checks): catalog, read-only commands, ticket states and rules, gates, counters,
   sanitizing, known-fix ranking, library round trip, runbook build (PS 2.0 scan) and import, ticket for IT.
 - Version line bumped in the Extractor and the Fallback templates (no other change to them).
+
+## 2.18.1 - 2026-11-18
+
+The Extractor is host-agnostic. Still **alpha**. Rebuild the Extractor with `vmm extractor`.
+
+- **Fixed: results from hosts not in the fleet were rejected.** The generic `VmmExtractor.ps1` carries no host name
+  and ran on any host, but the laptop import stopped with "Host '<name>' is not in the fleet", so only hosts added
+  beforehand (`vmm import`) were ever extracted. Now the import finds the host by name, by its full DNS name or by
+  FQDN, and adds a host it does not know yet to the fleet (source `extractor`, FQDN and IP filled in). New setting
+  `Collect.AutoAddHosts` (default `$true`; `$false` = the old behaviour, error `VmmHostUnknown`).
+- **Long host names.** Windows cuts `COMPUTERNAME` at 15 characters. The Extractor now also sends the full DNS host
+  name and the FQDN, and the fleet row carries the full name. A result from an older Extractor that matches several
+  longer fleet names is refused (`VmmHostAmbiguous`) instead of landing on the wrong host.
+- **Tests:** `tests/EndToEnd.Tests.ps1` runs the built generic Extractor under host names that are not in the fleet
+  (a 15-character cut name among them), imports the results and checks the new fleet rows, FQDN, IP, policy and the
+  inventory columns; unit tests for the matching and for `Collect.AutoAddHosts = $false`.
 
 ## 2.18.0 - 2026-11-18
 
@@ -517,4 +533,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-18 00:02 UTC_
+_Last updated: 2026-11-18 01:00 UTC_

@@ -5,8 +5,9 @@ function Import-VmmCollectorResult {
         VMM1|... (paste-in collector / generic agent, plain).
     .DESCRIPTION
         [SEC] The line is untrusted input: size-limited, MAC-checked (VMM2), every field validated and
-        length-capped, the host must already be in the fleet, and only known step names and statuses
-        are accepted. Agent events (steps run on the host, overrides) are added to the host history.
+        length-capped, and only known step names and statuses are accepted.
+        Any host: a host the fleet does not know yet is added from the result (name, FQDN, IP), so the same
+        generic Extractor works wherever it is pasted. Collect.AutoAddHosts = false turns that off. Agent events (steps run on the host, overrides) are added to the host history.
         [SEC] A result is encrypted to this laptop's public key, which is inside every extractor file: that
         keeps it confidential, it does not prove who wrote it. So a result can never mark a change step
         (Stage, SnapPreSql, ExpandDisk, Upgrade) as done, or record an override, unless Extractor.AllowSteps
@@ -60,7 +61,11 @@ function Import-VmmCollectorResult {
     }
 
     $store = Read-VmmStore
-    $rec = Get-VmmHostRecord -Store $store -Name $f['Name']   # throws when the host is not in the fleet
+    # Found by name / full DNS name / FQDN, or added to the fleet when it is not there yet (any host)
+    $ipIn = "$($invIn['IPAddress'])".Trim()
+    $found = Resolve-VmmResultHost -Store $store -Name $f['Name'] -DnsName "$($f['DnsName'])".Trim() -Fqdn "$($f['Fqdn'])".Trim() -IPv4 $ipIn
+    $rec = $found.Record
+    if ($found.New) { $rec.History = @($rec.History) + [pscustomobject]@{ At = (Get-Date).ToUniversalTime().ToString('o'); Step = 'Fleet'; Result = 'Added'; Note = "added from a host result ($via)" } }
     $check = [pscustomobject]@{
         Name = $rec.Name; CheckedAt = (Get-Date).ToUniversalTime().ToString('o'); IPv4 = $rec.IPv4; Ping = 'n/a'; Ports = 'n/a'
         Reachable = 'Yes'; OS = (& $clean $f['OS'] 120); Lang = $(if ("$($f['Lang'])" -match '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){1,2}$') { $f['Lang'] } else { $null }); Version = (& $clean $f['Version'] 30); Build = (& $clean $f['Build'] 20); SP = (& $clean $f['SP'] 5)
@@ -131,6 +136,7 @@ function Import-VmmCollectorResult {
     } elseif (-not $rec.Baseline) { $rec.Baseline = [pscustomobject]@{ OS = $check.OS; Lang = $check.Lang; Build = $check.Build; Sql = $check.Sql } }
     Save-VmmStore -Store $store
     Write-VmmLog "$($rec.Name): facts recorded via $via ($($check.OS), C: $($check.CFreeGB) GB free), $added new host event(s)." -Level Success
+    if ($found.New) { Write-VmmLog "$($rec.Name): was not in the fleet, added from this result$(if ($rec.Fqdn) { " ($($rec.Fqdn))" })." -Level Success }
     if ($problems) { Write-VmmLog "$($rec.Name): $($problems.Count) read(s) failed on the host, those fields are empty: $($problems -join ' | ')" -Level Warn }
-    if ($PassThru) { [pscustomobject]@{ Host = $rec.Name; Step = $Step; Via = $via; Events = $added } }
+    if ($PassThru) { [pscustomobject]@{ Host = $rec.Name; Step = $Step; Via = $via; Events = $added; New = $found.New } }
 }
