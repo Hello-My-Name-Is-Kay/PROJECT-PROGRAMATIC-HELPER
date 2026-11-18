@@ -44,6 +44,14 @@ function Invoke-VmmCli {
         'check'    = @{ F = 'Invoke-VmmFleetCheck';       D = 'parallel read-only check [-Name a,b] [-Azure] [-AccessOnly]' }
         'import'   = @{ F = 'Import-VmmFleet';            D = 'add hosts              -Path hosts.csv (hostname/FQDN, domain, IP) | list.txt [-Preview] [-Update] [-RemoveSource] | -Name a,b' }
         'remove'   = @{ F = 'Remove-VmmFleetHost';        D = 'remove hosts           -Name a,b' }
+        'tickets'  = @{ F = 'Get-VmmTicket';              D = 'hosts as tickets: state, workflow, progress, next step [-State Failed] [-Filter srv*] | -Summary (counters)' }
+        'ticket'   = @{ F = 'Set-VmmTicket';              D = 'create/edit a ticket   -HostName x [-New] [-Workflow "Read-only snapshot"|default] [-Priority High|Normal|Low] [-Assignee ..] [-Notes ..] [-ResetSteps]' }
+        'workflows' = @{ F = 'Get-VmmWorkflow';           D = 'workflows and their steps [-Name x] | -Actions (library) | -Knowledge [-Find "error text"] (known fixes)' }
+        'runbook'  = @{ F = 'Export-VmmWorkflowRunbook';  D = 'host runbook .ps1 + .cmd to paste over RDP, guides the ticket workflow on the host -HostName x' }
+        'runbook-import' = @{ F = 'Import-VmmRunbookResult'; D = 'record what a host runbook reported [-Path VMMW_x.txt | -Text ".."] (default: clipboard)' }
+        'library-export' = @{ F = 'Export-VmmWorkflowLibrary'; D = 'shared library (sanitized JSON) of your workflows, actions, known fixes [-Path \\share\vmm-library.json]' }
+        'library-import' = @{ F = 'Import-VmmWorkflowLibrary'; D = 'merge the shared library [-Path ..] (default Workflow.LibraryPath)' }
+        'ticket-it' = @{ F = 'New-VmmFailureTicket';      D = 'advice + ticket text for the IT person who can fix a failure -Message ".." [-Activity ..] [-HostName x] [-Step y] | -FromErrorLog [-IncludeTarget]' }
         'plan'     = @{ F = 'Get-VmmQueue';               D = 'work queue: next step per host, allowed now?' }
         'next'     = @{ F = 'Invoke-VmmNextStep';         D = 'run next auto step     [-HostName x | -All]' }
         'step'     = @{ F = 'Invoke-VmmWorkflowStep';     D = 'run one step           -HostName x -Step Precheck|SnapStart|Stage|SnapPreSql|ExpandDisk|Upgrade|SnapPostSql|Verify|ManualCheck|SnapFinal [-Confirmed] [-Decline] [-Bypass -BypassReason ".."] [-Override -OverrideReason ".."]' }
@@ -97,7 +105,7 @@ function Invoke-VmmCli {
     $fn = $map[$Command].F
     # One vmm at a time: every command that can change something takes the lock first, so a second window
     # stops here instead of overwriting the first one's work. Read-only commands run beside a busy vmm.
-    $readOnly = 'log', 'status', 'plan', 'time', 'progress', 'vpn', 'guide', 'agents', 'media', 'github', 'policy', 'inventory', 'config', 'stage', 'rdp'
+    $readOnly = 'log', 'status', 'tickets', 'workflows', 'plan', 'time', 'progress', 'vpn', 'guide', 'agents', 'media', 'github', 'policy', 'inventory', 'config', 'stage', 'rdp'
     $locked = $false
     if ($Command -notin $readOnly) { $locked = Enter-VmmInstanceLock -Owner "vmm $Command" }
     if ($Command -eq 'ui') { try { & $fn @p } finally { if ($locked) { Exit-VmmInstanceLock } }; return }

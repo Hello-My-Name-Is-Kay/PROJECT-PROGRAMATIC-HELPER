@@ -40,6 +40,8 @@ function Test-Step {
         $lines = @($_.Exception.Message -split '\r?\n' | Where-Object { $_ })
         Write-Host ('  [FAIL] ' + $Name + ' - ' + $lines[0]) -ForegroundColor Red
         foreach ($l in ($lines | Select-Object -Skip 1)) { Write-Host ('         ' + $l.Trim()) -ForegroundColor DarkRed }
+        $at = @("$($_.ScriptStackTrace)" -split '\r?\n' | Where-Object { $_ -match 'VmMaintenance' } | Select-Object -First 2)
+        foreach ($l in $at) { Write-Host ('         ' + $l.Trim()) -ForegroundColor DarkRed }   # where it failed in the module
     }
 }
 
@@ -1038,6 +1040,216 @@ try {
         $script:VmmConfig = $s.Cfg
         Remove-Variable -Name SnapStore, SnapCalls, SnapRecent, SnapSavedRecent -Scope Script -ErrorAction SilentlyContinue
     } $savedSnap
+}
+
+# ---------------------------------------------------------------- 12. Tickets, workflow manager, known fixes, runbook
+Write-Host '12. Tickets, workflows, known fixes, host runbook, failure tickets' -ForegroundColor Cyan
+$wfRoot = Join-Path ([IO.Path]::GetTempPath()) ('vmm-smoke-wf-' + [guid]::NewGuid().ToString('N'))
+[void](New-Item -ItemType Directory -Path $wfRoot -Force)
+$savedWf = & $m {
+    $s = @{ Cfg = $script:VmmConfig }
+    foreach ($f in 'Read-VmmStore', 'Save-VmmStore', 'Read-VmmWorkflowStore', 'Save-VmmWorkflowStore', 'Get-VmmTimeWindow', 'Assert-VmmWindow', 'Read-VmmPrompt', 'Get-VmmHostPolicy') { $s[$f] = (Get-Item "function:$f").ScriptBlock }
+    $s
+}
+try {
+    & $m { param($r)
+        $script:VmmConfig = @{ Log = @{ ToFile = $false }; Paths = @{ DataDir = (Join-Path $r 'data'); ReportDir = (Join-Path $r 'reports'); WorkDir = (Join-Path $r 'work') }; Handoff = @{ OutboxFolder = (Join-Path $r 'outbox') } }
+        $script:WfFleet = [pscustomobject]@{ Version = 1; Updated = $null; Hosts = @(); Overrides = @() }
+        $script:WfStore = [pscustomobject]@{ Version = 1; Updated = $null; Default = 'wf-default'; Actions = @(); Workflows = @(); Kb = @(); LibraryImported = $null }
+        $script:WfWindow = $false
+        $script:WfAnswers = New-Object System.Collections.Queue
+        function script:Read-VmmStore { $script:WfFleet }
+        function script:Save-VmmStore { param($Store) $script:WfFleet = $Store }
+        function script:Read-VmmWorkflowStore { $script:WfStore }
+        function script:Save-VmmWorkflowStore { param($Store) foreach ($p in 'Actions', 'Workflows', 'Kb') { $Store.$p = @($Store.$p | Where-Object { $_ -and -not ($_.PSObject.Properties['BuiltinItem'] -and $_.BuiltinItem) }) }; $script:WfStore = $Store }
+        function script:Get-VmmTimeWindow { [pscustomobject]@{ ChangesAllowed = $script:WfWindow; ZoneTime = (Get-Date).ToUniversalTime(); ZoneLabel = 'Lisbon'; ZoneId = 'UTC'; NextChangeAt = [datetime]'2026-11-17T17:00:00'; UntilChangeText = '7h'; BusinessStart = '08:00'; BusinessEnd = '17:00'; Mode = 'Business' } }
+        function script:Assert-VmmWindow { param($Class, $Target, [switch]$Override, $OverrideReason) if ("$OverrideReason".Length -lt 10) { throw 'short reason' }; $script:WfFleet.Overrides = @($script:WfFleet.Overrides) + [pscustomobject]@{ Target = $Target; Reason = $OverrideReason } }
+        function script:Read-VmmPrompt { param($Prompt) if ($script:WfAnswers.Count) { $script:WfAnswers.Dequeue() } else { '' } }
+        function script:Get-VmmHostPolicy { param($Record) $sc = if ($Record.Check -and $Record.Check.OS -like '*Windows 10*') { 'ClientOs' } elseif ($Record.Check -and $Record.Check.OS -like '*2019*') { 'AtTarget' } else { 'InScope' }
+            [pscustomobject]@{ Scope = $sc; Workable = $sc -eq 'InScope'; Why = "scope $sc"; Warnings = @(); Os = '' } }
+        function script:New-WfHost { param([string]$Name, [string]$Os) $h = New-VmmHostRecord -Name $Name; if ($Os) { $h.Check = [pscustomobject]@{ OS = $Os } }; $script:WfFleet.Hosts = @($script:WfFleet.Hosts) + $h; $h }
+    } $wfRoot
+
+    Test-Step 'Catalog: 19 built-in actions, Full maintenance (DEFAULT) + Read-only snapshot, built-in ids cannot be replaced' {
+        $o = & $m {
+            $script:WfStore.Actions = @([pscustomobject]@{ Id = 'b-ro-os'; Name = 'fake'; Category = 'Change'; Steps = @(); Commands = @() })
+            $c = Get-VmmWorkflowCatalog
+            $script:WfStore.Actions = @()
+            "$($c.Actions.Count)|$(@($c.Workflows | ForEach-Object Name) -join ',')|$($c.Default)|$(($c.Actions | Where-Object Id -eq 'b-ro-os').Name)|$(@(($c.Workflows | Where-Object Id -eq 'wf-default').Steps).Count)"
+        }
+        Assert-Equal $o '19|Full maintenance,Read-only snapshot|wf-default|OS and uptime|10' 'catalog'
+    }
+    Test-Step 'Built-in read-only commands parse, are PowerShell 2.0 syntax and write nothing' {
+        $cmds = & $m { @((Get-VmmBuiltinWorkflow).Actions | Where-Object Category -eq 'ReadOnly' | ForEach-Object { $_.Commands }) + @((Get-VmmBuiltinWorkflow).Kb | ForEach-Object { $_.Commands }) }
+        foreach ($c in $cmds) {
+            $e = $null; [void][Management.Automation.Language.Parser]::ParseInput($c, [ref]$null, [ref]$e)
+            if ($e) { throw "parse: $($e[0].Message) in $c" }
+            if ($c -match '::new|\[ordered\]|\s-(not)?in\s|\$PSItem|Set-|Remove-|New-Item|Stop-|Restart-|Invoke-WebRequest') { throw "not read-only / PS 2.0: $c" }
+        }
+        $cmds.Count -ge 9
+    }
+    Test-Step 'Ticket: new host follows the DEFAULT workflow (10 steps), state New, then InProgress' {
+        $o = & $m {
+            $h = New-WfHost -Name 'tk-new'
+            $r1 = Resolve-VmmHostWorkflow -Record $h
+            $s1 = Get-VmmTicketState -Record $h -Resolved $r1
+            Set-VmmStepState -Record $h -Step 'Precheck' -Status 'Success'
+            $r2 = Resolve-VmmHostWorkflow -Record $h
+            "$($r1.Workflow.Id)|$($r1.IsDefault)|$($r1.Total)|$($r1.Next.Action.Name)|$s1|$(Get-VmmTicketState -Record $h -Resolved $r2)|$($r2.Next.Key)"
+        }
+        Assert-Equal $o 'wf-default|True|10|Precheck|New|InProgress|SnapStart' 'ticket'
+    }
+    Test-Step 'Ticket: another workflow, W: keys, Done; DEFAULT changed in the manager applies to tickets without a choice' {
+        $o = & $m {
+            $h = New-WfHost -Name 'tk-ro'
+            $t = Set-VmmTicket -HostName 'tk-ro' -Workflow 'Read-only snapshot' 6>$null
+            $r = Resolve-VmmHostWorkflow -Record $h
+            foreach ($s in $r.Steps) { Set-VmmStepState -Record $h -Step $s.Key -Status 'Success' }
+            $r2 = Resolve-VmmHostWorkflow -Record $h
+            $h2 = New-WfHost -Name 'tk-def'
+            $script:WfStore.Default = 'wf-readonly'
+            $r3 = Resolve-VmmHostWorkflow -Record $h2
+            $script:WfStore.Default = 'wf-default'
+            "$($t.Workflow)|$($r.Total)|$($r.Steps[0].Key)|$(Get-VmmTicketState -Record $h -Resolved $r2)|$($r3.Workflow.Id)|$($r3.IsDefault)"
+        }
+        Assert-Equal $o 'Read-only snapshot|9|W:b-ro-os|Done|wf-readonly|True' 'workflow choice'
+    }
+    Test-Step 'Ticket: unknown workflow refused (VmmWorkflowUnknown), -New adds the host, steps added on one ticket only' {
+        $o = & $m {
+            $e = ''; try { Set-VmmTicket -HostName 'tk-ro' -Workflow 'no such flow' 6>$null | Out-Null } catch { $e = $_.FullyQualifiedErrorId }
+            $n = Set-VmmTicket -HostName 'tk-created' -New -Priority High -Notes 'password=Hunter2 call first' 6>$null
+            $rec = Get-VmmHostRecord -Store $script:WfFleet -Name 'tk-created'
+            $rec.Ticket.Steps = @('b-ro-disk', 'b-ro-os')
+            $r = Resolve-VmmHostWorkflow -Record $rec
+            $other = Resolve-VmmHostWorkflow -Record (Get-VmmHostRecord -Store $script:WfFleet -Name 'tk-new')
+            "$($e -replace ',.*$', '')|$($n.Name)|$($n.Priority)|$($rec.Ticket.Notes)|$($r.Custom)|$(@($r.Steps | ForEach-Object { $_.Action.Name }) -join ',')|$($other.Total)"
+        }
+        Assert-Equal $o 'VmmWorkflowUnknown|TK-CREATED|High|password=*** call first|True|Disk space,OS and uptime|10' 'tickets'
+    }
+    Test-Step 'Rules: Change only in order, outside business hours; client OS = Excluded (nothing allowed), target OS = NotNeeded' {
+        $o = & $m {
+            $at = (Get-Date).ToUniversalTime().ToString('o')
+            $ro = [pscustomobject]@{ Id = 'a-00000000b1'; Name = 'Read A'; Title = ''; Category = 'ReadOnly'; Group = 'G'; Mode = 'Guided'; Builtin = $null; RunOnHost = $false; Steps = @('x'); Commands = @(); Expect = ''; Created = $at; Updated = $at }
+            $ch = [pscustomobject]@{ Id = 'a-00000000c1'; Name = 'Change B'; Title = ''; Category = 'Change'; Group = 'G'; Mode = 'Guided'; Builtin = $null; RunOnHost = $false; Steps = @('y'); Commands = @('do-it'); Expect = ''; Created = $at; Updated = $at }
+            $script:WfStore.Actions = @($ro, $ch)
+            $script:WfStore.Workflows = @([pscustomobject]@{ Id = 'wf-00000000a1'; Name = 'Mine'; Description = ''; Steps = @($ro.Id, $ch.Id); Created = $at; Updated = $at })
+            $h = New-WfHost -Name 'tk-rules'; (Initialize-VmmTicket -Record $h).Workflow = 'wf-00000000a1'
+            $script:WfWindow = $true
+            $a = (Resolve-VmmHostWorkflow -Record $h).Steps[1]
+            Set-VmmStepState -Record $h -Step 'W:a-00000000b1' -Status 'Success'
+            $script:WfWindow = $false
+            $b = (Resolve-VmmHostWorkflow -Record $h).Steps[1]
+            $script:WfWindow = $true
+            $c = (Resolve-VmmHostWorkflow -Record $h).Steps[1]
+            $cl = New-WfHost -Name 'tk-client' -Os 'Microsoft Windows 10 Pro'; (Initialize-VmmTicket -Record $cl).Workflow = 'wf-00000000a1'
+            $rc = Resolve-VmmHostWorkflow -Record $cl
+            $tg = New-WfHost -Name 'tk-target' -Os 'Microsoft Windows Server 2019 Standard'
+            $rt = Resolve-VmmHostWorkflow -Record $tg
+            "$($a.Allowed) $($a.Why -like 'Finish*')|$($b.Allowed) $($b.Why -like 'Business hours*')|$($c.Allowed)|$(Get-VmmTicketState -Record $cl -Resolved $rc) $(@($rc.Steps | Where-Object Allowed).Count)|$(Get-VmmTicketState -Record $tg -Resolved $rt)"
+        }
+        Assert-Equal $o 'False True|False True|True|Excluded 0|NotNeeded' 'rules'
+    }
+    Test-Step 'Gate: business hours need OVERRIDE + reason (recorded), then BACKUP CONFIRMED / SNAPSHOT TAKEN and YES; a wrong phrase cancels' {
+        $o = & $m {
+            $h = Get-VmmHostRecord -Store $script:WfFleet -Name 'tk-rules'
+            $ch = $script:WfStore.Actions | Where-Object Id -eq 'a-00000000c1'
+            $script:WfWindow = $false
+            foreach ($x in 'OVERRIDE', 'manager approved by phone', 'BACKUP CONFIRMED', 'YES') { $script:WfAnswers.Enqueue($x) }
+            $g1 = Confirm-VmmChangeGate -Record $h -Action $ch 6>$null
+            $script:WfWindow = $true; $h.Azure = [pscustomobject]@{ VMName = 'v' }
+            foreach ($x in 'snapshot taken') { $script:WfAnswers.Enqueue($x) }
+            $g2 = Confirm-VmmChangeGate -Record $h -Action $ch 6>$null
+            foreach ($x in 'SNAPSHOT TAKEN', 'YES') { $script:WfAnswers.Enqueue($x) }
+            $g3 = Confirm-VmmChangeGate -Record $h -Action $ch 6>$null
+            $h.Azure = $null
+            "$($g1.Ok) $($g1.Note -like 'OVERRIDE*BACKUP CONFIRMED*YES')|$($g2.Ok)|$($g3.Ok) $($g3.Note -like '*SNAPSHOT TAKEN*')|$(@($script:WfFleet.Overrides).Count)"
+        }
+        Assert-Equal $o 'True True|False|True True|1' 'gate'
+    }
+    Test-Step 'Counters: per state, pending, need help, done today, per workflow and next step' {
+        $o = & $m {
+            $f = Get-VmmHostRecord -Store $script:WfFleet -Name 'tk-new'; Set-VmmStepState -Record $f -Step 'SnapStart' -Status 'Failed' -Note 'x'
+            $s = Get-VmmTicket -Summary
+            "$($s.Total)|New $($s.ByState.New) Prog $($s.ByState.InProgress) Fail $($s.ByState.Failed) Excl $($s.ByState.Excluded) NN $($s.ByState.NotNeeded) Done $($s.ByState.Done)|$($s.Pending) $($s.NeedsHelp) $($s.DoneToday)|$($s.ByWorkflow['Read-only snapshot'].Done)/$($s.ByWorkflow['Read-only snapshot'].Total)|$($s.ByNextStep['SnapStart'])"
+        }
+        Assert-Equal $o '7|New 2 Prog 1 Fail 1 Excl 1 NN 1 Done 1|3 1 1|1/1|1' 'summary'
+    }
+    Test-Step 'Shareable text: host, FQDN, IP, GUID, UNC server and secrets are removed' {
+        $ip = '10.' + '1.2.3'; $g = '0a1b2c3d' + '-0000-4000-8000-123456789abc'   # built at run time: the leak scan must not see them
+        $o = & $m { param($ip, $g) ConvertTo-VmmShareableText -Text "srv-db01.corp.local ($ip) sub $g \\filesrv01\iso password=abc123 SRV-DB01 failed" -Names @('SRV-DB01') } $ip $g
+        Assert-Equal $o '<HOST> (<IP>) sub <ID> \\<server>\iso password=*** <HOST> failed' 'clean text'
+    }
+    Test-Step 'Known fixes: recorded sanitized, same symptom updates, matches ranked (this step first, generic only on shared words)' {
+        $o = & $m {
+            $ws = $script:WfStore
+            $e1 = Add-VmmKnowledgeEntry -WorkflowStore $ws -ActionId 'b-ro-sql' -Symptom 'SRV-X: service MSSQLSERVER does not start' -Fix @('Start it on SRV-X', 'check the event log') -Names @('SRV-X')
+            $e2 = Add-VmmKnowledgeEntry -WorkflowStore $ws -ActionId 'b-ro-sql' -Symptom 'SRV-X: service MSSQLSERVER does not start' -Fix @('new fix') -Names @('SRV-X')
+            $cat = Get-VmmWorkflowCatalog -Store $ws
+            $m1 = @(Find-VmmKnowledge -Catalog $cat -ActionId 'b-ro-sql' -Text 'the service MSSQLSERVER does not start')
+            $m2 = @(Find-VmmKnowledge -Catalog $cat -ActionId 'b-ro-sql' -Text 'Access is denied')
+            "$($e1.Symptom)|$($e1.Fix[0])|$($e1.Id -eq $e2.Id) $(@($ws.Kb).Count)|$($m1[0].Entry.Id -eq $e1.Id) $(@($m1 | Where-Object { $_.Entry.Id -eq 'b-kb-policy' }).Count)|$((@($m2 | ForEach-Object { $_.Entry.Id }) -join ',') -replace [regex]::Escape($e1.Id), 'mine')"
+        }
+        Assert-Equal $o '<HOST>: service MSSQLSERVER does not start|new fix|True 1|True 0|b-kb-admin,mine' 'kb'
+    }
+    Test-Step 'Shared library: export has no fleet host name, import merges into an empty store (ids kept, newer wins)' {
+        $o = & $m { param($r)
+            $ws = $script:WfStore
+            $ws.Kb[0].Cause = 'TK-RULES was rebooting'   # typed by hand with a fleet host name in it
+            $p = Join-Path $r 'lib.json'
+            $x = Export-VmmWorkflowLibrary -Path $p 6>$null
+            $json = [IO.File]::ReadAllText($p)
+            $script:WfStore = [pscustomobject]@{ Version = 1; Updated = $null; Default = 'wf-default'; Actions = @(); Workflows = @(); Kb = @(); LibraryImported = $null }
+            $i = Import-VmmWorkflowLibrary -Path $p 6>$null
+            $i2 = Import-VmmWorkflowLibrary -Path $p 6>$null
+            "$($json -match 'TK-RULES')|$((ConvertFrom-Json $json).Kb[0].Cause -eq '<HOST> was rebooting')|$($x.Kb) $($x.Actions) $($x.Workflows)|$($i.New) $($i2.Unchanged)|$(@($script:WfStore.Kb).Count)"
+        } $wfRoot
+        Assert-Equal $o 'False|True|1 2 1|4 4|1' 'library'
+    }
+    Test-Step 'Host runbook: built from the template, parses, PS 2.0 syntax, host data inside, launcher .cmd' {
+        $o = & $m { param($r)
+            $h = Get-VmmHostRecord -Store $script:WfFleet -Name 'tk-rules'
+            $x = Export-VmmWorkflowRunbook -HostName 'tk-rules' -OutFolder (Join-Path $r 'rb') -NoClipboard 6>$null
+            $t = [IO.File]::ReadAllText($x.Script); $e = $null
+            [void][Management.Automation.Language.Parser]::ParseInput($t, [ref]$null, [ref]$e)
+            $bad = [regex]::Matches(($t -replace '(?m)^\s*#.*$', ''), '::new\(|\[ordered\]|\s-(not)?in\s|\$PSItem|\?\?') | ForEach-Object { $_.Value }
+            "$(@($e).Count)|$(@($bad).Count)|$($t -match "Host = 'TK-RULES'")|$($t -match "Key = 'W:a-00000000c1'")|$($x.Steps)|$((Get-Content $x.Launcher -Raw) -match 'ExecutionPolicy Bypass -File')"
+        } $wfRoot
+        Assert-Equal $o '0|0|True|True|2|True' 'runbook'
+    }
+    Test-Step 'Runbook result: read-only recorded, Change without gate = Pending, with gate = Success, maintenance steps not applied, known fix added, override reported' {
+        $o = & $m {
+            $b = { param($s) [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($s)) }
+            $h = Get-VmmHostRecord -Store $script:WfFleet -Name 'tk-rules'
+            $h.Steps = [pscustomobject]@{}
+            $txt = @("VMMW1|TK-RULES|$(& $b 'Mine')|x|y", "S|W:a-00000000b1|Success|t|$(& $b 'ok')", "S|W:a-00000000c1|Success|t|$(& $b 'done')", "S|Precheck|Success|t|$(& $b 'hm')",
+                     "S|W:a-zzzz|Success|t|$(& $b 'x')", "K|a-00000000c1|$(& $b ('TK-RULES disk full 10.0.' + '0.9'))|$(& $b '')|$(& $b "clean temp`nretry")", "O|W:a-00000000c1|$(& $b 'emergency agreed with manager')") -join "`r`n"
+            $n0 = @($script:WfStore.Kb).Count
+            [void](Import-VmmRunbookResult -Text $txt 3>$null 6>$null)
+            $p1 = $h.Steps.'W:a-00000000c1'.Status
+            [void](Import-VmmRunbookResult -Text ($txt + "`r`nG|W:a-00000000c1|$(& $b 'rollback point confirmed (BACKUP CONFIRMED), YES')") 3>$null 6>$null)
+            $k = $script:WfStore.Kb | Where-Object ActionId -eq 'a-00000000c1' | Select-Object -First 1
+            "$($h.Steps.'W:a-00000000b1'.Status)|$p1|$($h.Steps.'W:a-00000000c1'.Status)|$([bool]$h.Steps.PSObject.Properties['Precheck'])|$($k.Symptom)|$(@($k.Fix).Count)|$(@($script:WfFleet.Overrides | Where-Object Target -like '*runbook*').Count -ge 1)"
+        }
+        Assert-Equal $o 'Success|Pending|Success|False|<HOST> disk full <IP>|2|True' 'import'
+    }
+    Test-Step 'Failure ticket for IT: Azure role + scope requested, urgency High, sanitized, file written' {
+        $o = & $m {
+            $sc = '/subscr' + 'iptions/' + '0a1b2c3d' + '-0000-4000-8000-123456789abc/resourceGroups/rg1'
+            $x = New-VmmFailureTicket -Message "AuthorizationFailed: The client does not have authorization to perform action 'Microsoft.Compute/snapshots/write' over scope '$sc' on TK-RULES" `
+                 -Activity 'Snapshot point 1' -HostName 'tk-rules' -Step 'SnapStart' -NoClipboard 6>$null
+            $t = Get-Content -LiteralPath $x.File -Raw
+            "$($x.Kind)|$($x.Urgency)|$($t -match 'Virtual Machine Contributor')|$($t -match 'TK-RULES|0a1b2c3d')|$($t -match '<HOST>')|$($t -match 'Subject: \[High\]')|$($t -match 'Impact' -and $t -match 'Requested action' -and $t -match 'Exact error')"
+        }
+        Assert-Equal $o 'Azure role|High|True|False|True|True|True' 'ticket'
+    }
+} finally {
+    & $m { param($s)
+        foreach ($k in @($s.Keys)) { if ($k -ne 'Cfg') { Set-Item "function:script:$k" $s[$k] } }
+        Remove-Item function:script:New-WfHost -ErrorAction SilentlyContinue
+        $script:VmmConfig = $s.Cfg
+        Remove-Variable -Name WfFleet, WfStore, WfWindow, WfAnswers -Scope Script -ErrorAction SilentlyContinue
+    } $savedWf
+    Remove-Item -LiteralPath $wfRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ---------------------------------------------------------------- Result

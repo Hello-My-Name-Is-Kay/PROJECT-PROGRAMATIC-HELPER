@@ -28,6 +28,7 @@ function Show-VmmSettingsScreen {
         @('Schedule.AllowChangesOffHoursWeekdays', 'Allow changes on weekdays outside business hours')
         @('Workflow.StartSnapshotMaxAgeMinutes', 'Start snapshot skipped when every disk has one this recent (minutes)')
         @('Workflow.SnapshotRetentionDays', 'Days before snapshot-point snapshots can be pruned')
+        @('Workflow.LibraryPath', 'Shared library of workflows + known fixes (JSON on the share; workflow manager X/I)')
         @('Policy.SnapStartInBusinessHours', 'Start snapshot allowed in business hours (no downtime): true | false')
         @('Credentials.WindowsMode', 'Prompt (ask each session) | CurrentUser (no prompt)')
         @('Azure.UseDeviceAuthentication', 'Device-code sign-in instead of browser pop-up')

@@ -4,12 +4,14 @@ function Show-VmmMainMenu {
     param()
     $items = @(
         @{ H = 'Daily work' }
+        @{ K = 'T'; T = 'Tickets           every host is a ticket: create, edit, delete, counters, guided workflow per host' }
         @{ K = '1'; T = 'Plan today        what is allowed right now and the next host for each step' }
         @{ K = '2'; T = 'Fleet             all hosts: health, stage, OS, SQL, C: free - open a host' }
         @{ K = '3'; T = 'Snapshot fleet    read every host from this terminal (read-only); hands-on only where it fails' }
         @{ K = '4'; T = 'Staging gate      OS images + host files on the media repository?' }
         @{ K = 'N'; T = 'Inventory         24 columns per host: what is missing, export CSV (I on a host to fill)' }
         @{ K = '7'; T = 'Reports           daily CSV + HTML for your manager, blocker reports' }
+        @{ K = 'K'; T = 'Workflow manager  workflows (DEFAULT + your own), steps, action library, known fixes, shared library' }
         @{ H = 'Hosts in and out' }
         @{ K = '0'; T = 'Import hosts      new machines: CSV (hostname/FQDN, domain, IP), .txt list or names' }
         @{ K = 'E'; T = 'Extractor         hands-on fallback: import result files (VMM_*.vmm), build the extractor' }
@@ -37,6 +39,8 @@ function Show-VmmMainMenu {
         $key = if ($r.Action -eq 'Enter') { $items[$r.Index].K } elseif ($r.Action -eq 'Esc') { 'Q' } else { $r.Action }
         $status = ''
         switch ($key) {
+            'T' { Show-VmmTicketScreen }
+            'K' { Show-VmmWorkflowManagerScreen }
             '1' { Show-VmmPlanScreen }
             '2' { Show-VmmFleetScreen }
             '3' { [void](Invoke-VmmTuiAction -Title 'Snapshot (read-only, terminal first)' -Action { Invoke-VmmSnapshot -Azure:([bool](Get-VmmSetting 'Azure.TenantId')) }) }

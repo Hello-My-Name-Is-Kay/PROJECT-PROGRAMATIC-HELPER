@@ -64,7 +64,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.18.1'
+$AgentVersion = '2.19.0'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'

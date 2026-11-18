@@ -1,4 +1,4 @@
-<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, the four snapshot points and prune, blockers, daily target, Extractor steps. SECTIONS: OS policy:7-13 | Steps:14-42 | Time rules EuropeLisbon:43-63 | The four snapshot points:64-101 | Blockers:102-114 | Daily target:115-120 | Inside the host the Extracto:121-141 -->
+<!-- SUMMARY: VmMaintenance workflow: steps, Lisbon time rules, the four snapshot points and prune, blockers, daily target, Extractor steps. SECTIONS: OS policy:7-13 | Steps:14-42 | Time rules EuropeLisbon:43-63 | The four snapshot points pru:64-101 | Blockers:102-121 | Other workflows 2.19.0:122-128 | Daily target:129-134 | Inside the host the Extracto:135-155 -->
 # Workflow
 
 How one host moves from "imported" to "done", what the time rules allow, where snapshots
@@ -112,6 +112,20 @@ authorization):
 4. The queue moves on to the next host ("report and move on").
 5. When access is granted: `vmm resolve -HostName x`.
 
+### Known fixes and tickets for IT (2.19.0)
+
+From the ticket view, a failed step opens the failure dialogue: you paste what happened, vmm shows the known fixes
+other technicians recorded for that step, and when none helps you record your own fix, write a ticket for the IT
+person who can fix it (`Reports\Tickets`, clipboard; you send it), or mark the step Blocked and move on.
+See [TICKETS.md](TICKETS.md).
+
+## Other workflows (2.19.0)
+
+The ten steps above are the built-in **Full maintenance** workflow, the DEFAULT for every ticket. The workflow
+manager (`K`) adds **Read-only snapshot** (non-invasive checks) and your own workflows built from actions
+(ReadOnly / Staging / Change). The same rules apply: Change only after every earlier step and outside business
+hours (or OVERRIDE), a rollback point (`SNAPSHOT TAKEN` / `BACKUP CONFIRMED`) and `YES` before a guided Change step.
+
 ## Daily target
 
 `Target.MachinesPerDay` (default 10) in `Target.WorkdayHours` (default 9). A host counts once per
@@ -138,4 +152,4 @@ Change steps need the window or an override (typed `OVERRIDE` + reason), and the
 confirmation. The export carries every logged event; the laptop adds them to the host history and
 records host-side overrides in the daily report.
 
-_Last updated: 2026-11-16 12:30 UTC_
+_Last updated: 2026-11-18 00:02 UTC_

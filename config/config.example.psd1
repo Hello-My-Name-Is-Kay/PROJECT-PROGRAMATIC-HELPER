@@ -188,6 +188,10 @@
         # Four Azure snapshot points per host (every disk): SnapStart, SnapPreSql, SnapPostSql, SnapFinal (docs\WORKFLOW.md)
         StartSnapshotMaxAgeMinutes = 60   # SnapStart/SnapPreSql are skipped when every disk has a snapshot this recent (portal ones count)
         SnapshotRetentionDays      = 7    # RetentionDays tag on snapshot-point snapshots (prune uses it)
+        # Workflow manager (2.19.0): shared library of workflows, actions and known fixes (plain JSON, sanitized:
+        # host names and IPs replaced). Put it on the network share so every technician sees the same fixes.
+        # Empty = export/import ask for a path. Your own copy is always kept encrypted in the data folder.
+        LibraryPath                = ''   # e.g. \\<server>\<share>\vmm\vmm-library.json
     }
 
     Upgrade = @{

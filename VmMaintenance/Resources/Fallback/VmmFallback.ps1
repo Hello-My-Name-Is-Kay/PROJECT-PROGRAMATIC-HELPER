@@ -89,7 +89,7 @@ param(
     [switch]$Help
 )
 
-$FallbackVersion = '2.18.1'
+$FallbackVersion = '2.19.0'
 $ErrorActionPreference = 'Stop'
 $Script:SelfPath = $MyInvocation.MyCommand.Path
 $Script:Inv = [Globalization.CultureInfo]::InvariantCulture
