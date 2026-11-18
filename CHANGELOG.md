@@ -1,5 +1,21 @@
-<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.18.0 - 2026-11-18:4-24 | 2.17.1 - 2026-11-17:25-55 | 2.17.0 - 2026-11-16:35-65 | 2.16.0 - 2026-11-16:66-93 | 2.15.2 - 2026-11-16:94-108 | 2.15.1 - 2026-11-16:109-129 | 2.15.0 - 2026-11-16:130-187 | 2.14.0 - 2026-11-15:188-208 | 2.13.0 - 2026-11-15:209-238 | 2.12.0 - 2026-11-14:239-261 | 2.11.0 - 2026-11-14:262-280 | 2.10.0 - 2026-11-14:281-299 | 2.9.0 - 2026-11-14:300-312 | 2.8.0 - 2026-11-14:313-326 | 2.7.0 - 2026-11-14:327-344 | 2.6.0 - 2026-11-14:345-352 | 2.5.0 - 2026-11-14:353-365 | 2.4.0 - 2026-11-14:366-376 | 2.3.0 - 2026-11-14:377-391 | 2.2.1 - 2026-11-14:392-398 | 2.2.0 - 2026-11-14:399-406 | 2.1.0 - 2026-11-14:407-424 | 2.0.0 - 2026-11-14:425-430 | 1.0.0 - 2026-11-14:431-435 -->
+<!-- SUMMARY: VmMaintenance release history. SECTIONS: 2.18.1 - 2026-11-18:4-19 | 2.18.0 - 2026-11-18:20-40 | 2.17.1 - 2026-11-17:41-71 | 2.17.0 - 2026-11-16:72-102 | 2.16.0 - 2026-11-16:103-130 | 2.15.2 - 2026-11-16:131-145 | 2.15.1 - 2026-11-16:146-166 | 2.15.0 - 2026-11-16:167-224 | 2.14.0 - 2026-11-15:225-245 | 2.13.0 - 2026-11-15:246-275 | 2.12.0 - 2026-11-14:276-298 | 2.11.0 - 2026-11-14:299-317 | 2.10.0 - 2026-11-14:318-336 | 2.9.0 - 2026-11-14:337-349 | 2.8.0 - 2026-11-14:350-363 | 2.7.0 - 2026-11-14:364-381 | 2.6.0 - 2026-11-14:382-389 | 2.5.0 - 2026-11-14:390-402 | 2.4.0 - 2026-11-14:403-413 | 2.3.0 - 2026-11-14:414-428 | 2.2.1 - 2026-11-14:429-435 | 2.2.0 - 2026-11-14:436-443 | 2.1.0 - 2026-11-14:444-461 | 2.0.0 - 2026-11-14:462-467 | 1.0.0 - 2026-11-14:468-472 -->
 # Changelog
+
+## 2.18.1 - 2026-11-18
+
+The Extractor is host-agnostic. Still **alpha**. Rebuild the Extractor with `vmm extractor`.
+
+- **Fixed: results from hosts not in the fleet were rejected.** The generic `VmmExtractor.ps1` carries no host name
+  and ran on any host, but the laptop import stopped with "Host '<name>' is not in the fleet", so only hosts added
+  beforehand (`vmm import`) were ever extracted. Now the import finds the host by name, by its full DNS name or by
+  FQDN, and adds a host it does not know yet to the fleet (source `extractor`, FQDN and IP filled in). New setting
+  `Collect.AutoAddHosts` (default `$true`; `$false` = the old behaviour, error `VmmHostUnknown`).
+- **Long host names.** Windows cuts `COMPUTERNAME` at 15 characters. The Extractor now also sends the full DNS host
+  name and the FQDN, and the fleet row carries the full name. A result from an older Extractor that matches several
+  longer fleet names is refused (`VmmHostAmbiguous`) instead of landing on the wrong host.
+- **Tests:** `tests/EndToEnd.Tests.ps1` runs the built generic Extractor under host names that are not in the fleet
+  (a 15-character cut name among them), imports the results and checks the new fleet rows, FQDN, IP, policy and the
+  inventory columns; unit tests for the matching and for `Collect.AutoAddHosts = $false`.
 
 ## 2.18.0 - 2026-11-18
 
@@ -453,4 +469,4 @@ Release preparation. Still **alpha**: the label is dropped only on Kay's go (see
 
 - Original ten scripts refactored into the VmMaintenance module, all environment values moved to local config.
 
-_Last updated: 2026-11-17 17:20 UTC_
+_Last updated: 2026-11-18 01:00 UTC_

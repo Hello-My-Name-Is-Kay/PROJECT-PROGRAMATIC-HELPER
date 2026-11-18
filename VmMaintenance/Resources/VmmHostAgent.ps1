@@ -4,6 +4,8 @@
     (The Manager is vmm on your laptop; it builds this file and reads what it extracts.)
 .DESCRIPTION
     Use it only for hosts the laptop cannot read over its own terminal (vmm snapshot tries that first).
+    ANY HOST: the snapshot extractor holds no host name, address or plan. The same file works on every host it is
+    pasted on; the laptop adds a host it does not know yet to the fleet when it imports the result.
 
     THIS FILE IN THE REPOSITORY IS THE TEMPLATE: it holds no laptop key, so it cannot save a result. Do not
     copy it to a host. On the laptop, `vmm extractor` builds the copy to take to a host (one file for every
@@ -62,7 +64,7 @@ param(
     [string]$WorkDir = 'C:\Temp\VmmAgent'
 )
 
-$AgentVersion = '2.18.0'
+$AgentVersion = '2.18.1'
 $CardText = ''   # VMM-CARD (filled in by Export-VmmHostAgent on the laptop; empty = generic agent)
 
 $ErrorActionPreference = 'Stop'
@@ -495,6 +497,7 @@ function Get-Facts {
         Name = $env:COMPUTERNAME; OS = ''; Lang = ''; Version = ''; Build = ''; SP = ''; Manufacturer = ''; Model = ''
         Platform = 'Unknown'; CTotalGB = $null; CFreeGB = $null; PendingReboot = $false; Sql = ''; LastBoot = ''
         TempExists = $false; PSVersion = "$($PSVersionTable.PSVersion)"; Admin = $false; ProductType = ''
+        DnsName = ''; Fqdn = ''   # full host name (COMPUTERNAME is cut at 15 characters) and name.domain when joined
     }
     if ($env:PROCESSOR_ARCHITEW6432) { Add-Problem '32-bit PowerShell on 64-bit Windows' '64-bit SQL instances and programs are not visible; run the 64-bit Windows PowerShell (System32)' }
     try { $f.Admin = (Test-Admin) } catch { }
@@ -515,7 +518,11 @@ function Get-Facts {
         $f.Manufacturer = $cs.Manufacturer; $f.Model = $cs.Model
         $az = $false; try { $az = [bool](Get-Service -Name WindowsAzureGuestAgent -ErrorAction SilentlyContinue) } catch { }
         $f.Platform = Get-PlatformName "$($cs.Manufacturer)" "$($cs.Model)" $az
+        $f.DnsName = "$($cs.DNSHostName)"   # Vista / Server 2008 and later
+        if ($cs.PartOfDomain -and "$($cs.Domain)") { $f.Fqdn = "$($cs.Domain)" }
     } catch { Add-Problem 'Computer model' $_ }
+    if (-not $f.DnsName) { try { $f.DnsName = [Net.Dns]::GetHostName() } catch { } }
+    if ($f.Fqdn -and $f.DnsName) { $f.Fqdn = $f.DnsName + '.' + $f.Fqdn } else { $f.Fqdn = '' }
     try {
         $c = Get-Wmi 'Win32_LogicalDisk' "DeviceID='C:'"
         $f.CTotalGB = [math]::Round($c.Size / 1GB, 1); $f.CFreeGB = [math]::Round($c.FreeSpace / 1GB, 1)
@@ -928,7 +935,7 @@ function Export-Result([switch]$Auto) {
     # One element per field: in a list ',' binds tighter than '+', so 'a=' + $x, 'b=' + $y would be ONE string
     # ("a=x b=y ...") and the laptop would reject the result (no valid host name). Each pair is in ( ).
     $lines = @(
-        ('Name=' + $f.Name), ('OS=' + $f.OS), ('Lang=' + $f.Lang), ('Version=' + $f.Version), ('Build=' + $f.Build), ('SP=' + $f.SP),
+        ('Name=' + $f.Name), ('DnsName=' + $f.DnsName), ('Fqdn=' + $f.Fqdn), ('OS=' + $f.OS), ('Lang=' + $f.Lang), ('Version=' + $f.Version), ('Build=' + $f.Build), ('SP=' + $f.SP),
         ('Manufacturer=' + $f.Manufacturer), ('Model=' + $f.Model), ('Platform=' + $f.Platform),
         ('CTotalGB=' + (Num $f.CTotalGB)), ('CFreeGB=' + (Num $f.CFreeGB)),
         ('PendingReboot=' + $(if ($f.PendingReboot) { 'Yes' } else { 'No' })), ('Sql=' + $f.Sql), ('LastBoot=' + $f.LastBoot),
